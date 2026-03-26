@@ -96,12 +96,12 @@ function buildQualificationScoringAnchor(
 ): string {
   const voiceMod = getSdrVoiceQualificationScoringSupplement(voice);
   if (!research) {
-    return `No research JSON — score from lead + outreach only. Spread 38–89. **Upward** for copy that **reads smooth aloud** — **warmer** open, short-to-medium <p>, **statement-led**, **0 ? ideal / max 1** in body, tiny reply path, **curiosity-native subject**. **Downward** for **any awkward line**, brochure rhythm, survey tone, swap-test generic, corporate soup, metronome sentences. Objections: three distinct **buyer mechanisms** (beliefs/politics). next_best_action: named artifacts + **sequenced** triggers. **Prompt 57 + 58** apply (premium bar; warm preset must **outshine** default on consultative ease).
+    return `No research JSON — score from lead + outreach only. Spread 38–89. **Upward** for copy that **reads smooth aloud** — **warmer** open, short-to-medium <p>, **statement-led**, **0 ? ideal / max 1** in body, tiny reply path, **curiosity-native subject**. **Downward** for **any awkward line**, brochure rhythm, survey tone, swap-test generic, corporate soup, metronome sentences. Objections: three distinct **buyer mechanisms** (beliefs/politics). next_best_action: named artifacts + **sequenced** triggers. **Prompt 57 + 58 + 67** apply (listing dossier premium; warm preset must **outshine** default on consultative ease + relationship depth).
 
 **SDR_VOICE (${voice}):** ${voiceMod}`;
   }
   const icp = research.icp_fit_score;
-  return `ICP anchor: icp_fit_score=${icp} (stabilized upstream — directional). Prompt 39 + **57** + **58**: **Nuanced strategic** qual — **belief gaps**, silent blockers, budget theater, competing priorities, **internal-political** risk. **bant_summary** must sound **human** (AE Slack) — penalize memo boilerplate. **Reward** outreach that is **warm, smooth, high-reply** when voice is **default**; for **warm_relationship_builder**, reward **consultative homework + low-pressure** copy that is **clearly premium** vs generic warm; for other voices, reward **faithful preset execution** per SDR_VOICE modifier below. **Penalize** stiff/awkward sentences, template feel, interrogation, brochure transitions, or hook that fits any logo — **and penalize preset mismatch** (e.g. vague fluff when voice demands data). If generic, **cap** qual **44–66** and name the tell. Strong fit + correct voice execution → **72–93** when BANT allows. Odd scores when split. If |qual - icp| > 14, one sentence in bant_summary explains. top_objections: three **different** mechanisms (buyer psychology / politics). next_best_action: two+ deliverables + **sequenced** logic. **Never** API/schema/timeout/model leakage in output fields.
+  return `ICP anchor: icp_fit_score=${icp} (stabilized upstream — directional). Prompt 39 + **57** + **58** + **67**: **Nuanced strategic** qual — **belief gaps**, silent blockers, budget theater, competing priorities, **internal-political** risk. **bant_summary** must sound **human** (AE Slack) — penalize memo boilerplate. **Prompt 67:** objections + bant_summary must **not** read like **templated BANT** — reward **specific**, **deal-real** language. **Reward** outreach that is **warm, smooth, high-reply** when voice is **default**; for **warm_relationship_builder**, reward **consultative homework + low-pressure + relationship-aware** copy that is **clearly premium** vs generic warm; for other voices, reward **faithful preset execution** per SDR_VOICE modifier below. **Penalize** stiff/awkward sentences, template feel, interrogation, brochure transitions, or hook that fits any logo — **and penalize preset mismatch** (e.g. vague fluff when voice demands data). If generic, **cap** qual **44–66** and name the tell. Strong fit + correct voice execution → **72–93** when BANT allows. Odd scores when split. If |qual - icp| > 14, one sentence in bant_summary explains. top_objections: three **different** mechanisms (buyer psychology / politics). next_best_action: two+ deliverables + **sequenced** logic. **Never** API/schema/timeout/model leakage in output fields.
 
 **SDR_VOICE (${voice}):** ${voiceMod}`;
 }
@@ -128,7 +128,7 @@ function compactResearchForPipeline(research: ResearchOutput): Record<string, un
     tech_stack_hints: research.tech_stack_hints
       .slice(0, 4)
       .map((x) => truncPipelineStr(x, 100)),
-    icp_fit_summary: truncPipelineStr(research.icp_fit_summary, 380),
+    icp_fit_summary: truncPipelineStr(research.icp_fit_summary, 450),
     key_stakeholders: research.key_stakeholders
       .slice(0, 5)
       .map((x) => truncPipelineStr(x, 120)),
@@ -138,7 +138,7 @@ function compactResearchForPipeline(research: ResearchOutput): Record<string, un
     messaging_angles: research.messaging_angles.map((x) =>
       truncPipelineStr(x, 100),
     ),
-    executive_summary: truncPipelineStr(research.executive_summary, 320),
+    executive_summary: truncPipelineStr(research.executive_summary, 480),
     _note: "excerpt only — not shown to prospects",
   };
 }

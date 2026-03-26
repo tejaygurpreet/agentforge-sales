@@ -45,6 +45,10 @@ export function sdrVoiceResearchSystemLayer(voice: SdrVoiceTone): string {
         `- **messaging_angles (all 3):** Relationship-safe hooks — **vary** wording; **≥1** light **we/together** (collaborative, not presumptuous).\n` +
         `- **key_stakeholders:** Day-to-day pain vs signer — **name patterns** when plausible.\n` +
         `- **Prompt 58:** **Product-surface anchoring** when digest/site supports it — exec + ICP must **not** circular-repeat; output should feel **obviously premium** vs default (deeper homework, warmer specificity).\n\n` +
+        `**Prompt 67 — dossier (this preset must feel relationship-grade):**\n` +
+        `- **executive_summary:** Sound **human** — the kind of paragraph a **top 10% SDR** would send in Slack before a call: **specific**, **kind**, **sharp**, **zero** corporate jargon. **One** sentence may acknowledge what **their team is building** or **shipping** (from digest/notes) — **never** hollow praise.\n` +
+        `- **Spend / fintech / finance-stack accounts** when LEAD or digest supports: use **plain** language (cards, reimbursements, close, controllers, AP) — **ground every claim** in digest/site/notes. **Ramp-named accounts:** mirror **sourced** story only — spend management, corporate cards, expense and reimbursements, accounting automation, simplifying finances for businesses — **scale stats** (e.g. **50k+** businesses) **only** if **explicitly** in digest, official materials, or notes.\n` +
+        `- **Key insight density:** **messaging_angles** and **pain_points** must each feel **authored**, not **filled in**.\n\n` +
         `**Human specificity** beats generic metrics for this voice.`
       );
     case "bold_challenger":
@@ -104,6 +108,10 @@ export function sdrVoiceOutreachSystemLayer(voice: SdrVoiceTone): string {
         `- **linkedin_message:** **Different hook** from email — rapport-first; **≤300 chars**; **one** of **"happy to share"** / **"no strings"** / **"only if useful"** in closing — **waives** base **"happy to"** ban **for LinkedIn only** there.\n` +
         `- **personalization_hooks:** **≥2** bullets — **operating rhythm, trust, or collaboration** (CRM-ready).\n` +
         `- **Prompt 58:** **Tier-1 consultative SDR** — clearly premium vs generic warm; subject **nails one real anchor** when honest.\n\n` +
+        `**Prompt 67 — relationship premium (listing bar):**\n` +
+        `- **Second or third \`<p>\`:** **One** sentence that shows you **see their world** — product line, customer motion, or team mandate from research — **warm**, **professional**, **not** a compliment sandwich.\n` +
+        `- **Spend/fintech buyers** when research supports: **plain** language (cards, expenses, finance ops) — **never** stiff category labels ("innovative fintech solutions").\n` +
+        `- **LinkedIn:** **Handwritten DM** energy — **short**, **human**, **no** brochure opener.\n\n` +
         `**Tone guard:** Warmth = **grounded + specific** — not saccharine. **One confident peer observation** from research. **No** robotic or low-effort feel.\n\n` +
         `Still **no** empty corporate soup from base ban list where not waived above.`
       );
@@ -199,6 +207,7 @@ export function sdrVoiceNurtureSystemLayer(voice: SdrVoiceTone): string {
         `**value_add_idea** each step: frame as a **gift** (checklist, template, **forwardable** insight, intro to a resource) — explicit **generosity**.\n` +
         `**sequence_summary** — **natural, spoken cadence**; relationship-safe language without sounding like a playbook ("stay useful", "respect the inbox" **once max** across the whole nurture JSON — **do not** repeat those exact phrases in multiple fields).\n` +
         `**Prompt 58:** **content_asset_suggestion** each step = **named tangible asset** for **this** account — not generic collateral labels.\n` +
+        `**Prompt 67:** **sequence_summary** + steps = **outcome-oriented** relationship help — **not** three polite nudges; **timing_rationale** explains **why** this spacing for **this** buyer.\n` +
         `**Warmer than default** but still **professional** — consultative, not saccharine.`
       );
     case "bold_challenger":

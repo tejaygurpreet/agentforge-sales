@@ -54,10 +54,12 @@ export function getSdrVoiceResearchInstructions(tone: SdrVoiceTone): string {
 - messaging_angles: **board- and exec-credible** — initiative-based, roadmap-aligned, no slang.
 - key_stakeholders: emphasize **economic buyer + operational sponsor** patterns.`;
     case "warm_relationship_builder":
-      return `RESEARCH_VOICE (Warm Relationship Builder) — MUST influence all narrative fields (Prompt 43 + **57** + **58**):
+      return `RESEARCH_VOICE (Warm Relationship Builder) — MUST influence all narrative fields (Prompt 43 + **57** + **58** + **67**):
 - executive_summary + icp_fit_summary: **100% unique to this lead** — **swap-test** both; **ban** SaaS wallpaper ("scaling aggressively", "finance enablement", "hypergrowth", "moving fast" as empty filler, etc.) unless quoting a **named** source. **≤2** peer phrases total across both fields ("peers in your seat", etc.) — each **tied to a concrete** company/role/notes/web detail.
 - **Prompt 58:** Weave **real product/motion terms** from site or digest when they exist — **no** exec↔ICP circular repeat.
+- **Prompt 67:** Dossier fields must read **consultative and human** — **top-decile SDR** quality; **PDF-safe** (no template rhythm across exec, ICP, BANT evidence).
 - Lead with **human operating reality** before metrics; sound like you're **briefing a friend rep**, not a benchmark PDF.
+- **Spend/fintech / expense / corporate-card** accounts **only when sourced:** use clear language (cards, reimbursements, bill pay, close, accounting sync). **Ramp** only if lead is Ramp: align with **their** motion from digest/site — spend management, corporate cards, accounting automation — **business scale** (e.g. **50k+**) **only** if **stated** in sources.
 - pain_points: **people + workflow first** (trust, handoffs, clarity, bandwidth) **with** one **specific** business consequence per line — no generic "challenges".
 - messaging_angles: **relationship hooks** — collaborative tests, low-pressure experiments; **no** challenger aggression.
 - reasoning_steps (via system prompt): must feel like **your own call prep** — fragmented, human, **not** six parallel "We should…" lines.
@@ -93,10 +95,11 @@ export function getSdrVoiceOutreachInstructions(tone: SdrVoiceTone): string {
 - LinkedIn: **respectful peer** — concise, no emoji stack; CTA is a **small, credible** next step (working session, not "quick call" spam).
 - 0–1 question in body; default **statement-led**.`;
     case "warm_relationship_builder":
-      return `SDR_VOICE — Warm Relationship Builder — Prompt 43–44 + **57** + **58** + **66** (**premium consultative — top-tier human SDR**):
+      return `SDR_VOICE — Warm Relationship Builder — Prompt 43–44 + **57** + **58** + **66** + **67** (**premium consultative — top-tier human SDR**):
 - **Opening:** **Hi [FirstName],** or **Hey [FirstName],** in the **first** paragraph — **mandatory**; then **personalization** from research (never generic).
 - Subject: **curiosity-driven**, **≤8 words**; **natural** peer line — **not** marketing; **prefer** one proper-noun or anchor **only this account** earns; **no** "Thoughts on / Quick question" / webinar tone.
 - Email: **≥1** line with **"I've seen teams like yours"** / **"teams in your position"** / **"folks in your seat"** tied to a **named** research detail; **generous CTA** + **easy out** in the **paragraph before** the formal sign-off.
+- **Prompt 67:** **Relationship-oriented** — one **sourced** line that **recognizes their mandate or motion** (not generic praise); **spend/fintech** language only when research supports — **plain English**.
 - **Closing:** **Best regards** or **Warm regards**, then **name** + **AgentForge Sales** (as in system prompt) — **never** a naked "Cheers" without the full signature block.
 - **Consultative** > vendor: observations and **plain stakes**; **zero** corporate jargon (no "leverage", "synergies", "solutions", "unlock", "empower" — use normal words).
 - Light **"we / together"** once if natural. **One sentence** may state a **clear POV** as a peer.
@@ -145,9 +148,10 @@ export function getSdrVoiceNurtureInstructions(tone: SdrVoiceTone): string {
 - sequence_summary frames **multi-touch strategic partnership** cadence.
 - CTAs implied in copy: **working sessions, readouts, steering artifacts** — not cheesy "checking in".`;
     case "warm_relationship_builder":
-      return `NURTURE_VOICE (Warm Relationship Builder) — Prompt 43 + **57** + **58**:
+      return `NURTURE_VOICE (Warm Relationship Builder) — Prompt 43 + **57** + **58** + **67**:
 - **Helpful relationship-building** — reads like **you're helping an AE friend**, not executing a script. **gift-style** value_add_ideas — **no guilt trips**, no "just checking in" as the whole value.
 - **sequence_summary:** conversational — **one breath** you'd say out loud; **no** drip-meta ("touch 1", "cadence step").
+- **Prompt 67:** Each step **materially different** — **story advances**; **no** three polite pings. **Strategic** timing_rationale — **why this spacing** for **this** buyer.
 - Each step **different warm opening** + **different verb**; **unscripted** helpfulness; tie to **objections** with empathy.
 - **Prompt 58:** every **content_asset_suggestion** = **named artifact** (specific checklist, template, benchmark slice) for **this** company's motion.`;
     case "bold_challenger":
@@ -184,7 +188,7 @@ export function getSdrVoiceQualificationPlaybookInstructions(tone: SdrVoiceTone)
     case "consultative_enterprise":
       return `Write **bant_summary** and **next_best_action** in **Consultative Enterprise** voice: strategic framing, **long-term partnership**, steering cadence, stakeholders, governance. NBA = **named deliverables + decision criteria** (no casual "ping me"). **Prompt 48:** bant_summary must not parrot research narrative fields — new framing.`;
     case "warm_relationship_builder":
-      return `Write **bant_summary** and **next_best_action** in **Warm Relationship Builder** voice (Prompt 43 + **57** + **58**): empathetic, **"we can validate together"**, **strategic** — name **unknowns**, **political risk**, **gentle multithread** paths — **Slack cadence**, not memo (**58**: no "Furthermore" / "It is important to"). NBA = **sequenced choreography** (ease risk → proof → expand) + **≥1 generous offer** + **easy out**. **Prompt 48:** bant_summary must not reuse sentences from research exec / ICP / news / BANT evidence. Objections in JSON stay **buyer-voice**; your bant_summary/NBA stay **AE-coach** voice.`;
+      return `Write **bant_summary** and **next_best_action** in **Warm Relationship Builder** voice (Prompt 43 + **57** + **58** + **67**): empathetic, **"we can validate together"**, **strategic** — name **unknowns**, **political risk**, **gentle multithread** paths — **Slack cadence**, not memo (**58**: no "Furthermore" / "It is important to"). **Prompt 67:** sound like **deal-coaching a friend** — **nuanced** objections framing, **zero** checkbox BANT. NBA = **sequenced choreography** (ease risk → proof → expand) + **≥1 generous offer** + **easy out**. **Prompt 48:** bant_summary must not reuse sentences from research exec / ICP / news / BANT evidence. Objections in JSON stay **buyer-voice**; your bant_summary/NBA stay **AE-coach** voice.`;
     case "bold_challenger":
       return `Write **bant_summary** and **next_best_action** in **Bold Challenger** voice (Prompt 43): **assumptions to stress-test**, **status-quo tax** in **numbered or ranged** terms where honest. NBA = **sharp discovery move** (hypothesis, trap, proof that flips skepticism). **top_objections reasoning** should lean **quantified deal risk**. **Prompt 48:** bant_summary must not copy research exec / ICP / news / BANT evidence — challenge in fresh language.`;
     default:
@@ -200,7 +204,7 @@ export function getSdrVoiceQualificationScoringSupplement(tone: SdrVoiceTone): s
     case "consultative_enterprise":
       return `Reward **strategic, long-horizon** copy and NBA; penalize transactional or slang-heavy outreach. Qual scores favor **exec-credible** motion.`;
     case "warm_relationship_builder":
-      return `Reward **empathy + specific rapport** (not generic kindness). **Prompt 58:** warm outreach must feel **clearly premium** vs default — homework, named anchors, consultative ease. Penalize aggressive or cold sequences. Qual scores favor **trust-building** quality.`;
+      return `Reward **empathy + specific rapport** (not generic kindness). **Prompt 58 + 67:** warm outreach + bant_summary must feel **clearly premium** vs default — homework, named anchors, consultative ease, **relationship-aware** lines. Penalize aggressive or cold sequences **and** templated BANT/objections. Qual scores favor **trust-building** quality.`;
     case "bold_challenger":
       return `Reward **professional tension + clear POV**; penalize bland safe text OR rude/aggressive tone. Qual scores favor **memorable, respectful challenge**.`;
     default:
