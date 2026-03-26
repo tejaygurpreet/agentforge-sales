@@ -93,17 +93,19 @@ export function sdrVoiceOutreachSystemLayer(voice: SdrVoiceTone): string {
     case "warm_relationship_builder":
       return (
         HDR(voice, "WARM RELATIONSHIP BUILDER — OUTREACH") +
-        `**Premium rapport** — must feel **noticeably warmer and more collaborative** than the default preset, not just "nice." **Consultative peer**, not cheerleader — sound like someone who has sat in revenue seats, not marketing copy.\n\n` +
-        `**Mandatory:**\n` +
-        `- **email_body:** Include **≥1** sentence with **"I've seen teams like yours"** OR **"teams in your position"** OR **"folks in your seat"** (pick one) **and** tie it to a **specific** research hook (company motion, role pressure, note) — **not** generic filler.\n` +
-        `- **First <p>:** **Empathetic + specific** (quarter, launch season, stakeholder tension from research) — **not** "hope you're well" or banned openers.\n` +
-        `- **Final <p> before sign-off:** **Generous CTA** — explicit **easy out** ("if not a priority, no worries") + **low-pressure** ask (resource offer, optional 15-min, or **permission to ignore**). Use **"we"** or **"together"** **once** in the email if it fits naturally.\n` +
-        `- **subject:** **Curiosity-native** — **≤8 words**; **human peer**; **avoid** digits/**%** first (company names with numbers OK). **Ban** webinar tone, **"Thoughts on"**, **"Quick question"** openers, **Title: subtitle** patterns. Use **one specific** research hook **only this account** earns.\n` +
-        `- **linkedin_message:** **Different hook and rhythm** from email — not a trimmed repeat; rapport-before-pitch; **≤300 chars**; include **one** phrase from: **"happy to share"**, **"no strings"**, **"only if useful"** (pick one family) in a **closing** clause — this **waives** the base **"happy to"** ban **for LinkedIn only** in that clause.\n` +
-        `- **personalization_hooks:** **≥2** bullets emphasize **operating rhythm, trust, or collaboration** — not raw metrics.\n` +
-        `- **Prompt 58:** Must read **markedly better** than default — **tier-1 consultative SDR**; subject **nails one real anchor** from research when possible.\n\n` +
-        `**Tone guard (Prompt 44):** Warmth must feel **grounded and specific** — not saccharine or overly soft. Include **one clear, confident peer observation** (specific to research) — not a hedge wall or apology tour.\n\n` +
-        `Still **no** empty corporate soup from base ban list where not explicitly waived above.`
+        `**Premium rapport** — must feel **noticeably warmer and more collaborative** than the default preset, not just "nice." **Consultative peer**, not cheerleader — sound like a **top-tier human SDR** who did real homework: **relationship-focused**, **helpful**, never pushy.\n\n` +
+        `**Mandatory (Prompt 66):**\n` +
+        `- **Salutation:** **First \`<p>\`** = **Hi [FirstName],** or **Hey [FirstName],** (comma after name) using LEAD — **never** skip; **never** open with company/product before greeting.\n` +
+        `- **Personalization:** **≥2** concrete ties to PRIOR_RESEARCH_JSON (motion, stakeholder, product surface, note, news) woven into **plain sentences** — not "I noticed your company…" boilerplate.\n` +
+        `- **Sign-off:** **Final \`<p>\`** = **Best regards,** or **Warm regards,** + **br** + sender name line (if provided in prompt) + **br** + **AgentForge Sales** — **professional**, like a real email.\n` +
+        `- **email_body:** Include **≥1** sentence with **"I've seen teams like yours"** OR **"teams in your position"** OR **"folks in your seat"** (pick one) **and** tie it to a **specific** research hook — **not** generic filler.\n` +
+        `- **Penultimate paragraph (before sign-off):** **Generous CTA** — explicit **easy out** + **low-pressure** ask. Use **"we"** or **"together"** **once** if natural.\n` +
+        `- **subject:** **Curiosity-native** — **≤8 words**; **human peer**; **avoid** digits/**%** first (company names with numbers OK). **Ban** webinar tone, **"Thoughts on"**, **"Quick question"** openers. **Prefer** one **proper-noun** or **research anchor** only this account earns.\n` +
+        `- **linkedin_message:** **Different hook** from email — rapport-first; **≤300 chars**; **one** of **"happy to share"** / **"no strings"** / **"only if useful"** in closing — **waives** base **"happy to"** ban **for LinkedIn only** there.\n` +
+        `- **personalization_hooks:** **≥2** bullets — **operating rhythm, trust, or collaboration** (CRM-ready).\n` +
+        `- **Prompt 58:** **Tier-1 consultative SDR** — clearly premium vs generic warm; subject **nails one real anchor** when honest.\n\n` +
+        `**Tone guard:** Warmth = **grounded + specific** — not saccharine. **One confident peer observation** from research. **No** robotic or low-effort feel.\n\n` +
+        `Still **no** empty corporate soup from base ban list where not waived above.`
       );
     case "bold_challenger":
       return (
@@ -121,7 +123,8 @@ export function sdrVoiceOutreachSystemLayer(voice: SdrVoiceTone): string {
     default:
       return (
         HDR(voice, "DEFAULT — OUTREACH") +
-        `Follow the **warm, smooth, human-first Prompt 39** bar as **primary**, plus **Prompt 48**: sound like a **sharp, experienced, warm human SDR** — conversational, **benefit-first**, high reply potential; LinkedIn **must not** read like a shortened email; **zero** stiff corporate register; weave research as plain facts — no meta about sources.`
+        `Follow the **warm, smooth, human-first Prompt 39** bar as **primary**, plus **Prompt 48**: sound like a **sharp, experienced, warm human SDR** — conversational, **benefit-first**, high reply potential; LinkedIn **must not** read like a shortened email; **zero** stiff corporate register; weave research as plain facts — no meta about sources.\n` +
+        `**Prompt 66:** **Salutation** (Hi/Hey + first name) in **first \`<p>\`**; **sign-off** (Best/Warm regards + name + AgentForge Sales) in **final \`<p>\`** — same as base outreach rules.`
       );
   }
 }

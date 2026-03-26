@@ -93,13 +93,15 @@ export function getSdrVoiceOutreachInstructions(tone: SdrVoiceTone): string {
 - LinkedIn: **respectful peer** — concise, no emoji stack; CTA is a **small, credible** next step (working session, not "quick call" spam).
 - 0–1 question in body; default **statement-led**.`;
     case "warm_relationship_builder":
-      return `SDR_VOICE — Warm Relationship Builder — Prompt 43–44 + **57** + **58** (**premium consultative — clearly above default**):
-- Subject: **curiosity-driven peer text** — **≤8 words**; **no** metric-first; **no** "Thoughts on / Quick question" openers; **prefer one proper-noun or product-surface anchor** from research that **only this account** earns.
-- Email: **≥1** line with **"I've seen teams like yours"** / **"teams in your position"** / **"folks in your seat"** tied to a **named** research detail; **generous CTA** + **easy out** in closing <p>.
+      return `SDR_VOICE — Warm Relationship Builder — Prompt 43–44 + **57** + **58** + **66** (**premium consultative — top-tier human SDR**):
+- **Opening:** **Hi [FirstName],** or **Hey [FirstName],** in the **first** paragraph — **mandatory**; then **personalization** from research (never generic).
+- Subject: **curiosity-driven**, **≤8 words**; **natural** peer line — **not** marketing; **prefer** one proper-noun or anchor **only this account** earns; **no** "Thoughts on / Quick question" / webinar tone.
+- Email: **≥1** line with **"I've seen teams like yours"** / **"teams in your position"** / **"folks in your seat"** tied to a **named** research detail; **generous CTA** + **easy out** in the **paragraph before** the formal sign-off.
+- **Closing:** **Best regards** or **Warm regards**, then **name** + **AgentForge Sales** (as in system prompt) — **never** a naked "Cheers" without the full signature block.
 - **Consultative** > vendor: observations and **plain stakes**; **zero** corporate jargon (no "leverage", "synergies", "solutions", "unlock", "empower" — use normal words).
 - Light **"we / together"** once if natural. **One sentence** may state a **clear POV** as a peer.
 - LinkedIn: **different hook** than email; rapport-first; closing may use **"happy to share"** / **"no strings"** / **"only if useful"** (waived ban for that clause only).
-- **100–175 words**, 3–4 <p>; **homework-done** warmth — not generic kindness.`;
+- **100–175 words** body + greeting + sign-off; **homework-done** warmth — **not** robotic or low-effort.`;
     case "bold_challenger":
       return `SDR_VOICE — Bold Challenger (**WINS over "safe" warmth**) — Prompt 43–44:
 - Subject: **direct / pattern-interrupt** — **not** a cozy default subject; still professional.

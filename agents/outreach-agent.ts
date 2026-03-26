@@ -9,6 +9,7 @@ import {
   getSdrVoiceOutreachPriorityNote,
   sdrVoiceLabel,
 } from "@/lib/sdr-voice";
+import { getOutreachSignoffNameForPrompt } from "@/lib/outreach-signoff";
 import { type OutreachDraft, outreachDraftSchema } from "@/agents/types";
 import {
   invokeWithGroqRateLimitResilience,
@@ -20,6 +21,15 @@ export type OutreachAgentResult = {
   groqInvokeMeta?: GroqInvokeMeta;
 };
 
+/** First name for "Hi Karim," — strips honorifics and junk. */
+export function leadFirstNameForSalutation(lead: Lead): string {
+  const raw = (lead.name ?? "").trim().split(/\s+/)[0] ?? "";
+  let s = raw.replace(/^[^a-zA-ZÀ-ÿ]+/u, "");
+  const cut = s.search(/[^a-zA-ZÀ-ÿ'-]/u);
+  if (cut !== -1) s = s.slice(0, cut);
+  return s.length > 0 ? s : "there";
+}
+
 export async function runOutreachAgent(
   lead: Lead,
   priorStageContext: string | undefined,
@@ -28,6 +38,11 @@ export async function runOutreachAgent(
   const voice = sdrVoice;
   const voiceBlock = getSdrVoiceOutreachInstructions(voice);
   const priority = getSdrVoiceOutreachPriorityNote(voice);
+  const firstName = leadFirstNameForSalutation(lead);
+  const signName = getOutreachSignoffNameForPrompt();
+  const signOffHtmlInstruction = signName
+    ? `SIGN_OFF_NAME (use exactly this many lines in the final <p>): After "Best regards," or "Warm regards,", use <br/> then "${signName}" then <br/> then "AgentForge Sales".`
+    : `SIGN_OFF_NAME: (none configured) — final <p> must still be <p>Best regards,<br/>AgentForge Sales</p> or <p>Warm regards,<br/>AgentForge Sales</p> (company name on its own line).`;
 
   const defaultWarmthBlock =
     voice === "default"
@@ -40,10 +55,15 @@ sdrVoice: ${voice} (${sdrVoiceLabel(voice)})
 SDR_VOICE_PRESET: ${voice}
 ${voiceBlock || "SDR_VOICE: default — balanced human SDR bar."}
 
+=== Prompt 66 — contact + signature (non-negotiable) ===
+LEAD_FIRST_NAME_FOR_SALUTATION: ${firstName}
+You MUST address the contact by this first name in the opening salutation (e.g. "Hi ${firstName}," or "Hey ${firstName},").
+${signOffHtmlInstruction}
+
 LEAD: ${JSON.stringify(lead)}
 PRIOR_RESEARCH_JSON: ${priorStageContext?.trim() ? priorStageContext : "(none — lead fields only)"}
 
-Valid HTML email_body; linkedin_message ≤300 chars. ${defaultWarmthBlock} **0 ? in body default; max 1** (voice presets may tighten further per SDR_VOICE). **100–175 words**, 3–4 <p> unless SDR_VOICE specifies otherwise. Ban stiff/generic phrases (checking in, following up on, per my last, as discussed, utilize, streamline, robust, paradigm, holistic, unpack, etc.). **Prompt 48 + 57 + 58:** every line = **homework-done human** — benefit-first, low-pressure, **high reply potential**; **subject** = **curiosity-native** peer text (not marketing headline). **warm_relationship_builder:** email + LinkedIn must feel **genuinely warm and consultative** — **zero** corporate jargon; **tier-1 SDR** bar vs default. **Prompt 58:** **inbox read-aloud** clean; subject **anchors** on a real research detail when preset is warm. Rewrite until subject + body + LinkedIn **prove** preset **${voice}** to a skeptical AE.`;
+Valid HTML email_body; linkedin_message ≤300 chars. ${defaultWarmthBlock} **0 ? in body default; max 1** (voice presets may tighten further per SDR_VOICE). **100–175 words** in the body **excluding** salutation and sign-off lines, 3–5 <p> total including greeting + closing. Ban stiff/generic phrases (checking in, following up on, per my last, as discussed, utilize, streamline, robust, paradigm, holistic, unpack, etc.). **Prompt 48 + 57 + 58:** every line = **homework-done human** — benefit-first, low-pressure, **high reply potential**; **subject** = **curiosity-native** peer text. **warm_relationship_builder:** email + LinkedIn must feel **genuinely warm and consultative** — **zero** corporate jargon; **tier-1 SDR** bar vs default. **Prompt 58:** **inbox read-aloud** clean; subject **anchors** on a real research detail when preset is warm. Rewrite until subject + body + LinkedIn **prove** preset **${voice}** to a skeptical AE.`;
 
   const systemPrompt = buildOutreachSystemPrompt(sdrVoice);
   const prompt = `${systemPrompt}\n\n---\n${human}`;
