@@ -99,7 +99,7 @@ export function sdrVoiceOutreachSystemLayer(voice: SdrVoiceTone): string {
         HDR(voice, "WARM RELATIONSHIP BUILDER — OUTREACH") +
         `**Premium rapport** — must feel **noticeably warmer and more collaborative** than the default preset, not just "nice." **Consultative peer**, not cheerleader — sound like a **top-tier human SDR** who did real homework: **relationship-focused**, **helpful**, never pushy.\n\n` +
         `**Mandatory (Prompt 66):**\n` +
-        `- **Salutation:** **First \`<p>\`** = **Hi [FirstName],** or **Hey [FirstName],** (comma after name) using LEAD — **never** skip; **never** open with company/product before greeting.\n` +
+        `- **Salutation (Prompt 68):** **First \`<p>\`** = **only** **Hi [FirstName],** or **Hey [FirstName],** — **no body text** in that paragraph; **never** skip; **never** open with company/product before greeting.\n` +
         `- **Personalization:** **≥2** concrete ties to PRIOR_RESEARCH_JSON (motion, stakeholder, product surface, note, news) woven into **plain sentences** — not "I noticed your company…" boilerplate.\n` +
         `- **Sign-off:** **Final \`<p>\`** = **Best regards,** or **Warm regards,** + **br** + sender name line (if provided in prompt) + **br** + **AgentForge Sales** — **professional**, like a real email.\n` +
         `- **email_body:** Include **≥1** sentence with **"I've seen teams like yours"** OR **"teams in your position"** OR **"folks in your seat"** (pick one) **and** tie it to a **specific** research hook — **not** generic filler.\n` +
@@ -132,7 +132,7 @@ export function sdrVoiceOutreachSystemLayer(voice: SdrVoiceTone): string {
       return (
         HDR(voice, "DEFAULT — OUTREACH") +
         `Follow the **warm, smooth, human-first Prompt 39** bar as **primary**, plus **Prompt 48**: sound like a **sharp, experienced, warm human SDR** — conversational, **benefit-first**, high reply potential; LinkedIn **must not** read like a shortened email; **zero** stiff corporate register; weave research as plain facts — no meta about sources.\n` +
-        `**Prompt 66:** **Salutation** (Hi/Hey + first name) in **first \`<p>\`**; **sign-off** (Best/Warm regards + name + AgentForge Sales) in **final \`<p>\`** — same as base outreach rules.`
+        `**Prompt 66 + 68:** **Salutation** alone in **first \`<p>\`**; **2+ body \`<p>\`**; **sign-off** (Best regards + br + name + br + AgentForge Sales) in **final \`<p>\`** — same as base outreach rules.`
       );
   }
 }

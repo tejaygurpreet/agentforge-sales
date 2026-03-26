@@ -469,6 +469,19 @@ export async function startCampaign(
 
   const thread_id = `${user.id}_${Date.now()}`;
 
+  let senderSignoffName = "";
+  if (typeof user.user_metadata?.full_name === "string") {
+    senderSignoffName = user.user_metadata.full_name.trim();
+  }
+  const { data: profileForSignoff } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profileForSignoff?.full_name?.trim()) {
+    senderSignoffName = profileForSignoff.full_name.trim();
+  }
+
   try {
     warnIfResendNotConfigured();
     await deleteThreadCheckpoint(thread_id);
@@ -477,6 +490,7 @@ export async function startCampaign(
         lead,
         thread_id,
         user_id: user.id,
+        sender_signoff_name: senderSignoffName || undefined,
       }),
       START_CAMPAIGN_MAX_MS,
       "startCampaign.runCampaignGraph",

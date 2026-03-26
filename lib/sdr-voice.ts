@@ -96,7 +96,7 @@ export function getSdrVoiceOutreachInstructions(tone: SdrVoiceTone): string {
 - 0–1 question in body; default **statement-led**.`;
     case "warm_relationship_builder":
       return `SDR_VOICE — Warm Relationship Builder — Prompt 43–44 + **57** + **58** + **66** + **67** (**premium consultative — top-tier human SDR**):
-- **Opening:** **Hi [FirstName],** or **Hey [FirstName],** in the **first** paragraph — **mandatory**; then **personalization** from research (never generic).
+- **Opening (Prompt 68):** **Hi [FirstName],** or **Hey [FirstName],** as the **only** text in the **first** HTML paragraph — **mandatory**; body starts in the **next** paragraph; then **personalization** from research (never generic).
 - Subject: **curiosity-driven**, **≤8 words**; **natural** peer line — **not** marketing; **prefer** one proper-noun or anchor **only this account** earns; **no** "Thoughts on / Quick question" / webinar tone.
 - Email: **≥1** line with **"I've seen teams like yours"** / **"teams in your position"** / **"folks in your seat"** tied to a **named** research detail; **generous CTA** + **easy out** in the **paragraph before** the formal sign-off.
 - **Prompt 67:** **Relationship-oriented** — one **sourced** line that **recognizes their mandate or motion** (not generic praise); **spend/fintech** language only when research supports — **plain English**.

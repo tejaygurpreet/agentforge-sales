@@ -1,5 +1,6 @@
 import type { Lead, NurtureOutput, OutreachDraft, ResearchOutput } from "@/agents/types";
-import { getOutreachSignoffNameForPrompt } from "@/lib/outreach-signoff";
+import { normalizeOutreachEmailHtml } from "@/lib/outreach-email-format";
+import { resolveOutreachSignoffName } from "@/lib/outreach-signoff";
 import {
   nurtureOutputSchema,
   outreachDraftSchema,
@@ -176,21 +177,26 @@ export function buildFallbackResearchOutput(lead: Lead, reason: string): Researc
   return researchOutputSchema.parse(draft);
 }
 
-export function buildFallbackOutreachDraft(lead: Lead, errorHint: string): OutreachDraft {
+export function buildFallbackOutreachDraft(
+  lead: Lead,
+  errorHint: string,
+  senderSignoffName?: string,
+): OutreachDraft {
   const company = (lead.company || "your team").trim();
   const rawFirst = (lead.name || "there").split(/\s+/)[0] || "there";
   const first = rawFirst.replace(/^[^a-zA-ZÀ-ÿ]+/u, "").replace(/[^a-zA-ZÀ-ÿ'-].*$/u, "") || "there";
-  const signer = getOutreachSignoffNameForPrompt();
-  const signOff = signer
-    ? `<p>Best regards,<br/>${signer.replace(/[<>]/g, "")}<br/>AgentForge Sales</p>`
-    : `<p>Best regards,<br/>AgentForge Sales</p>`;
+  const signer = resolveOutreachSignoffName(senderSignoffName);
   const noteHook = lead.notes?.trim().slice(0, 200);
   const mid = noteHook
     ? `Something in your notes stuck with me — ${noteHook.replace(/"/g, "'").slice(0, 118)}. If that's still a live thing at ${company}, I'd love to put something useful in front of whoever actually runs with it. If it's old news, say so and I'll vanish.`
     : `I have a quiet hunch ${company} still has someone who cares about pipeline turning into cash without extra mess. If I'm off, one word is plenty. If I'm close, a name keeps me from bothering the wrong person.`;
+  const rawBody = `<p>Hi ${first},</p><p>${mid}</p><p>Reply however thin works — a name, one word, or "not us" and I'm gone.</p>`;
   const draft = {
     subject: `${first}, quick thought on ${company.split(/\s+/).slice(0, 2).join(" ")}`,
-    email_body: `<p>Hi ${first},</p><p>${mid}</p><p>Reply however thin works — a name, one word, or "not us" and I'm gone.</p>${signOff}`,
+    email_body: normalizeOutreachEmailHtml(rawBody, {
+      firstName: first,
+      signOffName: signer,
+    }),
     linkedin_message:
       `${first} — hey — at ${company.slice(0, 22)} still you for rev/handoff, or who should I ask?`.slice(
         0,

@@ -216,6 +216,11 @@ const GraphState = Annotation.Root({
     reducer: (_c, n) => n,
     default: () => undefined,
   }),
+  /** Prompt 68 — sender full name from signup/profile for email sign-off. */
+  sender_signoff_name: Annotation<string | undefined>({
+    reducer: (_c, n) => n,
+    default: () => undefined,
+  }),
 });
 
 export type SalesGraphState = typeof GraphState.State;
@@ -402,7 +407,9 @@ async function outreachNode(
     let outreachGroqMeta: GroqInvokeMeta | undefined;
     try {
       const out = await withTimeout(
-        runOutreachAgent(state.lead, priorContext, sdrVoice),
+        runOutreachAgent(state.lead, priorContext, sdrVoice, {
+        senderSignoffName: state.sender_signoff_name,
+      }),
         OUTREACH_AGENT_MAX_MS,
         "outreach_agent",
       );
@@ -413,7 +420,7 @@ async function outreachNode(
       outreachDegraded = true;
       outreachErrorNote = message.slice(0, 500);
       console.error("[AgentForge] outreach_node:fallback", state.thread_id, message);
-      draft = buildFallbackOutreachDraft(state.lead, message);
+      draft = buildFallbackOutreachDraft(state.lead, message, state.sender_signoff_name);
     }
     const send = await sendTransactionalEmail({
       to: state.lead.email,
@@ -491,7 +498,7 @@ async function outreachNode(
   } catch (e) {
     const message = e instanceof Error ? e.message : "Outreach failed";
     console.error("[AgentForge] outreach_node:error", state.thread_id, message);
-    const fbDraft = buildFallbackOutreachDraft(state.lead, message);
+    const fbDraft = buildFallbackOutreachDraft(state.lead, message, state.sender_signoff_name);
     const fallback: OutreachOutput = {
       ...fbDraft,
       email_sent: false,
@@ -815,6 +822,8 @@ export interface RunCampaignInput {
   lead: Lead;
   thread_id: string;
   user_id: string;
+  /** Prompt 68 — profile / signup full name for outreach sign-off (optional). */
+  sender_signoff_name?: string;
 }
 
 function initialCampaignGraphState(input: RunCampaignInput): SalesGraphState {
@@ -833,6 +842,7 @@ function initialCampaignGraphState(input: RunCampaignInput): SalesGraphState {
     pipeline_error: undefined,
     results: {},
     campaign_completed_at: undefined,
+    sender_signoff_name: input.sender_signoff_name,
   };
 }
 
@@ -859,6 +869,7 @@ export async function runCampaignGraph(
       nurture_output: undefined,
       final_status: "failed",
       pipeline_error: LLM_CONFIG_ERROR,
+      sender_signoff_name: input.sender_signoff_name,
       results: {
         llm_config: {
           error: LLM_CONFIG_ERROR,
@@ -1031,9 +1042,11 @@ export const runSalesGraph = async (input: {
   threadId: string;
   userId: string;
   lead: Lead;
+  senderSignoffName?: string;
 }) =>
   runCampaignGraph({
     lead: input.lead,
     thread_id: input.threadId,
     user_id: input.userId,
+    sender_signoff_name: input.senderSignoffName,
   });
