@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
 import { useForm } from "react-hook-form";
-import { z } from "zod";
+import { signUpAndSignIn } from "./actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -24,24 +24,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
-import { createClient } from "@/lib/supabase";
-
-const signupSchema = z
-  .object({
-    fullName: z.string().min(1, "Enter your name").max(120, "Name is too long"),
-    email: z.string().email("Enter a valid email"),
-    password: z
-      .string()
-      .min(8, "Use at least 8 characters")
-      .max(128, "Password is too long"),
-    confirmPassword: z.string().min(1, "Confirm your password"),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  });
-
-type SignupValues = z.infer<typeof signupSchema>;
+import { signupSchema, type SignupFormValues } from "@/lib/signup-schema";
 
 export function SignupForm() {
   const router = useRouter();
@@ -49,7 +32,7 @@ export function SignupForm() {
   const next = searchParams.get("next") ?? "/";
   const [isPending, startTransition] = useTransition();
 
-  const form = useForm<SignupValues>({
+  const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
     defaultValues: {
       fullName: "",
@@ -59,70 +42,23 @@ export function SignupForm() {
     },
   });
 
-  function onSubmit(values: SignupValues) {
+  function onSubmit(values: SignupFormValues) {
     startTransition(async () => {
-      try {
-        const supabase = createClient();
-
-        const { data, error } = await supabase.auth.signUp({
-          email: values.email,
-          password: values.password,
-          options: {
-            data: {
-              full_name: values.fullName.trim(),
-            },
-          },
-        });
-
-        if (error) {
-          toast({
-            variant: "destructive",
-            title: "Sign up failed",
-            description: error.message,
-          });
-          return;
-        }
-
-        if (data.session) {
-          toast({
-            title: "Welcome",
-            description: "Your account is ready.",
-          });
-          router.push(next);
-          router.refresh();
-          return;
-        }
-
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: values.email,
-          password: values.password,
-        });
-
-        if (signInError) {
-          toast({
-            variant: "destructive",
-            title: "Could not sign you in",
-            description:
-              signInError.message ||
-              "Turn off “Confirm email” in Supabase Auth settings, then try again.",
-          });
-          return;
-        }
-
-        toast({
-          title: "Welcome",
-          description: "Your account is ready.",
-        });
-        router.push(next);
-        router.refresh();
-      } catch (e) {
-        const message = e instanceof Error ? e.message : "Unexpected error";
+      const result = await signUpAndSignIn(values);
+      if (!result.ok) {
         toast({
           variant: "destructive",
-          title: "Error",
-          description: message,
+          title: "Sign up failed",
+          description: result.error,
         });
+        return;
       }
+      toast({
+        title: "Welcome",
+        description: "Your account is ready.",
+      });
+      router.push(next);
+      router.refresh();
     });
   }
 
@@ -136,7 +72,11 @@ export function SignupForm() {
       </CardHeader>
       <CardContent>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="space-y-4"
+            aria-busy={isPending}
+          >
             <FormField
               control={form.control}
               name="fullName"
@@ -211,7 +151,7 @@ export function SignupForm() {
               )}
             />
             <Button type="submit" className="w-full" disabled={isPending}>
-              {isPending ? "Creating account…" : "Sign up"}
+              {isPending ? "Creating your account…" : "Sign up"}
             </Button>
           </form>
         </Form>
