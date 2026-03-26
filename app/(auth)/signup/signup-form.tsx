@@ -65,7 +65,7 @@ export function SignupForm() {
       try {
         const supabase = createClient();
         const origin = getAuthRedirectOrigin();
-        const emailRedirectTo = `${origin}/auth/callback?next=${encodeURIComponent("/confirm")}`;
+        const emailRedirectTo = `${origin}/auth/callback?next=${encodeURIComponent("/auth/confirm")}`;
 
         const { data, error } = await supabase.auth.signUp({
           email: values.email,

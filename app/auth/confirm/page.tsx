@@ -16,7 +16,7 @@ import { createClient } from "@/lib/supabase";
 
 const DASHBOARD_PATH = "/";
 
-export default function ConfirmPage() {
+export default function AuthConfirmPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [hasSession, setHasSession] = useState(false);
@@ -79,7 +79,7 @@ export default function ConfirmPage() {
           </CardTitle>
           <CardDescription className="text-base">
             {hasSession
-              ? "Your email has been confirmed successfully! You’re signed in and ready to use AgentForge Sales."
+              ? "Your email has been confirmed successfully!"
               : ready
                 ? "We couldn’t find an active session. Open the confirmation link from your email, or sign in if you already confirmed your account."
                 : "Verifying your session…"}

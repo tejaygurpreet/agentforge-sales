@@ -2,6 +2,11 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  if (path === "/confirm") {
+    return NextResponse.redirect(new URL("/auth/confirm", request.url));
+  }
+
   let response = NextResponse.next({ request: { headers: request.headers } });
   type CookieSetOptions = Parameters<typeof response.cookies.set>[2];
 
@@ -38,7 +43,6 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const path = request.nextUrl.pathname;
   const isLogin = path === "/login";
   const isSignup = path === "/signup";
   const isAuthCallback = path.startsWith("/auth/callback");
