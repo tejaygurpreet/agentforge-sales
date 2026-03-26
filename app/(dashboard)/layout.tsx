@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
+/** Auth + Supabase use cookies — must not be statically generated (Vercel / Next.js). */
+export const dynamic = "force-dynamic";
+
 export default async function DashboardLayout({
   children,
 }: {

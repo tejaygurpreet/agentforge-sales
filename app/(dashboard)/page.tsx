@@ -10,6 +10,9 @@ import { DashboardHero } from "@/components/dashboard/dashboard-hero";
 import { ProductRoadmapSection } from "@/components/dashboard/product-roadmap-section";
 import { getDashboardEnvWarnings } from "@/lib/env";
 
+/** Server actions / Supabase — not compatible with static generation at /. */
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   const envWarnings = getDashboardEnvWarnings();
   const [campaigns, recentCampaigns, analytics] = await Promise.all([
