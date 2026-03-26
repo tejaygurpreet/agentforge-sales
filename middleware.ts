@@ -78,6 +78,7 @@ export const config = {
     "/analytics/:path*",
     "/login",
     "/signup",
+    "/confirm",
     "/auth/:path*",
   ],
 };

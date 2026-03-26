@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -49,7 +49,6 @@ export function SignupForm() {
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "/";
   const [isPending, startTransition] = useTransition();
-  const [needsConfirm, setNeedsConfirm] = useState(false);
 
   const form = useForm<SignupValues>({
     resolver: zodResolver(signupSchema),
@@ -66,7 +65,7 @@ export function SignupForm() {
       try {
         const supabase = createClient();
         const origin = getAuthRedirectOrigin();
-        const emailRedirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
+        const emailRedirectTo = `${origin}/auth/callback?next=${encodeURIComponent("/confirm")}`;
 
         const { data, error } = await supabase.auth.signUp({
           email: values.email,
@@ -98,12 +97,10 @@ export function SignupForm() {
           return;
         }
 
-        setNeedsConfirm(true);
-        toast({
-          title: "Check your email",
-          description:
-            "We sent a confirmation link. After confirming, you can sign in with email and password.",
-        });
+        router.push(
+          `/login?checkEmail=1&next=${encodeURIComponent(next)}`,
+        );
+        router.refresh();
       } catch (e) {
         const message = e instanceof Error ? e.message : "Unexpected error";
         toast({
@@ -136,7 +133,7 @@ export function SignupForm() {
                     <Input
                       autoComplete="name"
                       placeholder="Jordan Lee"
-                      disabled={isPending || needsConfirm}
+                      disabled={isPending}
                       {...field}
                     />
                   </FormControl>
@@ -155,7 +152,7 @@ export function SignupForm() {
                       type="email"
                       autoComplete="email"
                       placeholder="you@company.com"
-                      disabled={isPending || needsConfirm}
+                      disabled={isPending}
                       {...field}
                     />
                   </FormControl>
@@ -173,7 +170,7 @@ export function SignupForm() {
                     <Input
                       type="password"
                       autoComplete="new-password"
-                      disabled={isPending || needsConfirm}
+                      disabled={isPending}
                       {...field}
                     />
                   </FormControl>
@@ -191,7 +188,7 @@ export function SignupForm() {
                     <Input
                       type="password"
                       autoComplete="new-password"
-                      disabled={isPending || needsConfirm}
+                      disabled={isPending}
                       {...field}
                     />
                   </FormControl>
@@ -199,12 +196,8 @@ export function SignupForm() {
                 </FormItem>
               )}
             />
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isPending || needsConfirm}
-            >
-              {isPending ? "Creating account…" : needsConfirm ? "Check your email" : "Sign up"}
+            <Button type="submit" className="w-full" disabled={isPending}>
+              {isPending ? "Creating account…" : "Sign up"}
             </Button>
           </form>
         </Form>
