@@ -83,7 +83,8 @@ async function tryDirectPageSnippets(domain: string): Promise<{ text: string; ur
   return { text: chunks.join("\n\n---\n\n"), urls: used };
 }
 
-async function tavilySearch(
+/** Prompt 70 — exported for live-signals module (Tavily-backed post-research pack). */
+export async function tavilySearch(
   query: string,
   apiKey: string,
   depth: "basic" | "advanced" = "basic",

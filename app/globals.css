@@ -27,25 +27,26 @@
   }
 
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
+    /* Prompt 71 — slightly deeper, cooler canvas (enterprise console) */
+    --background: 222 47% 6%;
+    --foreground: 210 40% 98%;
+    --card: 222 41% 8%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 41% 9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 6%;
+    --secondary: 217 19% 18%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 217 19% 16%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 25% 20%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 40%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217 19% 18%;
+    --input: 217 19% 18%;
+    --ring: 217 91% 60%;
   }
 }
 
@@ -56,5 +57,18 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  }
+}
+
+/* Prompt 71 — premium surfaces & motion (no extra runtime deps) */
+@layer utilities {
+  .premium-surface {
+    @apply transition-[box-shadow,transform,border-color] duration-300 ease-out;
+  }
+  .premium-card-interactive {
+    @apply transition-[box-shadow,transform,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:shadow-xl hover:ring-primary/20 active:translate-y-0;
+  }
+  .text-balance-safe {
+    text-wrap: balance;
   }
 }

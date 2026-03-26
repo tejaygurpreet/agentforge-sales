@@ -1,5 +1,7 @@
+import type { BatchRunItem } from "@/types";
 import {
   GitBranch,
+  Loader2,
   Radar,
   Send,
   Target,
@@ -20,7 +22,7 @@ const agents = [
     step: "1",
     name: "Research",
     description:
-      "Deep account context: ICP score, sector read, stakeholders, pains, angles, and BANT-style hypotheses for the first call.",
+      "Deep account context: ICP score, sector read, 6–8-step reasoning trace, stakeholders, pains, angles, and BANT hypotheses tuned to this lead.",
     icon: Radar,
     accent: "border-sky-500/25 bg-sky-500/[0.08] text-sky-700 dark:text-sky-300",
   },
@@ -53,16 +55,88 @@ const agents = [
   },
 ] as const;
 
-export function ActiveAgents() {
+type ActiveAgentsProps = {
+  /** Prompt 70 — optional parallel batch run progress. */
+  batchProgress?: BatchRunItem[] | null;
+};
+
+function batchStatusBadge(status: BatchRunItem["status"]) {
+  switch (status) {
+    case "queued":
+      return "bg-muted text-muted-foreground";
+    case "running":
+      return "border-sky-500/40 bg-sky-500/15 text-sky-950 dark:text-sky-50";
+    case "done":
+      return "border-emerald-500/40 bg-emerald-500/12 text-emerald-950 dark:text-emerald-50";
+    case "error":
+      return "border-red-500/40 bg-red-500/12 text-red-950 dark:text-red-50";
+    default:
+      return "";
+  }
+}
+
+export function ActiveAgents({ batchProgress }: ActiveAgentsProps) {
   return (
     <section className="space-y-5">
-      <div className="rounded-2xl border border-border/50 bg-gradient-to-br from-card via-card to-muted/[0.35] px-5 py-5 shadow-sm ring-1 ring-border/10 dark:from-card dark:to-muted/15 sm:px-6 sm:py-6">
+      {batchProgress && batchProgress.length > 0 ? (
+        <div
+          className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/[0.06] via-card to-card px-5 py-4 shadow-md ring-1 ring-primary/15 dark:from-primary/[0.09] dark:to-card sm:px-6"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold tracking-tight">Batch run progress</h3>
+            <span className="text-[11px] text-muted-foreground">
+              {batchProgress.filter((b) => b.status === "done").length}/{batchProgress.length}{" "}
+              finished
+            </span>
+          </div>
+          <ul className="mt-3 space-y-2">
+            {batchProgress.map((b) => (
+              <li
+                key={b.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-background/80 px-3 py-2 text-sm dark:bg-background/40"
+              >
+                <span className="min-w-0 truncate font-medium">
+                  {b.label}{" "}
+                  <span className="text-muted-foreground">@ {b.company}</span>
+                </span>
+                <span className="flex items-center gap-2">
+                  {b.status === "running" ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-600 dark:text-sky-400" />
+                  ) : null}
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-[10px] font-semibold uppercase tracking-wide",
+                      batchStatusBadge(b.status),
+                    )}
+                  >
+                    {b.status}
+                  </Badge>
+                  {b.threadId ? (
+                    <span className="hidden font-mono text-[10px] text-muted-foreground sm:inline">
+                      {b.threadId.slice(0, 18)}…
+                    </span>
+                  ) : null}
+                </span>
+                {b.error ? (
+                  <p className="w-full text-xs text-destructive">{b.error}</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div className="premium-surface rounded-2xl border border-border/50 bg-gradient-to-br from-card via-card to-muted/[0.35] px-5 py-5 shadow-md ring-1 ring-white/[0.05] dark:from-card dark:to-muted/15 sm:px-6 sm:py-6">
         <div>
           <h2 className="text-lg font-semibold tracking-tight sm:text-xl">Active agents</h2>
           <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted-foreground">
             LangGraph pipeline — each stage consumes the prior output and your selected{" "}
-            <span className="font-medium text-foreground">SDR voice</span> preset. All four run on every
-            campaign unless a stage stops the graph.
+            <span className="font-medium text-foreground">SDR voice</span> preset. Research builds a
+            consultant-grade dossier (reasoning trace, BANT hypotheses, nurture arc); outreach and
+            qualification stay voice-matched end to end.
           </p>
         </div>
       </div>
@@ -72,8 +146,7 @@ export function ActiveAgents() {
           <Card
             key={a.id}
             className={cn(
-              "group overflow-hidden rounded-xl border-border/60 bg-card/95 shadow-md ring-1 ring-border/10",
-              "transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:ring-primary/15 dark:ring-white/[0.06]",
+              "group premium-card-interactive overflow-hidden rounded-xl border-border/60 bg-card/95 shadow-md ring-1 ring-border/10 dark:ring-white/[0.06]",
             )}
           >
             <CardHeader className="space-y-3 pb-3">

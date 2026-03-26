@@ -78,6 +78,12 @@ export type CampaignSummaryExport = {
       timing_rationale: string;
     }[];
   } | null;
+  /** Prompt 70 — post-research live signals for PDF + exports. */
+  live_signals: {
+    signal_type: string;
+    signal_text: string;
+    captured_at: string;
+  }[];
 };
 
 /** Clean JSON handoff for CRM, demos, integrations, and full PDF generation (Prompt 22). */
@@ -191,5 +197,10 @@ export function buildCampaignSummaryExport(
           })),
         }
       : null,
+    live_signals: (snapshot.live_signals ?? []).map((s) => ({
+      signal_type: s.signal_type,
+      signal_text: s.signal_text,
+      captured_at: s.captured_at,
+    })),
   };
 }

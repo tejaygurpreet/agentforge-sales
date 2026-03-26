@@ -13,6 +13,7 @@ import {
   Cpu,
   Download,
   Eye,
+  HelpCircle,
   FileJson,
   FileText,
   Lightbulb,
@@ -21,6 +22,7 @@ import {
   MessageSquare,
   Mic,
   Play,
+  Radar,
   ScrollText,
   Sparkles,
   Target,
@@ -90,6 +92,11 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 function displayResearchBantEvidence(evidence: string, research: Record<string, unknown>): string {
@@ -1064,7 +1071,25 @@ export function CampaignWorkspace({
                 name="sdr_voice_tone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>SDR voice & tone</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormLabel className="m-0">SDR voice & tone</FormLabel>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            aria-label="About SDR voices"
+                          >
+                            <HelpCircle className="h-3.5 w-3.5" aria-hidden />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-xs text-left leading-relaxed">
+                          Each preset prepends a system block to research, outreach, qualification,
+                          and nurture. Switching voice changes subjects, email rhythm, objections,
+                          and nurture — not just adjectives.
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                     <FormControl>
                       <select
                         disabled={isPending}
@@ -1460,6 +1485,25 @@ export function CampaignWorkspace({
                               .recent_news_or_funding_summary
                           }
                         </p>
+                      </div>
+                    ) : null}
+                    {snapshot.live_signals && snapshot.live_signals.length > 0 ? (
+                      <div className="rounded-lg border border-primary/25 bg-primary/[0.04] p-3 dark:border-primary/20 dark:bg-primary/[0.06]">
+                        <SectionLabel icon={Radar}>Live signals</SectionLabel>
+                        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                          Post-research signal pass (funding, hiring, motion). Directional — validate on
+                          calls.
+                        </p>
+                        <ul className="mt-2 space-y-2 text-xs leading-relaxed text-muted-foreground">
+                          {snapshot.live_signals.map((s, i) => (
+                            <li key={`${s.captured_at}-${i}`}>
+                              <span className="font-semibold text-foreground/90">
+                                {s.signal_type.replace(/_/g, " ")}.
+                              </span>{" "}
+                              {s.signal_text}
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     ) : null}
                     {"reasoning_steps" in research &&

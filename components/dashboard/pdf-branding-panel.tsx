@@ -19,6 +19,12 @@ import {
   type PdfBrandingStateV1,
 } from "@/lib/pdf-branding";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
 import { ImagePlus, Loader2, Palette } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useState, useTransition } from "react";
@@ -75,14 +81,30 @@ export function PdfBrandingPanel() {
   }
 
   return (
-    <Card className="rounded-2xl border-border/80 bg-card/95 shadow-xl ring-1 ring-border/20 transition-shadow duration-500 hover:shadow-2xl dark:bg-card/95 dark:ring-white/[0.07]">
+    <Card className="premium-card-interactive rounded-2xl border-border/80 bg-card/95 shadow-xl ring-1 ring-border/20 dark:bg-card/95 dark:ring-white/[0.07]">
       <CardHeader className="space-y-1 border-b border-border/50 bg-gradient-to-r from-primary/[0.06] via-muted/35 to-transparent pb-5 dark:from-primary/[0.08] dark:via-muted/15">
         <div className="flex flex-wrap items-center gap-2">
           <div className="rounded-lg border border-border/60 bg-background/80 p-2 shadow-sm">
             <Palette className="h-4 w-4 text-primary" aria-hidden />
           </div>
           <div>
-            <CardTitle className="text-lg tracking-tight">Report branding</CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle className="text-lg tracking-tight">Report branding</CardTitle>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className="cursor-default border-primary/35 bg-primary/[0.08] text-[10px] font-semibold uppercase tracking-wider text-primary"
+                  >
+                    White-label PDF
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs leading-relaxed" side="bottom">
+                  Your logo and colors render on the executive one-pager and full dossier — exports
+                  stay on-brand for leadership reviews.
+                </TooltipContent>
+              </Tooltip>
+            </div>
             <CardDescription className="text-sm leading-relaxed">
               Logo uploads to your{" "}
               <span className="font-medium text-foreground">Supabase</span>{" "}

@@ -220,23 +220,25 @@ const REASONING_PAD = [
   "Pressure-test whether the pain is budgeted or curiosity-only on the next touch.",
   "Tie one claim to a metric they already report upward.",
   "Stress-test single-thread risk if only one name is warm.",
+  "Name the internal initiative that would force a budget conversation this quarter.",
+  "Identify the proof artifact that would survive a skeptical finance or security review.",
 ];
 
 function padReasoningSteps(steps: string[]): string[] {
   const clean = steps.map((s) => s.trim()).filter(Boolean);
-  const out = [...clean];
+  let out = clean.length > 8 ? clean.slice(0, 8) : [...clean];
   let i = out.length + 1;
   let p = 0;
-  while (out.length < 5 && p < REASONING_PAD.length) {
+  while (out.length < 6 && p < REASONING_PAD.length) {
     out.push(`Step ${i} — ${REASONING_PAD[p]}`);
     i += 1;
     p += 1;
   }
-  while (out.length < 5) {
+  while (out.length < 6) {
     out.push(`Step ${i} — Validate timeline and procurement path before proposing a pilot.`);
     i += 1;
   }
-  return out.slice(0, 12);
+  return out.slice(0, 8);
 }
 
 function padStringArray(arr: string[], min: number, max: number, filler: string[]): string[] {
@@ -354,7 +356,7 @@ export function normalizeResearchLlmToCanonical(
   const { steps: dedupedSteps, deduped } = dedupeReasoningSteps(rawSteps);
   if (deduped) patched = true;
   const reasoning_steps = padReasoningSteps(dedupedSteps);
-  if (stepsIn.length < 5) patched = true;
+  if (stepsIn.length < 6) patched = true;
 
   const rawTech = Array.isArray(r.tech_stack_hints)
     ? r.tech_stack_hints.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean)

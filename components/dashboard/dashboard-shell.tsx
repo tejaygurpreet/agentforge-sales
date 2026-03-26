@@ -6,6 +6,7 @@ import { useTransition } from "react";
 import { ReplyIntelProvider } from "@/components/dashboard/reply-intel-context";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
 
 interface DashboardShellProps {
   email: string;
@@ -29,11 +30,17 @@ export function DashboardShell({ email, displayName, nav, children }: DashboardS
   }
 
   return (
-    <div className="min-h-screen bg-muted/20">
-      <header className="border-b bg-background">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <div className="flex items-center gap-8">
-            <span className="text-sm font-semibold tracking-tight">
+    <div
+      className={cn(
+        "dark min-h-screen",
+        "bg-gradient-to-b from-[hsl(222_47%_5.5%)] via-background to-[hsl(222_40%_7%)]",
+        "text-foreground antialiased",
+      )}
+    >
+      <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:h-[3.75rem]">
+          <div className="flex items-center gap-6 sm:gap-8">
+            <span className="text-sm font-semibold tracking-tight text-foreground">
               AgentForge Sales
             </span>
             {nav}
@@ -48,6 +55,7 @@ export function DashboardShell({ email, displayName, nav, children }: DashboardS
             <Button
               variant="outline"
               size="sm"
+              className="border-border/80 shadow-sm transition-all duration-200 hover:border-primary/35 hover:bg-primary/5"
               onClick={handleSignOut}
               disabled={pending}
             >
@@ -57,7 +65,7 @@ export function DashboardShell({ email, displayName, nav, children }: DashboardS
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-8">
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
         <ReplyIntelProvider>{children}</ReplyIntelProvider>
       </main>
     </div>

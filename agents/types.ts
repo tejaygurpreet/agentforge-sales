@@ -101,8 +101,8 @@ export type BantAssessment = z.infer<typeof bantAssessmentSchema>;
 export const researchOutputSchema = z.object({
   /** 0–100 holistic ICP match for outbound SaaS motion. */
   icp_fit_score: z.number().min(0).max(100),
-  /** Private chain-of-thought steps; keep concise. Not shown to the lead. */
-  reasoning_steps: z.array(z.string()).min(5).max(12),
+  /** Private chain-of-thought steps; keep concise. Not shown to the lead. Prompt 69: elite 6–8 step trace. */
+  reasoning_steps: z.array(z.string()).min(6).max(8),
   /** Sector + sub-vertical; hedge uncertainty in natural prose (no "(inferred)" tags in strings). */
   industry_inference: z.string(),
   /**
@@ -236,6 +236,21 @@ export const nurtureOutputSchema = z.object({
 
 export type NurtureOutput = z.infer<typeof nurtureOutputSchema>;
 
+/** Prompt 70 — post-research live signals (Tavily / heuristic fallback). */
+export type CampaignLiveSignalType =
+  | "funding"
+  | "hiring"
+  | "company_update"
+  | "news"
+  | "other";
+
+export interface CampaignLiveSignal {
+  signal_type: CampaignLiveSignalType;
+  signal_text: string;
+  /** ISO timestamp when the signal was captured. */
+  captured_at: string;
+}
+
 export interface AgentContext {
   threadId: string;
   userId: string;
@@ -258,4 +273,6 @@ export interface CampaignClientSnapshot {
   results: Record<string, unknown>;
   /** ISO timestamp when the campaign run finished (server). */
   campaign_completed_at: string | null;
+  /** Prompt 70 — funding / hiring / news lines captured after research. */
+  live_signals?: CampaignLiveSignal[] | null;
 }

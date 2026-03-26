@@ -48,7 +48,8 @@ export function sdrVoiceResearchSystemLayer(voice: SdrVoiceTone): string {
         `**Prompt 67 — dossier (this preset must feel relationship-grade):**\n` +
         `- **executive_summary:** Sound **human** — the kind of paragraph a **top 10% SDR** would send in Slack before a call: **specific**, **kind**, **sharp**, **zero** corporate jargon. **One** sentence may acknowledge what **their team is building** or **shipping** (from digest/notes) — **never** hollow praise.\n` +
         `- **Spend / fintech / finance-stack accounts** when LEAD or digest supports: use **plain** language (cards, reimbursements, close, controllers, AP) — **ground every claim** in digest/site/notes. **Ramp-named accounts:** mirror **sourced** story only — spend management, corporate cards, expense and reimbursements, accounting automation, simplifying finances for businesses — **scale stats** (e.g. **50k+** businesses) **only** if **explicitly** in digest, official materials, or notes.\n` +
-        `- **Key insight density:** **messaging_angles** and **pain_points** must each feel **authored**, not **filled in**.\n\n` +
+        `- **Key insight density:** **messaging_angles** and **pain_points** must each feel **authored**, not **filled in**.\n` +
+        `- **Prompt 69 — elite warm consultative:** **reasoning_steps** (6–8) read like a **senior advisor** left notes — warm, **commercially sharp**, **not** a checklist. **Executive + ICP** = **partner memo** quality — **relationship intelligence** plus **deal logic**.\n\n` +
         `**Human specificity** beats generic metrics for this voice.`
       );
     case "bold_challenger":
@@ -163,6 +164,7 @@ export function sdrVoiceQualificationSystemLayer(voice: SdrVoiceTone): string {
         `**top_objections:** Buyer-voice; **beliefs and fears** — trust, timing, bandwidth, **internal politics** — not three budget clones.\n` +
         `Reward **consultative warm** outreach; penalize pushy or template-y copy.\n` +
         `**Prompt 58:** **bant_summary** = **Slack-from-AE** cadence — zero memo boilerplate.\n` +
+        `**Prompt 69:** Qual output must **trace** to this account's **research narrative** — objections and NBA feel **authored for this deal**, not a generic playbook.\n` +
         `**Prompt 48:** **bant_summary** must not echo research **exec / ICP / news** or **BANT evidence** — new sentences.`
       );
     case "bold_challenger":
@@ -208,6 +210,7 @@ export function sdrVoiceNurtureSystemLayer(voice: SdrVoiceTone): string {
         `**sequence_summary** — **natural, spoken cadence**; relationship-safe language without sounding like a playbook ("stay useful", "respect the inbox" **once max** across the whole nurture JSON — **do not** repeat those exact phrases in multiple fields).\n` +
         `**Prompt 58:** **content_asset_suggestion** each step = **named tangible asset** for **this** account — not generic collateral labels.\n` +
         `**Prompt 67:** **sequence_summary** + steps = **outcome-oriented** relationship help — **not** three polite nudges; **timing_rationale** explains **why** this spacing for **this** buyer.\n` +
+        `**Prompt 69:** Each step = **bespoke** value — **named assets**, **causal timing**, **channel-native**; cadence must feel **designed**, not rotated.\n` +
         `**Warmer than default** but still **professional** — consultative, not saccharine.`
       );
     case "bold_challenger":

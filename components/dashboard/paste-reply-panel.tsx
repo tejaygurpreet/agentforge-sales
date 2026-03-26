@@ -13,6 +13,11 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { dashboardOutlineActionClass } from "@/lib/dashboard-action-classes";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Loader2, MessageSquareText, Sparkles } from "lucide-react";
 import Link from "next/link";
@@ -106,9 +111,25 @@ export function PasteReplyPanel({
               <MessageSquareText className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-hidden />
             </div>
             <div className="min-w-0 space-y-2">
-              <CardTitle className="text-xl font-semibold tracking-tight text-foreground">
-                Paste prospect reply
-              </CardTitle>
+              <div className="flex flex-wrap items-center gap-2">
+                <CardTitle className="text-xl font-semibold tracking-tight text-foreground">
+                  Paste prospect reply
+                </CardTitle>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      variant="outline"
+                      className="cursor-default border-emerald-500/35 bg-emerald-500/[0.1] text-[10px] font-semibold uppercase tracking-wider text-emerald-800 dark:text-emerald-200"
+                    >
+                      Always on
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs leading-relaxed" side="bottom">
+                    Stays visible while you work — analyze replies anytime; context auto-links when a
+                    campaign just completed.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <CardDescription className="text-[15px] leading-relaxed text-muted-foreground">
                 Paste any prospect reply here to analyze sentiment, interest, objections, and get next-step
                 guidance. Results save to{" "}

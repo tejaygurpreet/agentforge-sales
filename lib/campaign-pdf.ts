@@ -114,7 +114,7 @@ export async function downloadCampaignPdfSummary(
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   doc.setProperties({
     title: forPdf(`${orgLine} — ${data.lead.company}`),
-    subject: forPdf("Premium campaign intelligence dossier"),
+    subject: forPdf("Consultant-grade campaign intelligence dossier"),
     author: forPdf(orgLine),
     keywords: "AgentForge, sales, campaign, intelligence, dossier",
   });
@@ -168,7 +168,7 @@ export async function downloadCampaignPdfSummary(
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(230, 235, 245);
-      doc.text(forPdf("Premium campaign intelligence dossier"), titleX, 76);
+      doc.text(forPdf("Consultant-grade intelligence dossier"), titleX, 76);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7.5);
       const conf = forPdf("CONFIDENTIAL — INTERNAL STRATEGY USE");
@@ -313,16 +313,19 @@ export async function downloadCampaignPdfSummary(
 
   const cs = data.campaign_strength;
   const qualSnap = data.qualification?.bant_summary
-    ? trunc(data.qualification.bant_summary, 480)
+    ? trunc(data.qualification.bant_summary, 620)
     : null;
   const execSnap = data.research?.executive_summary
-    ? trunc(data.research.executive_summary, 480)
+    ? trunc(data.research.executive_summary, 620)
+    : null;
+  const newsSnap = data.research?.recent_news_or_funding_summary?.trim()
+    ? trunc(data.research.recent_news_or_funding_summary, 400)
     : null;
   const nurtureSnap = data.nurture?.sequence_summary
-    ? trunc(data.nurture.sequence_summary, 380)
+    ? trunc(data.nurture.sequence_summary, 420)
     : null;
   const nbaSnap = data.qualification?.next_best_action
-    ? trunc(data.qualification.next_best_action, 450)
+    ? trunc(data.qualification.next_best_action, 480)
     : null;
   let firstObjection =
     data.qualification?.top_objections?.[0]?.objection != null
@@ -332,6 +335,9 @@ export async function downloadCampaignPdfSummary(
     firstObjection = null;
   }
   if (firstObjection && qualSnap && insightBodiesTooSimilar(qualSnap, firstObjection)) {
+    firstObjection = null;
+  }
+  if (firstObjection && newsSnap && insightBodiesTooSimilar(newsSnap, firstObjection)) {
     firstObjection = null;
   }
 
@@ -353,13 +359,21 @@ export async function downloadCampaignPdfSummary(
 
   const insights: string[] = [];
   if (execSnap) insights.push(`Market / account read: ${execSnap}`);
+  if (
+    newsSnap &&
+    (!execSnap || !insightBodiesTooSimilar(execSnap, newsSnap)) &&
+    (!qualSnap || !insightBodiesTooSimilar(qualSnap, newsSnap))
+  ) {
+    insights.push(`Timing / external context: ${newsSnap}`);
+  }
   if (qualSnap && (!execSnap || !insightBodiesTooSimilar(execSnap, qualSnap))) {
     insights.push(`Deal narrative: ${qualSnap}`);
   }
   if (
     nurtureSnap &&
     (!execSnap || !insightBodiesTooSimilar(execSnap, nurtureSnap)) &&
-    (!qualSnap || !insightBodiesTooSimilar(qualSnap, nurtureSnap))
+    (!qualSnap || !insightBodiesTooSimilar(qualSnap, nurtureSnap)) &&
+    (!newsSnap || !insightBodiesTooSimilar(newsSnap, nurtureSnap))
   ) {
     insights.push(`Follow-up architecture: ${nurtureSnap}`);
   }
@@ -407,7 +421,7 @@ export async function downloadCampaignPdfSummary(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10.5);
   doc.setTextColor(primary.r, primary.g, primary.b);
-  doc.text(forPdf("Key insights"), margin + innerPad, y);
+  doc.text(forPdf("Strategic intelligence snapshot"), margin + innerPad, y);
   y += 16;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(bodySize);
@@ -498,7 +512,7 @@ export async function downloadCampaignPdfSummary(
   y += 6;
 
   if (data.research) {
-    heading("Research intelligence", 13);
+    heading("Research intelligence dossier", 13);
     labeledBlock("ICP fit score", `${data.research.icp_fit_score}/100`);
     labeledBlock("Executive summary", data.research.executive_summary);
     labeledBlock("ICP fit narrative", data.research.icp_fit_summary);
@@ -552,6 +566,19 @@ export async function downloadCampaignPdfSummary(
       subheading("Messaging angles");
       data.research.messaging_angles.forEach((a, i) => writeLines(`${i + 1}. ${a}`));
       y += 6;
+    }
+  }
+
+  if (data.live_signals?.length) {
+    heading("Live signals", 13);
+    writeLines(
+      "Post-research signal pass (funding, hiring, company motion). Use as directional context alongside the dossier above.",
+    );
+    y += 4;
+    for (const s of data.live_signals) {
+      subheading(`${s.signal_type.replace(/_/g, " ")}`);
+      writeLines(s.signal_text);
+      y += 4;
     }
   }
 
@@ -618,6 +645,15 @@ export async function downloadCampaignPdfSummary(
     doc.setTextColor(primary.r, primary.g, primary.b);
     const pg = forPdf(`Page ${i} / ${totalPages}`);
     doc.text(pg, pageW - margin - doc.getTextWidth(pg), pageH - 26);
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(6.8);
+    doc.setTextColor(muted.r, muted.g, muted.b);
+    doc.text(
+      forPdf("Powered by AgentForge Sales"),
+      pageW / 2,
+      pageH - 15,
+      { align: "center" },
+    );
     doc.setFont("helvetica", "normal");
     doc.setTextColor(ink.r, ink.g, ink.b);
   }

@@ -26,6 +26,7 @@ import {
 import type {
   CampaignThreadRow,
   DashboardAnalyticsSummary,
+  LiveSignalFeedItem,
   PersistedCampaignRow,
   PersistedReplyAnalysisRow,
   ProspectReplyAnalysisPayload,
@@ -312,6 +313,36 @@ async function queryReplyAnalysesForList(
   return { data: null, error: new Error(primary.error.message) };
 }
 
+async function queryCampaignSignalsFeed(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<LiveSignalFeedItem[]> {
+  const { data, error } = await supabase
+    .from("campaign_signals")
+    .select("id, thread_id, signal_type, signal_text, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) {
+    if (isMissingColumnOrSchemaError(error.message)) {
+      return [];
+    }
+    console.error("[AgentForge] queryCampaignSignalsFeed", error.message);
+    return [];
+  }
+  const rows = data ?? [];
+  return rows.map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      id: String(r.id ?? ""),
+      thread_id: String(r.thread_id ?? ""),
+      signal_type: String(r.signal_type ?? "other"),
+      signal_text: String(r.signal_text ?? ""),
+      created_at: String(r.created_at ?? ""),
+    };
+  });
+}
+
 async function queryReplyRowsForAnalytics(
   supabase: SupabaseClient,
   userId: string,
@@ -498,6 +529,7 @@ export async function startCampaign(
     const snapshot = serializeCampaignStateForClient(finalState);
 
     revalidatePath("/");
+    revalidatePath("/analytics");
 
     return {
       ok: true,
@@ -799,6 +831,9 @@ const EMPTY_ANALYTICS: DashboardAnalyticsSummary = {
     { label: "60–79", count: 0, pct: 0 },
     { label: "80–100", count: 0, pct: 0 },
   ],
+  liveSignalsFeed: [],
+  estimatedPipelineValueUsd: 0,
+  estimatedRoiMultiplier: 0,
 };
 
 /**
@@ -814,9 +849,10 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
     return EMPTY_ANALYTICS;
   }
 
-  const [campRes, replyRows] = await Promise.all([
+  const [campRes, replyRows, liveSignalsFeed] = await Promise.all([
     supabase.from("campaigns").select("results").eq("user_id", user.id).limit(500),
     queryReplyRowsForAnalytics(supabase, user.id),
+    queryCampaignSignalsFeed(supabase, user.id),
   ]);
 
   if (campRes.error) {
@@ -870,12 +906,23 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
     pct: Math.round((count / maxB) * 100),
   }));
 
+  /** Prompt 70 — placeholder ROI math (replace with CRM integration later). */
+  const estimatedPipelineValueUsd =
+    nCamp > 0 ? Math.round(nCamp * (avgComposite ?? 62) * 420) : 0;
+  const estimatedRoiMultiplier =
+    nCamp > 0 && avgComposite != null
+      ? Math.round((avgComposite / 55) * 10) / 10
+      : 0;
+
   return {
     campaignCount: nCamp,
     avgCompositeScore: avgComposite,
     replyAnalyzedCount: nRep,
     avgReplyInterest: avgInterest,
     strengthBuckets,
+    liveSignalsFeed,
+    estimatedPipelineValueUsd,
+    estimatedRoiMultiplier,
   };
 }
 

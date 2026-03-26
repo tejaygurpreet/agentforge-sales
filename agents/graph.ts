@@ -3,6 +3,7 @@ import type {
   AgentMessage,
   CampaignClientSnapshot,
   CampaignFinalStatus,
+  CampaignLiveSignal,
   Lead,
   NurtureOutput,
   OutreachDraft,
@@ -34,6 +35,8 @@ import { hasLlmProviderConfigured } from "@/lib/env";
 import type { GroqInvokeMeta } from "@/lib/agent-model";
 import { saveCampaign } from "@/lib/save-campaign";
 import { sendTransactionalEmail } from "@/lib/resend";
+import { persistCampaignSignalsToSupabase } from "@/lib/campaign-signals-db";
+import { fetchLiveSignalsAfterResearch } from "@/lib/live-signals";
 
 /** Just under `START_CAMPAIGN_MAX_MS` (90s) in actions.ts. */
 const GRAPH_INVOKE_MAX_MS = 89_000;
@@ -96,12 +99,12 @@ function buildQualificationScoringAnchor(
 ): string {
   const voiceMod = getSdrVoiceQualificationScoringSupplement(voice);
   if (!research) {
-    return `No research JSON — score from lead + outreach only. Spread 38–89. **Upward** for copy that **reads smooth aloud** — **warmer** open, short-to-medium <p>, **statement-led**, **0 ? ideal / max 1** in body, tiny reply path, **curiosity-native subject**. **Downward** for **any awkward line**, brochure rhythm, survey tone, swap-test generic, corporate soup, metronome sentences. Objections: three distinct **buyer mechanisms** (beliefs/politics). next_best_action: named artifacts + **sequenced** triggers. **Prompt 57 + 58 + 67** apply (listing dossier premium; warm preset must **outshine** default on consultative ease + relationship depth).
+    return `No research JSON — score from lead + outreach only. Spread 38–89. **Upward** for copy that **reads smooth aloud** — **warmer** open, short-to-medium <p>, **statement-led**, **0 ? ideal / max 1** in body, tiny reply path, **curiosity-native subject**. **Downward** for **any awkward line**, brochure rhythm, survey tone, swap-test generic, corporate soup, metronome sentences. Objections: three distinct **buyer mechanisms** (beliefs/politics). next_best_action: named artifacts + **sequenced** triggers. **Prompt 57 + 58 + 67 + 69** apply (dossier premium + **research-grounded** qual when research exists; warm preset must **outshine** default on consultative ease + relationship depth).
 
 **SDR_VOICE (${voice}):** ${voiceMod}`;
   }
   const icp = research.icp_fit_score;
-  return `ICP anchor: icp_fit_score=${icp} (stabilized upstream — directional). Prompt 39 + **57** + **58** + **67**: **Nuanced strategic** qual — **belief gaps**, silent blockers, budget theater, competing priorities, **internal-political** risk. **bant_summary** must sound **human** (AE Slack) — penalize memo boilerplate. **Prompt 67:** objections + bant_summary must **not** read like **templated BANT** — reward **specific**, **deal-real** language. **Reward** outreach that is **warm, smooth, high-reply** when voice is **default**; for **warm_relationship_builder**, reward **consultative homework + low-pressure + relationship-aware** copy that is **clearly premium** vs generic warm; for other voices, reward **faithful preset execution** per SDR_VOICE modifier below. **Penalize** stiff/awkward sentences, template feel, interrogation, brochure transitions, or hook that fits any logo — **and penalize preset mismatch** (e.g. vague fluff when voice demands data). If generic, **cap** qual **44–66** and name the tell. Strong fit + correct voice execution → **72–93** when BANT allows. Odd scores when split. If |qual - icp| > 14, one sentence in bant_summary explains. top_objections: three **different** mechanisms (buyer psychology / politics). next_best_action: two+ deliverables + **sequenced** logic. **Never** API/schema/timeout/model leakage in output fields.
+  return `ICP anchor: icp_fit_score=${icp} (stabilized upstream — directional). Prompt 39 + **57** + **58** + **67** + **69**: **Nuanced strategic** qual — **belief gaps**, silent blockers, budget theater, competing priorities, **internal-political** risk. **bant_summary** must sound **human** (AE Slack) — penalize memo boilerplate. **Prompt 67:** objections + bant_summary must **not** read like **templated BANT** — reward **specific**, **deal-real** language. **Prompt 69:** reward qual that **tracks** the **research narrative** (pains, hypotheses, angles) — penalize generic playbook text. **Reward** outreach that is **warm, smooth, high-reply** when voice is **default**; for **warm_relationship_builder**, reward **consultative homework + low-pressure + relationship-aware** copy that is **clearly premium** vs generic warm; for other voices, reward **faithful preset execution** per SDR_VOICE modifier below. **Penalize** stiff/awkward sentences, template feel, interrogation, brochure transitions, or hook that fits any logo — **and penalize preset mismatch** (e.g. vague fluff when voice demands data). If generic, **cap** qual **44–66** and name the tell. Strong fit + correct voice execution → **72–93** when BANT allows. Odd scores when split. If |qual - icp| > 14, one sentence in bant_summary explains. top_objections: three **different** mechanisms (buyer psychology / politics). next_best_action: two+ deliverables + **sequenced** logic. **Never** API/schema/timeout/model leakage in output fields.
 
 **SDR_VOICE (${voice}):** ${voiceMod}`;
 }
@@ -117,7 +120,7 @@ function truncPipelineStr(s: string, max: number): string {
 function compactResearchForPipeline(research: ResearchOutput): Record<string, unknown> {
   return {
     icp_fit_score: research.icp_fit_score,
-    reasoning_steps: research.reasoning_steps.slice(0, 6),
+    reasoning_steps: research.reasoning_steps.slice(0, 8),
     industry_inference: truncPipelineStr(research.industry_inference, 320),
     recent_news_or_funding_summary: truncPipelineStr(
       research.recent_news_or_funding_summary,
@@ -221,6 +224,11 @@ const GraphState = Annotation.Root({
     reducer: (_c, n) => n,
     default: () => undefined,
   }),
+  /** Prompt 70 — post-research live signals (Tavily / heuristic). */
+  live_signals: Annotation<CampaignLiveSignal[] | undefined>({
+    reducer: (_c, n) => n,
+    default: () => undefined,
+  }),
 });
 
 export type SalesGraphState = typeof GraphState.State;
@@ -243,6 +251,7 @@ export function serializeCampaignStateForClient(
     pipeline_error: state.pipeline_error ?? null,
     results: state.results ?? {},
     campaign_completed_at: state.campaign_completed_at ?? null,
+    live_signals: state.live_signals ?? null,
   };
 }
 
@@ -257,6 +266,26 @@ function buildSalesGraph() {
     .addEdge("outreach_node", "qualification_node")
     .addEdge("qualification_node", "nurture_node")
     .addEdge("nurture_node", END);
+}
+
+/** Prompt 70 — Tavily-backed signals + Supabase row (non-fatal on failure). */
+async function attachLiveSignalsToResearchState(
+  state: SalesGraphState,
+  lead: Lead,
+  research_output: ResearchOutput,
+): Promise<CampaignLiveSignal[]> {
+  try {
+    const live_signals = await fetchLiveSignalsAfterResearch(lead, research_output);
+    await persistCampaignSignalsToSupabase({
+      userId: state.user_id,
+      threadId: state.thread_id,
+      signals: live_signals,
+    });
+    return live_signals;
+  } catch (e) {
+    console.error("[AgentForge] research_node:live_signals", state.thread_id, e);
+    return [];
+  }
 }
 
 async function researchNode(
@@ -306,6 +335,7 @@ async function researchNode(
         groqInvokeMeta.modelUsed,
       );
     }
+    const live_signals = await attachLiveSignalsToResearchState(state, lead, research_output);
     const nodeResult = {
       icp_fit_score: research_output.icp_fit_score,
       reasoning_steps: research_output.reasoning_steps,
@@ -323,17 +353,20 @@ async function researchNode(
       ...(groqInvokeMeta?.usedLighterModelAfterRateLimit
         ? { rate_limit_lighter_model: true as const }
         : {}),
+      live_signals,
     };
     await mergeDashboardState(state.thread_id, state.user_id, {
       lead,
       current_agent: "research_node",
       research_output,
+      live_signals,
       results: { research_node: nodeResult },
     });
     console.log("[AgentForge] research_node:ok", state.thread_id);
     return {
       lead,
       research_output,
+      live_signals,
       current_agent: "research_node",
       final_status: "running",
       results: { research_node: nodeResult },
@@ -354,6 +387,7 @@ async function researchNode(
         .filter(Boolean)
         .join("\n"),
     };
+    const live_signals = await attachLiveSignalsToResearchState(state, lead, research_output);
     const nodeResult = {
       icp_fit_score: research_output.icp_fit_score,
       reasoning_steps: research_output.reasoning_steps,
@@ -369,16 +403,19 @@ async function researchNode(
       executive_summary: research_output.executive_summary,
       degraded: true as const,
       error_note: message.slice(0, 400),
+      live_signals,
     };
     await mergeDashboardState(state.thread_id, state.user_id, {
       lead,
       current_agent: "research_node",
       research_output,
+      live_signals,
       results: { research_node: nodeResult },
     });
     return {
       lead,
       research_output,
+      live_signals,
       current_agent: "research_node",
       final_status: "running",
       results: { research_node: nodeResult },
@@ -843,6 +880,7 @@ function initialCampaignGraphState(input: RunCampaignInput): SalesGraphState {
     results: {},
     campaign_completed_at: undefined,
     sender_signoff_name: input.sender_signoff_name,
+    live_signals: undefined,
   };
 }
 
@@ -878,6 +916,7 @@ export async function runCampaignGraph(
         },
       },
       campaign_completed_at: completedAt(),
+      live_signals: undefined,
     };
     await mergeDashboardState(input.thread_id, input.user_id, {
       current_agent: "research_node",

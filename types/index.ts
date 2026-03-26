@@ -71,11 +71,36 @@ export type DashboardStrengthBucket = {
   pct: number;
 };
 
-/** Aggregates for `/analytics` (Prompt 50). */
+/** Prompt 70 — one lead in a dashboard batch run. */
+export type BatchRunItem = {
+  id: string;
+  label: string;
+  company: string;
+  status: "queued" | "running" | "done" | "error";
+  threadId?: string;
+  error?: string;
+};
+
+/** Prompt 70 — row for analytics live feed (Supabase `campaign_signals`). */
+export type LiveSignalFeedItem = {
+  id: string;
+  thread_id: string;
+  signal_type: string;
+  signal_text: string;
+  created_at: string;
+};
+
+/** Aggregates for `/analytics` + main dashboard Analytics tab (Prompt 50 + 70). */
 export type DashboardAnalyticsSummary = {
   campaignCount: number;
   avgCompositeScore: number | null;
   replyAnalyzedCount: number;
   avgReplyInterest: number | null;
   strengthBuckets: DashboardStrengthBucket[];
+  /** Latest cross-campaign signals (Prompt 70). */
+  liveSignalsFeed: LiveSignalFeedItem[];
+  /** Placeholder pipeline $ for executive view (Prompt 70). */
+  estimatedPipelineValueUsd: number;
+  /** Placeholder ROI multiple vs tooling cost (Prompt 70). */
+  estimatedRoiMultiplier: number;
 };

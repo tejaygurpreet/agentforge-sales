@@ -68,19 +68,37 @@ type RecentCampaignsProps = {
   campaigns: PersistedCampaignRow[];
   /** Pre-fills the workspace and starts a fresh run (new thread_id). */
   onRerunLead?: (values: LeadFormInput) => void;
+  /** Prompt 70 — multi-select for batch runs. */
+  batchMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (id: string) => void;
 };
 
-export function RecentCampaigns({ campaigns, onRerunLead }: RecentCampaignsProps) {
+export function RecentCampaigns({
+  campaigns,
+  onRerunLead,
+  batchMode = false,
+  selectedIds,
+  onToggleSelect,
+}: RecentCampaignsProps) {
   return (
-    <Card className="rounded-2xl border-border/80 bg-card/95 shadow-xl ring-1 ring-border/20 transition-shadow duration-500 hover:shadow-2xl dark:bg-card/95 dark:ring-white/[0.07]">
+    <Card className="premium-card-interactive rounded-2xl border-border/80 bg-card/95 shadow-xl ring-1 ring-border/20 dark:bg-card/95 dark:ring-white/[0.07]">
       <CardHeader className="space-y-2 border-b border-border/40 bg-gradient-to-r from-muted/35 via-transparent to-transparent pb-5 dark:from-muted/15">
         <CardTitle className="text-xl tracking-tight">Recent campaigns</CardTitle>
         <CardDescription className="text-sm leading-relaxed">
           Your last 25 runs from{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">campaigns</code>. Green = clean
-          completion; amber = failed or finished with step errors.{" "}
+          completion; amber = failed or finished with step errors. Export JSON, Markdown, or PDF from
+          a completed run anytime.{" "}
           <span className="font-medium text-foreground/90">Re-run</span> restores the saved lead
           (including SDR voice) and starts a new thread.
+          {batchMode ? (
+            <>
+              {" "}
+              <span className="font-medium text-foreground/90">Batch mode:</span> select rows with a
+              saved snapshot, then use Run selected in the batch panel.
+            </>
+          ) : null}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -105,6 +123,21 @@ export function RecentCampaigns({ campaigns, onRerunLead }: RecentCampaignsProps
               >
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex flex-wrap items-center gap-2">
+                    {batchMode && onToggleSelect ? (
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-border"
+                        checked={selectedIds?.has(c.id) ?? false}
+                        disabled={!c.rerun_lead}
+                        title={
+                          c.rerun_lead
+                            ? "Include in batch run"
+                            : "No saved lead snapshot for this row"
+                        }
+                        onChange={() => onToggleSelect(c.id)}
+                        aria-label={`Select ${c.lead_name} for batch`}
+                      />
+                    ) : null}
                     <span className="truncate font-medium text-foreground">{c.lead_name}</span>
                     <StatusBadge status={c.status} />
                     {c.sdr_voice_label ? (

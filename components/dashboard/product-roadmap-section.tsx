@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { BarChart3, Layers, Radio } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +42,11 @@ export function ProductRoadmapSection({ analyticsPreview }: Props) {
         </Badge>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="rounded-xl border-border/70 bg-card/90 shadow-md ring-1 ring-border/15 transition-all duration-300 hover:shadow-lg dark:ring-white/[0.05]">
+        <Card
+          className={cn(
+            "premium-card-interactive rounded-xl border-border/70 bg-card/90 shadow-md ring-1 ring-border/15 dark:ring-white/[0.05]",
+          )}
+        >
           <CardHeader className="space-y-3 pb-2">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -67,7 +72,11 @@ export function ProductRoadmapSection({ analyticsPreview }: Props) {
           </CardContent>
         </Card>
 
-        <Card className="rounded-xl border-border/70 bg-card/90 shadow-md ring-1 ring-border/15 transition-all duration-300 hover:shadow-lg dark:ring-white/[0.05]">
+        <Card
+          className={cn(
+            "premium-card-interactive rounded-xl border-border/70 bg-card/90 shadow-md ring-1 ring-border/15 dark:ring-white/[0.05]",
+          )}
+        >
           <CardHeader className="space-y-3 pb-2">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -95,7 +104,11 @@ export function ProductRoadmapSection({ analyticsPreview }: Props) {
           </CardContent>
         </Card>
 
-        <Card className="rounded-xl border-border/70 bg-card/90 shadow-md ring-1 ring-emerald-500/15 transition-all duration-300 hover:shadow-lg dark:ring-emerald-500/10">
+        <Card
+          className={cn(
+            "premium-card-interactive rounded-xl border-border/70 bg-card/90 shadow-md ring-1 ring-emerald-500/15 dark:ring-emerald-500/10",
+          )}
+        >
           <CardHeader className="space-y-3 pb-2">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">

@@ -142,6 +142,7 @@ export function buildFallbackResearchOutput(lead: Lead, reason: string): Researc
       "Step 3 — Map champion vs signer before you promise timelines or security depth.",
       "Step 4 — Keep claims tight to what the lead row supports; enrich everything else on the call.",
       `Step 5 — Trace: ${reason.slice(0, 88)}`,
+      "Step 6 — Sequence proof so the first artifact passes the buyer's internal bar — not your demo script.",
     ],
     industry_inference: `${company}: steer sector and stack questions from ${first}'s title first, then tighten sub-vertical once live context lands.`,
     recent_news_or_funding_summary: defaultRecentNewsInsight(lead),

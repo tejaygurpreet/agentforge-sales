@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import type { CampaignThreadRow } from "@/types";
 
 interface CampaignListProps {
@@ -14,7 +15,7 @@ interface CampaignListProps {
 
 export function CampaignList({ campaigns }: CampaignListProps) {
   return (
-    <Card className="rounded-2xl border-border/80 bg-card/95 shadow-lg ring-1 ring-border/20 transition-all duration-300 hover:shadow-xl dark:ring-white/[0.06]">
+    <Card className="premium-card-interactive rounded-2xl border-border/80 bg-card/95 shadow-lg ring-1 ring-border/20 dark:ring-white/[0.06]">
       <CardHeader>
         <CardTitle>Active campaigns</CardTitle>
         <CardDescription>
@@ -32,7 +33,11 @@ export function CampaignList({ campaigns }: CampaignListProps) {
             {campaigns.map((c) => (
               <li
                 key={c.thread_id}
-                className="flex flex-col gap-1 rounded-lg border bg-muted/30 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
+                className={cn(
+                  "flex flex-col gap-1 rounded-lg border border-border/50 bg-muted/25 px-3 py-2 text-sm transition-colors duration-200",
+                  "sm:flex-row sm:items-center sm:justify-between",
+                  "hover:border-border hover:bg-muted/40",
+                )}
               >
                 <div>
                   <p className="font-medium">

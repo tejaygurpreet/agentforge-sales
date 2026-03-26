@@ -41,25 +41,28 @@ export default async function DashboardLayout({
       email={user.email ?? ""}
       displayName={displayName}
       nav={
-        <nav className="flex items-center gap-4 text-sm font-medium">
-          <Link href="/" className="text-muted-foreground hover:text-foreground">
+        <nav className="flex flex-wrap items-center gap-1 text-sm font-medium sm:gap-2">
+          <Link
+            href="/"
+            className="rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors duration-200 hover:bg-accent/60 hover:text-foreground"
+          >
             Dashboard
           </Link>
           <Link
             href="/agents"
-            className="text-muted-foreground hover:text-foreground"
+            className="rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors duration-200 hover:bg-accent/60 hover:text-foreground"
           >
             Agents
           </Link>
           <Link
             href="/replies"
-            className="text-muted-foreground hover:text-foreground"
+            className="rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors duration-200 hover:bg-accent/60 hover:text-foreground"
           >
             Replies
           </Link>
           <Link
             href="/analytics"
-            className="text-muted-foreground hover:text-foreground"
+            className="rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors duration-200 hover:bg-accent/60 hover:text-foreground"
           >
             Analytics
           </Link>
