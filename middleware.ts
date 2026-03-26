@@ -3,9 +3,6 @@ import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
-  if (path === "/confirm") {
-    return NextResponse.redirect(new URL("/auth/confirm", request.url));
-  }
 
   let response = NextResponse.next({ request: { headers: request.headers } });
   type CookieSetOptions = Parameters<typeof response.cookies.set>[2];
@@ -45,7 +42,6 @@ export async function middleware(request: NextRequest) {
 
   const isLogin = path === "/login";
   const isSignup = path === "/signup";
-  const isAuthCallback = path.startsWith("/auth/callback");
   const isProtected =
     path === "/" ||
     path.startsWith("/agents") ||
@@ -53,10 +49,6 @@ export async function middleware(request: NextRequest) {
     path.startsWith("/replies/") ||
     path === "/analytics" ||
     path.startsWith("/analytics/");
-
-  if (isAuthCallback) {
-    return response;
-  }
 
   if (!user && isProtected) {
     const redirect = new URL("/login", request.url);
@@ -82,7 +74,5 @@ export const config = {
     "/analytics/:path*",
     "/login",
     "/signup",
-    "/confirm",
-    "/auth/:path*",
   ],
 };

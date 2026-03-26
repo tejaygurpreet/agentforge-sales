@@ -37,7 +37,6 @@ export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "/";
-  const checkEmail = searchParams.get("checkEmail") === "1";
   const [isPending, startTransition] = useTransition();
 
   const form = useForm<LoginValues>({
@@ -84,15 +83,7 @@ export function LoginForm() {
         <CardTitle className="text-2xl">AgentForge Sales</CardTitle>
         <CardDescription>Sign in with your email and password.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {checkEmail && (
-          <div
-            className="rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-sm leading-relaxed text-foreground"
-            role="status"
-          >
-            Check your email to confirm your account.
-          </div>
-        )}
+      <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField

@@ -24,7 +24,6 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
-import { getAuthRedirectOrigin } from "@/lib/auth-site-url";
 import { createClient } from "@/lib/supabase";
 
 const signupSchema = z
@@ -64,14 +63,11 @@ export function SignupForm() {
     startTransition(async () => {
       try {
         const supabase = createClient();
-        const origin = getAuthRedirectOrigin();
-        const emailRedirectTo = `${origin}/auth/callback?next=${encodeURIComponent("/auth/confirm")}`;
 
         const { data, error } = await supabase.auth.signUp({
           email: values.email,
           password: values.password,
           options: {
-            emailRedirectTo,
             data: {
               full_name: values.fullName.trim(),
             },
@@ -89,17 +85,35 @@ export function SignupForm() {
 
         if (data.session) {
           toast({
-            title: "Account created",
-            description: "You are signed in.",
+            title: "Welcome",
+            description: "Your account is ready.",
           });
           router.push(next);
           router.refresh();
           return;
         }
 
-        router.push(
-          `/login?checkEmail=1&next=${encodeURIComponent(next)}`,
-        );
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: values.email,
+          password: values.password,
+        });
+
+        if (signInError) {
+          toast({
+            variant: "destructive",
+            title: "Could not sign you in",
+            description:
+              signInError.message ||
+              "Turn off “Confirm email” in Supabase Auth settings, then try again.",
+          });
+          return;
+        }
+
+        toast({
+          title: "Welcome",
+          description: "Your account is ready.",
+        });
+        router.push(next);
         router.refresh();
       } catch (e) {
         const message = e instanceof Error ? e.message : "Unexpected error";
