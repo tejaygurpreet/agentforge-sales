@@ -2,6 +2,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getClientEnv } from "@/lib/env";
 
+/** Browser session client (login, session). Signup runs server-side via `app/(auth)/signup/actions`. */
 export function createClient(): SupabaseClient {
   const env = getClientEnv();
   return createBrowserClient(

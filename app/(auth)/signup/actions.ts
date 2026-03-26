@@ -1,15 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { signupSchema, type SignupFormValues } from "@/lib/signup-schema";
 import {
   createServerSupabaseActionClient,
-  getServiceRoleSupabaseOrNull,
+  createServiceRoleSupabase,
 } from "@/lib/supabase-server";
 
-export type SignUpResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type SignUpResult = { ok: true } | { ok: false; error: string };
 
 function friendlyMessage(raw: string): string {
   const m = raw.toLowerCase();
@@ -20,20 +19,76 @@ function friendlyMessage(raw: string): string {
   ) {
     return "Too many attempts. Please wait a few minutes and try again.";
   }
-  if (
-    (m.includes("already") || m.includes("registered")) &&
-    (m.includes("user") || m.includes("email") || m.includes("exists"))
-  ) {
-    return "An account with this email already exists. Sign in instead.";
-  }
   return raw;
 }
 
-/**
- * Creates a **confirmed** user via Admin API when `SUPABASE_SERVICE_ROLE_KEY` is set
- * (no confirmation email → avoids Supabase email rate limits). Then signs in with SSR cookies.
- * Fallback: anon `signUp` + `signInWithPassword` if service role is missing (e.g. local dev without key).
- */
+function isEmailNotConfirmedError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("email not confirmed") ||
+    m.includes("email_not_confirmed") ||
+    (m.includes("not confirmed") && m.includes("email")) ||
+    m.includes("verify your email")
+  );
+}
+
+function isDuplicateUserError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("already been registered") ||
+    m.includes("already registered") ||
+    m.includes("user already exists") ||
+    m.includes("duplicate") ||
+    (m.includes("already") && m.includes("exists"))
+  );
+}
+
+async function findUserIdByEmail(
+  admin: SupabaseClient,
+  email: string,
+): Promise<string | null> {
+  const target = email.toLowerCase();
+  let page = 1;
+  const perPage = 200;
+  for (let i = 0; i < 10; i++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error || !data?.users?.length) return null;
+    const found = data.users.find((u) => u.email?.toLowerCase() === target);
+    if (found?.id) return found.id;
+    if (data.users.length < perPage) return null;
+    page += 1;
+  }
+  return null;
+}
+
+/** Forces `email_confirmed_at` via Admin API (no dashboard toggle required for this user). */
+async function forceConfirmUser(
+  admin: SupabaseClient,
+  userId: string,
+  fullName: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await admin.auth.admin.updateUserById(userId, {
+    email_confirm: true,
+    user_metadata: { full_name: fullName },
+  });
+  if (error) return { ok: false, error: friendlyMessage(error.message) };
+  return { ok: true };
+}
+
+async function signInOrFail(
+  supabase: SupabaseClient,
+  email: string,
+  password: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
 export async function signUpAndSignIn(
   input: SignupFormValues,
 ): Promise<SignUpResult> {
@@ -53,75 +108,93 @@ export async function signUpAndSignIn(
   const emailNorm = email.trim().toLowerCase();
   const nameTrim = fullName.trim();
 
-  const admin = getServiceRoleSupabaseOrNull();
+  let admin: SupabaseClient;
+  try {
+    admin = createServiceRoleSupabase();
+  } catch {
+    return {
+      ok: false,
+      error:
+        "Add SUPABASE_SERVICE_ROLE_KEY to your server environment (Vercel → Environment Variables). Signup requires the service role to create confirmed accounts.",
+    };
+  }
 
-  if (admin) {
-    const { error: createError } = await admin.auth.admin.createUser({
+  const supabase = await createServerSupabaseActionClient();
+
+  const { data: created, error: createError } =
+    await admin.auth.admin.createUser({
       email: emailNorm,
       password,
       email_confirm: true,
       user_metadata: { full_name: nameTrim },
     });
 
-    if (createError) {
-      return {
-        ok: false,
-        error: friendlyMessage(createError.message),
-      };
-    }
-  } else {
-    const supabaseAnon = await createServerSupabaseActionClient();
-    const { data, error: signUpError } = await supabaseAnon.auth.signUp({
-      email: emailNorm,
-      password,
-      options: {
-        data: { full_name: nameTrim },
-      },
-    });
+  let userId = created?.user?.id ?? null;
 
-    if (signUpError) {
-      return { ok: false, error: friendlyMessage(signUpError.message) };
-    }
-
-    if (data.session) {
-      revalidatePath("/", "layout");
-      return { ok: true };
-    }
-
-    const { error: signInError } = await supabaseAnon.auth.signInWithPassword({
-      email: emailNorm,
-      password,
-    });
-
-    if (signInError) {
-      return {
-        ok: false,
-        error: friendlyMessage(
-          signInError.message ||
-            "Add SUPABASE_SERVICE_ROLE_KEY to your server environment for reliable signup, or disable Confirm email in Supabase.",
-        ),
-      };
-    }
-
-    revalidatePath("/", "layout");
-    return { ok: true };
+  if (!createError && userId) {
+    const forced = await forceConfirmUser(admin, userId, nameTrim);
+    if (!forced.ok) return { ok: false, error: forced.error };
   }
 
-  const supabase = await createServerSupabaseActionClient();
-  const { error: signInError } = await supabase.auth.signInWithPassword({
-    email: emailNorm,
-    password,
-  });
+  if (createError) {
+    if (!isDuplicateUserError(createError.message)) {
+      return { ok: false, error: friendlyMessage(createError.message) };
+    }
 
-  if (signInError) {
+    userId = (await findUserIdByEmail(admin, emailNorm)) ?? userId;
+
+    if (userId) {
+      const confirmed = await forceConfirmUser(admin, userId, nameTrim);
+      if (!confirmed.ok) {
+        return { ok: false, error: confirmed.error };
+      }
+    }
+
+    let signIn = await signInOrFail(supabase, emailNorm, password);
+    if (signIn.ok) return { ok: true };
+
+    if (isEmailNotConfirmedError(signIn.error)) {
+      const uid = userId ?? (await findUserIdByEmail(admin, emailNorm));
+      if (uid) {
+        const c = await forceConfirmUser(admin, uid, nameTrim);
+        if (!c.ok) return { ok: false, error: c.error };
+        signIn = await signInOrFail(supabase, emailNorm, password);
+        if (signIn.ok) return { ok: true };
+      }
+    }
+
     return {
       ok: false,
       error: friendlyMessage(
-        signInError.message || "Could not sign you in after signup.",
+        isEmailNotConfirmedError(signIn.error)
+          ? signIn.error
+          : signIn.error.includes("Invalid login") ||
+              signIn.error.toLowerCase().includes("invalid")
+            ? "An account with this email already exists. Sign in with your password."
+            : signIn.error,
       ),
     };
   }
 
-  revalidatePath("/", "layout");
-  return { ok: true };
+  let signIn = await signInOrFail(supabase, emailNorm, password);
+  if (signIn.ok) return { ok: true };
+
+  if (userId && isEmailNotConfirmedError(signIn.error)) {
+    const c = await forceConfirmUser(admin, userId, nameTrim);
+    if (!c.ok) return { ok: false, error: c.error };
+    signIn = await signInOrFail(supabase, emailNorm, password);
+    if (signIn.ok) return { ok: true };
+  }
+
+  if (!userId && isEmailNotConfirmedError(signIn.error)) {
+    const uid = await findUserIdByEmail(admin, emailNorm);
+    if (uid) {
+      const c = await forceConfirmUser(admin, uid, nameTrim);
+      if (!c.ok) return { ok: false, error: c.error };
+      signIn = await signInOrFail(supabase, emailNorm, password);
+      if (signIn.ok) return { ok: true };
+    }
+  }
+
+  return { ok: false, error: friendlyMessage(signIn.error) };
 }

@@ -67,7 +67,8 @@ export function SignupForm() {
       <CardHeader>
         <CardTitle className="text-2xl">Create account</CardTitle>
         <CardDescription>
-          AgentForge Sales — email and password. Your name is saved to your profile.
+          AgentForge Sales — email and password. Your name is saved to your profile. You
+          are signed in immediately after signup.
         </CardDescription>
       </CardHeader>
       <CardContent>
