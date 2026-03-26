@@ -40,6 +40,7 @@ export async function middleware(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
   const isLogin = path === "/login";
+  const isSignup = path === "/signup";
   const isAuthCallback = path.startsWith("/auth/callback");
   const isProtected =
     path === "/" ||
@@ -59,7 +60,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirect);
   }
 
-  if (user && isLogin) {
+  if (user && (isLogin || isSignup)) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
@@ -76,6 +77,7 @@ export const config = {
     "/analytics",
     "/analytics/:path*",
     "/login",
+    "/signup",
     "/auth/:path*",
   ],
 };

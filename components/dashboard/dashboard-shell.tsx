@@ -9,11 +9,13 @@ import { createClient } from "@/lib/supabase";
 
 interface DashboardShellProps {
   email: string;
+  /** From signup (user_metadata.full_name); optional. */
+  displayName?: string;
   nav: React.ReactNode;
   children: React.ReactNode;
 }
 
-export function DashboardShell({ email, nav, children }: DashboardShellProps) {
+export function DashboardShell({ email, displayName, nav, children }: DashboardShellProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -37,8 +39,11 @@ export function DashboardShell({ email, nav, children }: DashboardShellProps) {
             {nav}
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden max-w-[200px] truncate text-xs text-muted-foreground sm:inline">
-              {email}
+            <span
+              className="hidden max-w-[240px] truncate text-xs text-muted-foreground sm:inline"
+              title={email}
+            >
+              {displayName ? `${displayName} · ${email}` : email}
             </span>
             <Button
               variant="outline"
