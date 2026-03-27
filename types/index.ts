@@ -1,4 +1,4 @@
-import type { LeadEnrichmentPayload, LeadFormInput } from "@/agents/types";
+import type { LeadEnrichmentPayload, LeadFormInput, SequenceStep } from "@/agents/types";
 
 export type {
   AgentMessage,
@@ -221,6 +221,21 @@ export type CampaignTemplateRow = {
   description: string | null;
   created_at: string;
   payload: Record<string, unknown>;
+};
+
+/** Prompt 89 — whether OAuth calendar write access is linked for the signed-in user. */
+export type CalendarConnectionStatusDTO = {
+  google: boolean;
+  microsoft: boolean;
+};
+
+/** Prompt 88 — saved multi-channel sequence (workspace-scoped). */
+export type CampaignSequenceRow = {
+  id: string;
+  name: string;
+  steps: SequenceStep[];
+  created_at: string;
+  updated_at: string;
 };
 
 /** Prompt 86 — advanced report + scheduled email filters (JSON on `scheduled_reports`). */

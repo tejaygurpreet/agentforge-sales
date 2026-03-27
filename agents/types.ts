@@ -232,12 +232,37 @@ export const qualificationObjectionLlmSchema = z.object({
   reasoning: z.string().min(6).max(280),
 });
 
+/** Prompt 89 — lenient LLM shape; canonical rows validated in normalization. */
+export const meetingTimeSuggestionLlmSchema = z.object({
+  label: z.string().optional(),
+  start_iso: z.string().optional(),
+  end_iso: z.string().optional(),
+  timezone_hint: z.string().optional(),
+  rationale: z.string().optional(),
+});
+
+/** Prompt 89 — canonical meeting slot for UI + calendar. */
+export const meetingTimeSuggestionSchema = z.object({
+  label: z.string().min(2).max(80),
+  start_iso: z.string().min(12).max(44),
+  end_iso: z.string().min(12).max(44),
+  timezone_hint: z.string().min(2).max(64),
+  rationale: z.string().min(8).max(220),
+});
+
+export type MeetingTimeSuggestion = z.infer<typeof meetingTimeSuggestionSchema>;
+
 export const qualificationAgentLlmSchema = z.object({
   score: z.number().min(0).max(100),
   /** Model may return 1–6; normalization always yields exactly 3. */
   top_objections: z.array(qualificationObjectionLlmSchema).min(1).max(6),
   bant_summary: z.string().min(4).max(4000),
   next_best_action: z.string().min(6).max(620),
+  /** Prompt 89 — optional smart scheduling hints. */
+  meeting_time_suggestions: z.array(meetingTimeSuggestionLlmSchema).max(6).optional(),
+  response_pattern_hint: z
+    .enum(["morning_preferred", "async_heavy", "evening_ok", "unknown"])
+    .optional(),
 });
 
 export type QualificationAgentLlmResult = z.infer<typeof qualificationAgentLlmSchema>;
@@ -249,6 +274,10 @@ export const qualificationAgentSchema = z.object({
   bant_summary: z.string(),
   /** Playbook-style: concrete steps, owner/artifact, or explicit pause criterion. */
   next_best_action: z.string().min(32).max(520),
+  meeting_time_suggestions: z.array(meetingTimeSuggestionSchema).max(5).optional(),
+  response_pattern_hint: z
+    .enum(["morning_preferred", "async_heavy", "evening_ok", "unknown"])
+    .optional(),
 });
 
 export type QualificationAgentResult = z.infer<typeof qualificationAgentSchema>;
@@ -265,6 +294,10 @@ export const nurtureFollowUpSchema = z.object({
 export const nurtureOutputSchema = z.object({
   sequence_summary: z.string(),
   follow_up_sequences: z.array(nurtureFollowUpSchema).length(3),
+  /** Prompt 89 — optional copy line for scheduling follow-through. */
+  meeting_scheduling_hint: z.string().max(520).optional(),
+  /** Prompt 89 — may echo or refine qualification slots. */
+  meeting_time_suggestions: z.array(meetingTimeSuggestionSchema).max(5).optional(),
 });
 
 export type NurtureOutput = z.infer<typeof nurtureOutputSchema>;
@@ -301,6 +334,31 @@ export interface AgentContext {
   userId: string;
 }
 
+/** Prompt 88 — multi-channel playbook step (order is display + tracking; graph pipeline unchanged). */
+export type SequenceChannel = "email" | "linkedin" | "call" | "follow_up";
+
+export interface SequenceStep {
+  id: string;
+  channel: SequenceChannel;
+  /** Optional UI label; defaults from channel. */
+  label?: string;
+}
+
+/** Attached to a run when user picked a saved sequence. */
+export interface CampaignSequencePlan {
+  sequence_id: string;
+  name: string;
+  steps: SequenceStep[];
+}
+
+/** Derived progress: channels map to pipeline milestones (outreach / qual / nurture). */
+export interface SequenceRunProgress {
+  steps: SequenceStep[];
+  completed: boolean[];
+  /** First incomplete index, or steps.length when all complete. */
+  currentIndex: number;
+}
+
 /** JSON-safe payload returned to the dashboard after a campaign run. */
 export interface CampaignClientSnapshot {
   lead: Lead;
@@ -326,4 +384,8 @@ export interface CampaignClientSnapshot {
   brand_display_name?: string | null;
   /** Prompt 82 — pre-run enrichment preview (same payload persisted when `enriched_data` column exists). */
   lead_enrichment_preview?: LeadEnrichmentPayload | null;
+  /** Prompt 88 — when a saved sequence was applied to this run. */
+  sequence_plan?: CampaignSequencePlan | null;
+  /** Prompt 88 — step completion derived from pipeline outputs. */
+  sequence_progress?: SequenceRunProgress | null;
 }

@@ -1,6 +1,10 @@
 "use client";
 
-import { notifyBatchRunFinishedAction, startCampaignAction } from "@/app/(dashboard)/actions";
+import {
+  notifyBatchRunFinishedAction,
+  startCampaignAction,
+  startCampaignWithOptionsAction,
+} from "@/app/(dashboard)/actions";
 import { CampaignWorkspace } from "@/components/dashboard/campaign-workspace";
 import type { CampaignRerunPayload } from "@/components/dashboard/campaign-rerun-types";
 import { RecentCampaigns } from "@/components/dashboard/recent-campaigns";
@@ -18,6 +22,8 @@ import { cn } from "@/lib/utils";
 import { leadFormSchema, type LeadFormInput } from "@/agents/types";
 import type {
   BatchRunItem,
+  CalendarConnectionStatusDTO,
+  CampaignSequenceRow,
   CustomVoiceRow,
   PersistedCampaignRow,
   WhiteLabelClientSettingsDTO,
@@ -44,6 +50,11 @@ type Props = {
   /** Prompt 85 — prefill from Templates tab (Apply). */
   templatePrefillRequest?: CampaignRerunPayload | null;
   onTemplatePrefillConsumed?: () => void;
+  /** Prompt 88 — saved sequences for optional attach + batch. */
+  campaignSequences?: CampaignSequenceRow[];
+  sequencePrefillRequest?: { id: string; nonce: number } | null;
+  onSequencePrefillConsumed?: () => void;
+  calendarStatus?: CalendarConnectionStatusDTO;
 };
 
 const batchJsonSchema = z.array(leadFormSchema);
@@ -59,6 +70,10 @@ export function DashboardCampaignRunner({
   whiteLabel = null,
   templatePrefillRequest = null,
   onTemplatePrefillConsumed,
+  campaignSequences = [],
+  sequencePrefillRequest = null,
+  onSequencePrefillConsumed,
+  calendarStatus = { google: false, microsoft: false },
 }: Props) {
   const router = useRouter();
   const [rerunRequest, setRerunRequest] = useState<CampaignRerunPayload | null>(null);
@@ -68,6 +83,12 @@ export function DashboardCampaignRunner({
     setRerunRequest(templatePrefillRequest);
     onTemplatePrefillConsumed?.();
   }, [templatePrefillRequest, onTemplatePrefillConsumed]);
+
+  useEffect(() => {
+    if (!sequencePrefillRequest) return;
+    setBatchSequenceId(sequencePrefillRequest.id);
+    onSequencePrefillConsumed?.();
+  }, [sequencePrefillRequest, onSequencePrefillConsumed]);
   const [batchMode, setBatchMode] = useState(false);
   const [batchJson, setBatchJson] = useState(
     '[\n  {\n    "name": "Sample Lead",\n    "email": "lead@company.example",\n    "company": "Company Inc",\n    "notes": "",\n    "sdr_voice_tone": "default"\n  }\n]',
@@ -75,6 +96,7 @@ export function DashboardCampaignRunner({
   const [batchError, setBatchError] = useState<string | null>(null);
   const [batchBusy, setBatchBusy] = useState(false);
   const [selectedCampaignIds, setSelectedCampaignIds] = useState<Set<string>>(new Set());
+  const [batchSequenceId, setBatchSequenceId] = useState<string>("");
 
   const onRerunConsumed = useCallback(() => {
     setRerunRequest(null);
@@ -99,6 +121,10 @@ export function DashboardCampaignRunner({
 
   const runBatch = useCallback(
     async (leads: LeadFormInput[]) => {
+      const seqOpt =
+        batchSequenceId.trim() !== ""
+          ? { sequence_id: batchSequenceId.trim() }
+          : undefined;
       if (leads.length === 0) {
         setBatchError("Add at least one lead.");
         return;
@@ -128,7 +154,9 @@ export function DashboardCampaignRunner({
             );
             onBatchProgressChange?.(rows);
             try {
-              const res = await startCampaignAction(lead);
+              const res = seqOpt
+                ? await startCampaignWithOptionsAction({ lead, options: seqOpt })
+                : await startCampaignAction(lead);
               if (!res.ok) {
                 rows = rows.map((r, k) =>
                   k === idx
@@ -168,7 +196,7 @@ export function DashboardCampaignRunner({
       setBatchBusy(false);
       router.refresh();
     },
-    [onBatchProgressChange, router],
+    [batchSequenceId, onBatchProgressChange, router],
   );
 
   const onRunBatchJson = useCallback(() => {
@@ -254,6 +282,30 @@ export function DashboardCampaignRunner({
                 {batchError}
               </p>
             ) : null}
+            {campaignSequences.length > 0 ? (
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Sequence (optional)
+                </p>
+                <select
+                  id="batch-sequence"
+                  className="mt-2 flex h-10 w-full max-w-md rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  value={batchSequenceId}
+                  onChange={(e) => setBatchSequenceId(e.target.value)}
+                  disabled={batchBusy}
+                >
+                  <option value="">Default pipeline (no saved sequence)</option>
+                  {campaignSequences.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Attaches the playbook for progress tracking; graph order is unchanged.
+                </p>
+              </div>
+            ) : null}
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 JSON array
@@ -307,6 +359,10 @@ export function DashboardCampaignRunner({
         hubspotConnected={hubspotConnected}
         customVoices={customVoices}
         whiteLabel={whiteLabel}
+        savedSequences={campaignSequences}
+        sequencePrefillRequest={sequencePrefillRequest}
+        onSequencePrefillConsumed={onSequencePrefillConsumed}
+        calendarStatus={calendarStatus}
       />
     </div>
   );

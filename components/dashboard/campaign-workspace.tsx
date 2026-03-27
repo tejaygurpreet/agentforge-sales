@@ -8,6 +8,7 @@ import {
   Building2,
   CalendarClock,
   CheckCircle2,
+  Circle,
   ChevronDown,
   ClipboardCopy,
   CloudUpload,
@@ -45,6 +46,7 @@ import {
 } from "@/app/(dashboard)/actions";
 import { DashboardReplyStrip } from "@/components/dashboard/dashboard-reply-strip";
 import { useReplyIntel } from "@/components/dashboard/reply-intel-context";
+import { MeetingSchedulerPanel } from "@/components/dashboard/meeting-scheduler-panel";
 import { PdfBrandingPanel } from "@/components/dashboard/pdf-branding-panel";
 import { campaignSnapshotToMarkdown } from "@/lib/campaign-markdown";
 import { buildCampaignSummaryExport } from "@/lib/campaign-summary-export";
@@ -65,7 +67,12 @@ import { toast } from "@/hooks/use-toast";
 import { buildCampaignPdfExportOptions, loadPdfBranding } from "@/lib/pdf-branding";
 import { getVoiceSampleEmailPreview } from "@/lib/sdr-voice-preview";
 import { SDR_VOICE_OPTIONS, sdrVoiceLabel, voiceLabelForLead } from "@/lib/sdr-voice";
-import type { CustomVoiceRow, WhiteLabelClientSettingsDTO } from "@/types";
+import type {
+  CalendarConnectionStatusDTO,
+  CampaignSequenceRow,
+  CustomVoiceRow,
+  WhiteLabelClientSettingsDTO,
+} from "@/types";
 import { textEchoesAnyCorpus } from "@/lib/text-similarity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -691,7 +698,36 @@ type CampaignWorkspaceProps = {
   customVoices?: CustomVoiceRow[];
   /** Prompt 79 — server white-label for exports. */
   whiteLabel?: WhiteLabelClientSettingsDTO | null;
+  /** Prompt 88 — optional saved sequences for this workspace. */
+  savedSequences?: CampaignSequenceRow[];
+  sequencePrefillRequest?: { id: string; nonce: number } | null;
+  onSequencePrefillConsumed?: () => void;
+  /** Prompt 89 — calendar OAuth flags for one-click meeting creation. */
+  calendarStatus?: CalendarConnectionStatusDTO;
 };
+
+function sequenceStepLabel(
+  step: { channel: string; label?: string },
+  channelFallback: (c: string) => string,
+): string {
+  if (step.label?.trim()) return step.label.trim();
+  return channelFallback(step.channel);
+}
+
+function channelLabelFromChannel(c: string): string {
+  switch (c) {
+    case "email":
+      return "Email";
+    case "linkedin":
+      return "LinkedIn";
+    case "call":
+      return "Call";
+    case "follow_up":
+      return "Follow-up";
+    default:
+      return c;
+  }
+}
 
 export function CampaignWorkspace({
   rerunRequest = null,
@@ -699,6 +735,10 @@ export function CampaignWorkspace({
   hubspotConnected = false,
   customVoices = [],
   whiteLabel = null,
+  savedSequences = [],
+  sequencePrefillRequest = null,
+  onSequencePrefillConsumed,
+  calendarStatus = { google: false, microsoft: false },
 }: CampaignWorkspaceProps) {
   const { setReplyIntel } = useReplyIntel();
   const router = useRouter();
@@ -720,6 +760,7 @@ export function CampaignWorkspace({
   const [enrichmentError, setEnrichmentError] = useState<string | null>(null);
   /** Prompt 85 — next Start campaign passes `template_id` when prefill came from the template library. */
   const pendingTemplateIdRef = useRef<string | null>(null);
+  const [selectedSequenceId, setSelectedSequenceId] = useState<string>("");
 
   useEffect(() => {
     if (!snapshot) {
@@ -776,6 +817,7 @@ export function CampaignWorkspace({
       setEnrichmentPreview(null);
       startTransition(async () => {
         const tid = pendingTemplateIdRef.current;
+        const sid = selectedSequenceId.trim() || undefined;
         const baseLead = {
           ...values,
           status: values.status ?? "new",
@@ -783,10 +825,14 @@ export function CampaignWorkspace({
           custom_voice_id: values.custom_voice_id,
           custom_voice_name: values.custom_voice_name,
         };
-        const res = tid
+        const hasOpts = Boolean(tid || sid);
+        const res = hasOpts
           ? await startCampaignWithOptionsAction({
               lead: baseLead,
-              options: { template_id: tid },
+              options: {
+                ...(tid ? { template_id: tid } : {}),
+                ...(sid ? { sequence_id: sid } : {}),
+              },
             })
           : await startCampaignAction(baseLead);
         if (!res.ok) {
@@ -813,7 +859,7 @@ export function CampaignWorkspace({
         router.refresh();
       });
     },
-    [router],
+    [router, selectedSequenceId],
   );
 
   const onSendOutreachEmail = useCallback(async () => {
@@ -871,9 +917,18 @@ export function CampaignWorkspace({
   }, [snapshot]);
 
   useEffect(() => {
+    if (!sequencePrefillRequest) return;
+    setSelectedSequenceId(sequencePrefillRequest.id);
+    onSequencePrefillConsumed?.();
+  }, [sequencePrefillRequest, onSequencePrefillConsumed]);
+
+  useEffect(() => {
     if (!rerunRequest) return;
-    const { values, autoStart, source_template_id } = rerunRequest;
+    const { values, autoStart, source_template_id, source_sequence_id } = rerunRequest;
     pendingTemplateIdRef.current = source_template_id ?? null;
+    if (source_sequence_id?.trim()) {
+      setSelectedSequenceId(source_sequence_id.trim());
+    }
     form.reset({
       name: values.name,
       email: values.email,
@@ -973,6 +1028,13 @@ export function CampaignWorkspace({
     : [];
 
   const logJson = snapshot ? JSON.stringify(snapshot, null, 2) : "";
+
+  const mergedMeetingSuggestions =
+    nurture?.meeting_time_suggestions?.length
+      ? nurture.meeting_time_suggestions
+      : snapshot?.qualification_detail?.meeting_time_suggestions;
+  const meetingNurtureHint = nurture?.meeting_scheduling_hint ?? null;
+  const responsePatternHint = snapshot?.qualification_detail?.response_pattern_hint ?? null;
 
   async function copyEmailForOutreach() {
     if (!outreach) return;
@@ -1490,6 +1552,38 @@ export function CampaignWorkspace({
                   <EnrichmentPreviewBody data={enrichmentPreview} />
                 ) : null}
               </div>
+              {savedSequences.length > 0 ? (
+                <div className="space-y-2">
+                  <label
+                    htmlFor="workspace-sequence-select"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Sequence playbook (optional)
+                  </label>
+                  <select
+                    id="workspace-sequence-select"
+                    disabled={isPending}
+                    className={cn(
+                      "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "disabled:cursor-not-allowed disabled:opacity-50",
+                    )}
+                    value={selectedSequenceId}
+                    onChange={(e) => setSelectedSequenceId(e.target.value)}
+                  >
+                    <option value="">Default pipeline (no saved sequence)</option>
+                    {savedSequences.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    Maps Email/LinkedIn → outreach, Call → qualification, Follow-up → nurture for progress
+                    tracking. The graph still runs in standard order.
+                  </p>
+                </div>
+              ) : null}
               <Button type="submit" disabled={isPending} className="w-full sm:w-auto">
                 {isPending ? (
                   <>
@@ -1791,6 +1885,62 @@ export function CampaignWorkspace({
                 <p>{humanizeClientError(snapshot.pipeline_error)}</p>
               </div>
             </div>
+          ) : null}
+
+          {snapshot.sequence_progress && snapshot.sequence_progress.steps.length > 0 ? (
+            <div
+              className="rounded-xl border border-primary/25 bg-primary/[0.04] px-4 py-4 dark:border-primary/20 dark:bg-primary/[0.06]"
+              role="status"
+              aria-label="Sequence progress"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <Target className="h-4 w-4 text-primary" aria-hidden />
+                <p className="text-sm font-semibold">
+                  Sequence: {snapshot.sequence_plan?.name ?? "Playbook"}
+                </p>
+              </div>
+              <ol className="mt-3 flex flex-wrap gap-2">
+                {snapshot.sequence_progress.steps.map((step, i) => {
+                  const done = snapshot.sequence_progress!.completed[i];
+                  const current = i === snapshot.sequence_progress!.currentIndex;
+                  return (
+                    <li
+                      key={step.id}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                        done
+                          ? "border-emerald-500/45 bg-emerald-500/12 text-emerald-950 dark:text-emerald-50"
+                          : current
+                            ? "border-primary/60 bg-primary/10 text-foreground shadow-sm"
+                            : "border-border/70 bg-muted/30 text-muted-foreground",
+                      )}
+                    >
+                      {done ? (
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                      ) : (
+                        <Circle className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                      )}
+                      {sequenceStepLabel(step, channelLabelFromChannel)}
+                    </li>
+                  );
+                })}
+              </ol>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Steps reflect pipeline milestones as the run completes (not a custom node order).
+              </p>
+            </div>
+          ) : null}
+
+          {snapshot ? (
+            <MeetingSchedulerPanel
+              threadId={snapshot.thread_id}
+              leadName={snapshot.lead.name}
+              leadEmail={snapshot.lead.email}
+              calendarStatus={calendarStatus}
+              suggestions={mergedMeetingSuggestions}
+              nurtureHint={meetingNurtureHint}
+              responsePatternHint={responsePatternHint}
+            />
           ) : null}
 
           <div className="grid gap-6 lg:grid-cols-2 lg:gap-8">

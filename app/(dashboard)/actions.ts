@@ -10,6 +10,7 @@ import { saveCampaign as persistCampaignToDatabase } from "@/lib/save-campaign";
 import { deleteThreadCheckpoint, mergeDashboardState } from "@/agents/supabase-checkpointer";
 import {
   type CampaignClientSnapshot,
+  type CampaignSequencePlan,
   type CustomVoiceProfile,
   type Lead,
   type LeadEnrichmentPayload,
@@ -29,6 +30,8 @@ import {
 } from "@/lib/reply-analyzer";
 import type {
   AbTestComparisonRow,
+  CalendarConnectionStatusDTO,
+  CampaignSequenceRow,
   CampaignTemplateRow,
   CampaignThreadRow,
   CustomVoiceRow,
@@ -86,6 +89,16 @@ import {
   parseReportFilters,
   type ReportMetricsSummary,
 } from "@/lib/reports";
+import {
+  campaignSequenceStepsSchema,
+  parseSequenceStepsFromJson,
+} from "@/lib/sequences";
+import {
+  createGoogleCalendarEvent,
+  createMicrosoftCalendarEvent,
+  getValidAccessTokenForUser,
+} from "@/lib/calendar";
+import type { CalendarProvider } from "@/lib/calendar";
 
 /** Prompt 18: hard cap so the dashboard never spins forever (must be ≥ `GRAPH_INVOKE_MAX_MS` in graph). */
 const START_CAMPAIGN_MAX_MS = 90_000;
@@ -542,6 +555,8 @@ const campaignRunOptionsSchema = z.object({
   ab_variant: z.enum(["A", "B"]).optional(),
   template_id: z.string().uuid().optional(),
   template_voice_note: z.string().max(2000).optional(),
+  /** Prompt 88 — optional saved sequence for display + milestone progress in the UI. */
+  sequence_id: z.string().uuid().optional(),
 });
 
 const startCampaignWithOptionsPayloadSchema = z.object({
@@ -770,6 +785,36 @@ export async function updateWorkspaceMemberRoleAction(
 
 type WorkspaceCtx = Awaited<ReturnType<typeof resolveWorkspaceContext>>;
 
+/** Prompt 88 — load saved playbook for this workspace (null if missing or table absent). */
+async function fetchCampaignSequencePlanForWorkspace(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  sequenceId: string | undefined | null,
+): Promise<CampaignSequencePlan | null> {
+  const sid = sequenceId?.trim();
+  if (!sid) return null;
+  const { data, error } = await supabase
+    .from("campaign_sequences")
+    .select("id, name, steps")
+    .eq("id", sid)
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+  if (error) {
+    if (!isMissingColumnOrSchemaError(error.message)) {
+      console.warn("[AgentForge] fetchCampaignSequencePlanForWorkspace", error.message);
+    }
+    return null;
+  }
+  if (!data) return null;
+  const row = data as { id: string; name: string; steps: unknown };
+  const steps = parseSequenceStepsFromJson(row.steps);
+  return {
+    sequence_id: row.id,
+    name: row.name,
+    steps,
+  };
+}
+
 /**
  * Prompt 85 — shared graph invocation (templates + A/B meta optional).
  */
@@ -857,6 +902,12 @@ async function runSingleCampaignPipeline(
   try {
     warnIfResendNotConfigured();
     const wl = await fetchWhiteLabelSettings(supabase, ws.workspaceId);
+    const sequence_plan =
+      (await fetchCampaignSequencePlanForWorkspace(
+        supabase,
+        ws.workspaceId,
+        options?.sequence_id,
+      )) ?? undefined;
     await deleteThreadCheckpoint(thread_id);
     const finalState = await withTimeout(
       runCampaignGraph({
@@ -871,6 +922,7 @@ async function runSingleCampaignPipeline(
         ab_variant: options?.ab_variant,
         template_id: options?.template_id,
         template_voice_note: options?.template_voice_note,
+        sequence_plan,
       }),
       START_CAMPAIGN_MAX_MS,
       "startCampaign.runCampaignGraph",
@@ -1212,6 +1264,297 @@ export async function deleteCampaignTemplateAction(
   }
   revalidatePath("/");
   return { ok: true };
+}
+
+const upsertCampaignSequenceSchema = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().min(1).max(120),
+  steps: campaignSequenceStepsSchema,
+});
+
+const deleteCampaignSequenceSchema = z.object({
+  id: z.string().uuid(),
+});
+
+/** Prompt 88 — list saved sequences for the active workspace. */
+export async function listCampaignSequencesAction(): Promise<CampaignSequenceRow[]> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return [];
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+
+  const { data, error } = await supabase
+    .from("campaign_sequences")
+    .select("id, name, steps, created_at, updated_at")
+    .eq("workspace_id", ws.workspaceId)
+    .order("updated_at", { ascending: false })
+    .limit(80);
+
+  if (error) {
+    if (!isMissingColumnOrSchemaError(error.message)) {
+      console.warn("[AgentForge] listCampaignSequences", error.message);
+    }
+    return [];
+  }
+
+  return (data ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      id: String(row.id ?? ""),
+      name: String(row.name ?? ""),
+      steps: parseSequenceStepsFromJson(row.steps),
+      created_at: String(row.created_at ?? ""),
+      updated_at: String(row.updated_at ?? ""),
+    };
+  });
+}
+
+export async function upsertCampaignSequenceAction(
+  raw: z.input<typeof upsertCampaignSequenceSchema>,
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const parsed = upsertCampaignSequenceSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid sequence name or steps." };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+
+  const payload = {
+    name: parsed.data.name.trim(),
+    steps: parsed.data.steps,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (parsed.data.id) {
+    const { data, error } = await supabase
+      .from("campaign_sequences")
+      .update(payload)
+      .eq("id", parsed.data.id)
+      .eq("workspace_id", ws.workspaceId)
+      .select("id")
+      .maybeSingle();
+    if (error) {
+      return {
+        ok: false,
+        error: error.message.includes("campaign_sequences")
+          ? "Sequences table missing — run supabase/campaign_sequences_p88.sql."
+          : error.message,
+      };
+    }
+    if (!data?.id) {
+      return { ok: false, error: "Sequence not found or access denied." };
+    }
+    revalidatePath("/");
+    return { ok: true, id: String(data.id) };
+  }
+
+  const { data, error } = await supabase
+    .from("campaign_sequences")
+    .insert({
+      workspace_id: ws.workspaceId,
+      user_id: user.id,
+      name: payload.name,
+      steps: payload.steps,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    return {
+      ok: false,
+      error: error.message.includes("campaign_sequences")
+        ? "Sequences table missing — run supabase/campaign_sequences_p88.sql."
+        : error.message,
+    };
+  }
+  revalidatePath("/");
+  return { ok: true, id: String((data as { id: string }).id) };
+}
+
+export async function deleteCampaignSequenceAction(
+  raw: z.input<typeof deleteCampaignSequenceSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = deleteCampaignSequenceSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid id." };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+
+  const { error } = await supabase
+    .from("campaign_sequences")
+    .delete()
+    .eq("id", parsed.data.id)
+    .eq("workspace_id", ws.workspaceId);
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  revalidatePath("/");
+  return { ok: true };
+}
+
+const disconnectCalendarSchema = z.object({
+  provider: z.enum(["google", "microsoft"]),
+});
+
+const proposeMeetingSchema = z.object({
+  thread_id: z.string().min(1).max(280),
+  provider: z.enum(["google", "microsoft"]),
+  start_iso: z.string().min(12).max(44),
+  end_iso: z.string().min(12).max(44),
+  title: z.string().min(2).max(200).optional(),
+  body: z.string().max(4000).optional(),
+  attendee_email: z.string().email().optional(),
+});
+
+/** Prompt 89 — OAuth connection flags for dashboard meeting scheduler. */
+export async function getCalendarConnectionStatusAction(): Promise<CalendarConnectionStatusDTO> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { google: false, microsoft: false };
+  }
+  const { data, error } = await supabase
+    .from("user_calendar_connections")
+    .select("provider")
+    .eq("user_id", user.id);
+  if (error) {
+    if (!isMissingColumnOrSchemaError(error.message)) {
+      console.warn("[AgentForge] getCalendarConnectionStatus", error.message);
+    }
+    return { google: false, microsoft: false };
+  }
+  const set = new Set((data ?? []).map((r) => String((r as { provider?: string }).provider ?? "")));
+  return {
+    google: set.has("google"),
+    microsoft: set.has("microsoft"),
+  };
+}
+
+export async function disconnectCalendarAction(
+  raw: z.input<typeof disconnectCalendarSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = disconnectCalendarSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid provider." };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+  const { error } = await supabase
+    .from("user_calendar_connections")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("provider", parsed.data.provider);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/**
+ * Prompt 89 — create a calendar event from an AI-suggested slot (Google or Outlook).
+ */
+export async function proposeMeetingAction(
+  raw: z.input<typeof proposeMeetingSchema>,
+): Promise<
+  | { ok: true; html_link?: string; event_id: string; provider: CalendarProvider }
+  | { ok: false; error: string }
+> {
+  const parsed = proposeMeetingSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid meeting payload." };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+
+  const { data: camp, error: campErr } = await supabase
+    .from("campaigns")
+    .select("user_id")
+    .eq("thread_id", parsed.data.thread_id)
+    .maybeSingle();
+  if (campErr || !camp || (camp as { user_id?: string }).user_id !== user.id) {
+    return { ok: false, error: "Campaign not found for this thread." };
+  }
+
+  const tok = await getValidAccessTokenForUser(supabase, user.id, parsed.data.provider);
+  if (!tok) {
+    return { ok: false, error: "Connect your calendar first (Google or Microsoft)." };
+  }
+
+  const title =
+    parsed.data.title?.trim() ||
+    `Meeting — ${parsed.data.thread_id.slice(0, 8)} (AgentForge)`;
+  const bodyText =
+    parsed.data.body?.trim() ||
+    `Scheduled via AgentForge Sales.\nThread: ${parsed.data.thread_id}`;
+
+  try {
+    if (parsed.data.provider === "google") {
+      const ev = await createGoogleCalendarEvent(tok.accessToken, {
+        summary: title,
+        description: bodyText,
+        startIso: parsed.data.start_iso,
+        endIso: parsed.data.end_iso,
+        attendeeEmail: parsed.data.attendee_email,
+      });
+      revalidatePath("/");
+      return { ok: true, event_id: ev.id, html_link: ev.htmlLink, provider: "google" };
+    }
+    const ev = await createMicrosoftCalendarEvent(tok.accessToken, {
+      summary: title,
+      description: bodyText,
+      startIso: parsed.data.start_iso,
+      endIso: parsed.data.end_iso,
+      attendeeEmail: parsed.data.attendee_email,
+    });
+    revalidatePath("/");
+    return { ok: true, event_id: ev.id, html_link: ev.webLink, provider: "microsoft" };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Calendar API failed";
+    return { ok: false, error: msg };
+  }
 }
 
 /**

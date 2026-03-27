@@ -3,6 +3,8 @@
 import type {
   BatchRunItem,
   CallTranscriptRow,
+  CalendarConnectionStatusDTO,
+  CampaignSequenceRow,
   CampaignTemplateRow,
   CampaignThreadRow,
   CustomVoiceRow,
@@ -24,6 +26,7 @@ import { CompetitiveEdgePanel } from "@/components/dashboard/competitive-edge-pa
 import { DashboardHero } from "@/components/dashboard/dashboard-hero";
 import { ProductRoadmapSection } from "@/components/dashboard/product-roadmap-section";
 import { ReportsSection } from "@/components/dashboard/reports-section";
+import { SequencesSection } from "@/components/dashboard/sequences-section";
 import { WorkspaceMembersCard } from "@/components/dashboard/workspace-members-card";
 import { DeliverabilityPanel } from "@/components/dashboard/deliverability-panel";
 import { WhiteLabelSettingsCard } from "@/components/dashboard/white-label-settings-card";
@@ -58,9 +61,13 @@ type Props = {
   objectionLibraryEntries: ObjectionLibraryEntryRow[];
   /** Prompt 85 — saved campaign templates for the active workspace. */
   campaignTemplates: CampaignTemplateRow[];
+  /** Prompt 88 — saved multi-channel sequences. */
+  campaignSequences: CampaignSequenceRow[];
   /** Prompt 86 — scheduled report rows + recipient default. */
   scheduledReports: ScheduledReportRow[];
   reportRecipientEmail: string;
+  /** Prompt 89 — Google / Microsoft calendar OAuth for meeting proposals. */
+  calendarStatus: CalendarConnectionStatusDTO;
 };
 
 /**
@@ -84,13 +91,16 @@ export function DashboardHomeClient({
   objectionLibraryTranscripts,
   objectionLibraryEntries,
   campaignTemplates,
+  campaignSequences,
   scheduledReports,
   reportRecipientEmail,
+  calendarStatus,
 }: Props) {
   const router = useRouter();
   const [batchProgress, setBatchProgress] = useState<BatchRunItem[] | null>(null);
   const [mainTab, setMainTab] = useState("workspace");
   const [templatePrefill, setTemplatePrefill] = useState<CampaignRerunPayload | null>(null);
+  const [sequencePrefill, setSequencePrefill] = useState<{ id: string; nonce: number } | null>(null);
 
   const onTemplatePrefillConsumed = useCallback(() => {
     setTemplatePrefill(null);
@@ -98,6 +108,11 @@ export function DashboardHomeClient({
 
   const onApplyTemplateToWorkspace = useCallback((payload: CampaignRerunPayload) => {
     setTemplatePrefill(payload);
+    setMainTab("workspace");
+  }, []);
+
+  const onApplySequenceToWorkspace = useCallback((sequenceId: string) => {
+    setSequencePrefill({ id: sequenceId, nonce: Date.now() });
     setMainTab("workspace");
   }, []);
 
@@ -144,7 +159,7 @@ export function DashboardHomeClient({
       />
 
       <Tabs value={mainTab} onValueChange={setMainTab} className="w-full">
-        <TabsList className="flex h-auto w-full max-w-6xl flex-nowrap justify-start gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:grid sm:grid-cols-6 sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden">
+        <TabsList className="flex h-auto w-full max-w-6xl flex-nowrap justify-start gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:grid sm:grid-cols-7 sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden">
           <TabsTrigger
             value="workspace"
             className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
@@ -162,6 +177,12 @@ export function DashboardHomeClient({
             className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
           >
             Templates
+          </TabsTrigger>
+          <TabsTrigger
+            value="sequences"
+            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
+          >
+            Sequences
           </TabsTrigger>
           <TabsTrigger
             value="reports"
@@ -192,6 +213,10 @@ export function DashboardHomeClient({
             whiteLabel={whiteLabel}
             templatePrefillRequest={templatePrefill}
             onTemplatePrefillConsumed={onTemplatePrefillConsumed}
+            campaignSequences={campaignSequences}
+            sequencePrefillRequest={sequencePrefill}
+            onSequencePrefillConsumed={() => setSequencePrefill(null)}
+            calendarStatus={calendarStatus}
           />
           <BetaProgramSignupCard />
         </TabsContent>
@@ -204,6 +229,13 @@ export function DashboardHomeClient({
             recentCampaigns={recentCampaigns}
             onTemplatesChange={() => router.refresh()}
             onApplyToWorkspace={onApplyTemplateToWorkspace}
+          />
+        </TabsContent>
+        <TabsContent value="sequences" className="space-y-8 pt-2">
+          <SequencesSection
+            sequences={campaignSequences}
+            onSequencesChange={() => router.refresh()}
+            onApplyToWorkspace={onApplySequenceToWorkspace}
           />
         </TabsContent>
         <TabsContent value="reports" className="space-y-8 pt-2">

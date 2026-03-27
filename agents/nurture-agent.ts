@@ -47,6 +47,8 @@ export async function runNurtureAgent(
         top_objections: ctx.qualification_detail.top_objections,
         bant_summary: ctx.qualification_detail.bant_summary.slice(0, 800),
         next_best_action: ctx.qualification_detail.next_best_action.slice(0, 400),
+        meeting_time_suggestions: ctx.qualification_detail.meeting_time_suggestions ?? [],
+        response_pattern_hint: ctx.qualification_detail.response_pattern_hint ?? null,
       })
     : "(infer from score only)";
 
@@ -72,7 +74,7 @@ ${objectionLib}
 SDR_VOICE_PRESET: ${voice}
 ${nurtureVoice}
 
-Prompt 38 + **49** + **57** + **58** + **69**: 3 steps — **value-driven + creative**; at least one **pure generosity** touch; **different opening word** each step; varied channel; realistic spacing; tie to objections; **zero** filler recycled from qual/research; **zero** system/LLM/API leakage. **Prompt 49:** no **5+ word copy** from research exec/ICP/news, qual **bant_summary**, or **messaging_angles** — paraphrase into **fresh cadence**. **Prompt 57:** **warm_relationship_builder** → nurture must **build relationship** — helpful, **unscripted** rhythm; **never** "Day N: pitch" cadence. **Prompt 58:** each **content_asset_suggestion** = **named, specific artifact** for **this** account’s motion — no generic "case study" / "resource" alone. **Prompt 69:** **Elite cadence** — **strategic arc** in sequence_summary; each step **bespoke** (named assets, **causal** timing); must feel **designed for this account**, not a rotated template.
+Prompt 38 + **49** + **57** + **58** + **69** + **89**: 3 steps — **value-driven + creative**; at least one **pure generosity** touch; **different opening word** each step; varied channel; realistic spacing; tie to objections; **zero** filler recycled from qual/research; **zero** system/LLM/API leakage. **Prompt 49:** no **5+ word copy** from research exec/ICP/news, qual **bant_summary**, or **messaging_angles** — paraphrase into **fresh cadence**. **Prompt 57:** **warm_relationship_builder** → nurture must **build relationship** — helpful, **unscripted** rhythm; **never** "Day N: pitch" cadence. **Prompt 58:** each **content_asset_suggestion** = **named, specific artifact** for **this** account’s motion — no generic "case study" / "resource" alone. **Prompt 69:** **Elite cadence** — **strategic arc** in sequence_summary; each step **bespoke** (named assets, **causal** timing); must feel **designed for this account**, not a rotated template. **Prompt 89:** optional **meeting_scheduling_hint** and **meeting_time_suggestions** only when a meeting follow-up fits the arc; may refine qual slots without copying **next_best_action** verbatim.
 
 **MANDATORY:** sequence_summary + every step's summary, value_add_idea, content_asset_suggestion, and timing_rationale must **sound unmistakably like SDR_VOICE_PRESET** above. If preset is data_driven_analyst, include **concrete metric/benchmark/ROI hooks** where honest. If warm_relationship_builder, **empathetic conversational** cadence — **consultative friend**, not drip automation. If bold_challenger, **professional tension**. If consultative_enterprise, **strategic long-horizon** advisor tone. Default: effortless human Slack-to-colleague clarity.`;
 

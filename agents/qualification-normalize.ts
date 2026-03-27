@@ -1,9 +1,11 @@
 import type { Lead } from "@/agents/types";
 import {
+  type MeetingTimeSuggestion,
   type QualificationAgentResult,
   type QualificationObjection,
   qualificationAgentSchema,
   type QualificationAgentLlmResult,
+  meetingTimeSuggestionSchema,
 } from "@/agents/types";
 
 const OBJ_MIN = 15;
@@ -64,6 +66,33 @@ const STOCK_OBJECTIONS: QualificationObjection[] = [
 
 function objectionSignature(o: QualificationObjection): string {
   return `${o.objection.slice(0, 72)}|${o.reasoning.slice(0, 48)}`.toLowerCase();
+}
+
+function sanitizeMeetingSuggestions(raw: unknown): MeetingTimeSuggestion[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const out: MeetingTimeSuggestion[] = [];
+  for (const row of raw.slice(0, 5)) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+    const r = row as Record<string, unknown>;
+    const parsed = meetingTimeSuggestionSchema.safeParse({
+      label: r.label,
+      start_iso: r.start_iso,
+      end_iso: r.end_iso,
+      timezone_hint: r.timezone_hint,
+      rationale: r.rationale,
+    });
+    if (parsed.success) out.push(parsed.data);
+  }
+  return out.length ? out : undefined;
+}
+
+function sanitizeResponsePatternHint(
+  raw: unknown,
+): QualificationAgentResult["response_pattern_hint"] {
+  if (raw === "morning_preferred" || raw === "async_heavy" || raw === "evening_ok" || raw === "unknown") {
+    return raw;
+  }
+  return undefined;
 }
 
 function dedupeObjections(rows: QualificationObjection[]): QualificationObjection[] {
@@ -180,11 +209,20 @@ export function normalizeQualificationLlmToCanonical(
     NBA_MAX,
   );
 
+  const meeting_time_suggestions = sanitizeMeetingSuggestions(
+    (raw as { meeting_time_suggestions?: unknown }).meeting_time_suggestions,
+  );
+  const response_pattern_hint = sanitizeResponsePatternHint(
+    (raw as { response_pattern_hint?: unknown }).response_pattern_hint,
+  );
+
   const draft: QualificationAgentResult = {
     score,
     top_objections: objections,
     bant_summary: bant,
     next_best_action: nba,
+    ...(meeting_time_suggestions ? { meeting_time_suggestions } : {}),
+    ...(response_pattern_hint ? { response_pattern_hint } : {}),
   };
 
   const parsed = qualificationAgentSchema.safeParse(draft);

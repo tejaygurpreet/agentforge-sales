@@ -11,8 +11,10 @@ import type {
   Lead,
   OutreachDraft,
   QualificationAgentResult,
+  ResearchOutput,
   SdrVoiceTone,
 } from "@/agents/types";
+import { buildMeetingSchedulingPromptBlock } from "@/lib/agents/qualification_node";
 import { qualificationAgentLlmSchema } from "@/agents/types";
 import {
   invokeWithGroqRateLimitResilience,
@@ -43,6 +45,10 @@ export async function runQualificationAgent(
     brandDisplayName?: string;
     /** Prompt 83 — phrases from transcribed calls in this workspace. */
     livingObjectionLibraryContext?: string;
+    /** Prompt 89 — research JSON for timezone / scheduling hints. */
+    researchOutput?: ResearchOutput | null;
+    /** Prompt 89 — outreach excerpt for reply-pattern inference. */
+    outreachEmailExcerpt?: string | null;
   },
 ): Promise<{
   result: QualificationAgentResult;
@@ -69,6 +75,12 @@ export async function runQualificationAgent(
     opts?.livingObjectionLibraryContext?.trim() ||
     "(no prior transcribed-call objections for this workspace yet.)";
 
+  const meetingBlock = buildMeetingSchedulingPromptBlock(
+    lead,
+    opts?.researchOutput ?? undefined,
+    opts?.outreachEmailExcerpt ?? undefined,
+  );
+
   const human = `=== ACTIVE_CAMPAIGN_VOICE (graph → qualification_node) ===
 sdrVoice: ${voice} (${voiceLineLabel})
 
@@ -76,6 +88,8 @@ LEAD: ${JSON.stringify(lead)}
 ANCHOR: ${scoringAnchor}
 RESEARCH_JSON: ${pipelineContext}
 ${objectionLib}
+${meetingBlock}
+
 SDR_VOICE: ${voice} — ${voiceHint}
 
 PLAYBOOK_VOICE (apply to bant_summary + next_best_action only; objections stay buyer-voice):

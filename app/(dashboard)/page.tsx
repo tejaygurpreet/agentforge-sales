@@ -1,7 +1,9 @@
 import {
+  getCalendarConnectionStatusAction,
   getDashboardAnalytics,
   getDeliverabilitySuiteAction,
   getWorkspaceMembersAction,
+  listCampaignSequencesAction,
   listCampaignTemplatesAction,
   listCampaignThreads,
   listCustomVoicesAction,
@@ -15,7 +17,12 @@ import { buildDynamicFromEmail } from "@/lib/resend";
 import { createServerSupabaseClient, getServiceRoleSupabaseOrNull } from "@/lib/supabase-server";
 import { ensurePersonalWorkspaceMembership, resolveWorkspaceContext } from "@/lib/workspace";
 import { fetchWhiteLabelSettings } from "@/lib/white-label";
-import type { CampaignTemplateRow, CustomVoiceRow, WhiteLabelClientSettingsDTO } from "@/types";
+import type {
+  CampaignSequenceRow,
+  CampaignTemplateRow,
+  CustomVoiceRow,
+  WhiteLabelClientSettingsDTO,
+} from "@/types";
 
 /** Server actions / Supabase — not compatible with static generation at /. */
 export const dynamic = "force-dynamic";
@@ -48,6 +55,12 @@ export const dynamic = "force-dynamic";
  *
  * Prompt 87 — Pipeline forecast cards + trend on Analytics (`getDashboardAnalytics`, `lib/forecast.ts`,
  * optional `campaigns.predicted_revenue` / `win_probability` from `supabase/forecast_p87.sql`).
+ *
+ * Prompt 88 — `campaign_sequences` multi-channel playbooks (`listCampaignSequencesAction`); SQL:
+ * `supabase/campaign_sequences_p88.sql`.
+ *
+ * Prompt 89 — Calendar OAuth + meeting proposals (`getCalendarConnectionStatusAction`); SQL:
+ * `supabase/user_calendar_connections_p89.sql`.
  */
 export default async function DashboardPage() {
   const envWarnings = getDashboardEnvWarnings();
@@ -124,12 +137,15 @@ export default async function DashboardPage() {
     ]);
 
   let campaignTemplates: CampaignTemplateRow[] = [];
+  let campaignSequences: CampaignSequenceRow[] = [];
   if (user) {
     campaignTemplates = await listCampaignTemplatesAction();
+    campaignSequences = await listCampaignSequencesAction();
   }
 
   const scheduledReports = user ? await listScheduledReportsAction() : [];
   const reportRecipientEmail = user?.email ?? "";
+  const calendarStatus = user ? await getCalendarConnectionStatusAction() : { google: false, microsoft: false };
 
   return (
     <DashboardHomeClient
@@ -147,8 +163,10 @@ export default async function DashboardPage() {
       objectionLibraryTranscripts={objectionLibrary.transcripts}
       objectionLibraryEntries={objectionLibrary.objections}
       campaignTemplates={campaignTemplates}
+      campaignSequences={campaignSequences}
       scheduledReports={scheduledReports}
       reportRecipientEmail={reportRecipientEmail}
+      calendarStatus={calendarStatus}
     />
   );
 }

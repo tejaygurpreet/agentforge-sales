@@ -4,6 +4,7 @@ import type {
   CampaignClientSnapshot,
   CampaignFinalStatus,
   CampaignLiveSignal,
+  CampaignSequencePlan,
   CustomVoiceProfile,
   Lead,
   LeadEnrichmentPayload,
@@ -14,6 +15,7 @@ import type {
   ResearchOutput,
   SdrVoiceTone,
 } from "@/agents/types";
+import { computeSequenceRunProgress } from "@/lib/sequences";
 import { runLeadEnrichmentStep } from "@/lib/agents/research_node";
 import type { WebResearchDigest } from "@/lib/web-research";
 import {
@@ -42,6 +44,7 @@ import { saveCampaign } from "@/lib/save-campaign";
 import { persistCampaignSignalsToSupabase } from "@/lib/campaign-signals-db";
 import { fetchLiveSignalsAfterResearch } from "@/lib/live-signals";
 import { loadLivingObjectionContextForWorkspace } from "@/lib/agents/qualification_node";
+import { mergeQualMeetingIntoNurtureOutput } from "@/lib/agents/nurture_node";
 
 /** Just under `START_CAMPAIGN_MAX_MS` (90s) in actions.ts. */
 const GRAPH_INVOKE_MAX_MS = 89_000;
@@ -261,6 +264,11 @@ const GraphState = Annotation.Root({
     reducer: (_c, n) => n,
     default: () => "",
   }),
+  /** Prompt 88 — optional multi-channel playbook (display + progress; graph edges unchanged). */
+  sequence_plan: Annotation<CampaignSequencePlan | undefined>({
+    reducer: (c, n) => (n !== undefined ? n : c),
+    default: () => undefined,
+  }),
 });
 
 export type SalesGraphState = typeof GraphState.State;
@@ -268,7 +276,7 @@ export type SalesGraphState = typeof GraphState.State;
 export function serializeCampaignStateForClient(
   state: SalesGraphState,
 ): CampaignClientSnapshot {
-  return {
+  const snap: CampaignClientSnapshot = {
     lead: state.lead,
     messages: state.messages,
     current_agent: state.current_agent,
@@ -288,6 +296,11 @@ export function serializeCampaignStateForClient(
     brand_display_name: state.brand_display_name ?? null,
     lead_enrichment_preview: state.lead_enrichment_preview ?? null,
   };
+  if (state.sequence_plan) {
+    snap.sequence_plan = state.sequence_plan;
+    snap.sequence_progress = computeSequenceRunProgress(state.sequence_plan, state);
+  }
+  return snap;
 }
 
 function buildSalesGraph() {
@@ -742,6 +755,8 @@ async function qualificationNode(
           customVoice: state.custom_voice_profile,
           brandDisplayName: state.brand_display_name,
           livingObjectionLibraryContext,
+          researchOutput: state.research_output,
+          outreachEmailExcerpt: outreach?.email_body?.slice(0, 2000) ?? null,
         }),
         QUALIFICATION_AGENT_MAX_MS,
         "qualification_agent",
@@ -892,7 +907,7 @@ async function nurtureNode(
       NURTURE_AGENT_MAX_MS,
       "nurture_agent",
     );
-    nurture_output = n.output;
+    nurture_output = mergeQualMeetingIntoNurtureOutput(n.output, state.qualification_detail);
     nurtureGroqMeta = n.groqInvokeMeta;
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -1005,6 +1020,8 @@ export interface RunCampaignInput {
   template_id?: string | null;
   /** Prompt 85 — appended to lead.notes (and stored on `campaigns.ab_voice_note`). */
   template_voice_note?: string | null;
+  /** Prompt 88 — saved sequence playbook for this run (optional). */
+  sequence_plan?: CampaignSequencePlan | null;
 }
 
 function buildLeadWithTemplateAbNote(input: RunCampaignInput): Lead {
@@ -1041,6 +1058,7 @@ function initialCampaignGraphState(input: RunCampaignInput): SalesGraphState {
     lead_enrichment_preview: undefined,
     prefetched_web_digest: undefined,
     workspace_id: input.workspace_id?.trim() || input.user_id,
+    sequence_plan: input.sequence_plan ?? undefined,
   };
 }
 
@@ -1082,6 +1100,7 @@ export async function runCampaignGraph(
       lead_enrichment_preview: undefined,
       prefetched_web_digest: undefined,
       workspace_id: input.workspace_id?.trim() || input.user_id,
+      sequence_plan: input.sequence_plan ?? undefined,
     };
     await mergeDashboardState(input.thread_id, input.user_id, {
       current_agent: "research_node",
@@ -1269,6 +1288,7 @@ export const runSalesGraph = async (input: {
   ab_variant?: "A" | "B" | null;
   template_id?: string | null;
   template_voice_note?: string | null;
+  sequence_plan?: CampaignSequencePlan | null;
 }) =>
   runCampaignGraph({
     lead: input.lead,
@@ -1281,4 +1301,5 @@ export const runSalesGraph = async (input: {
     ab_variant: input.ab_variant,
     template_id: input.template_id,
     template_voice_note: input.template_voice_note,
+    sequence_plan: input.sequence_plan,
   });

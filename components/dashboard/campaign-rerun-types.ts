@@ -7,4 +7,6 @@ export type CampaignRerunPayload = {
   autoStart: boolean;
   /** Prompt 85 — persisted on next run via `startCampaignWithOptionsAction`. */
   source_template_id?: string;
+  /** Prompt 88 — optional saved sequence for the next run. */
+  source_sequence_id?: string;
 };
