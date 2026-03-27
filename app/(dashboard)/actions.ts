@@ -28,18 +28,25 @@ import {
   type ReplyAnalysisWithLabels,
 } from "@/lib/reply-analyzer";
 import type {
+  AbTestComparisonRow,
+  CampaignTemplateRow,
   CampaignThreadRow,
   CustomVoiceRow,
   DashboardAnalyticsSummary,
   DeliverabilitySuitePayload,
+  ForecastTrendPoint,
   LiveSignalFeedItem,
   PersistedCampaignRow,
   PersistedReplyAnalysisRow,
   ProspectReplyAnalysisPayload,
+  ReportFiltersPayload,
+  ScheduledReportRow,
   WorkspaceMemberDTO,
   WorkspaceMemberRole,
 } from "@/types";
 import { computeCampaignStrength } from "@/lib/campaign-strength";
+import { mergeTemplatePayloadIntoLeadForm } from "@/lib/campaign-templates-merge";
+import { computeForecastFromSnapshot } from "@/lib/forecast";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { withTimeout } from "@/lib/async-timeout";
@@ -67,6 +74,18 @@ import {
   notifyNewReplySavedPush,
 } from "@/lib/push";
 import type { CallTranscriptRow, ObjectionLibraryEntryRow } from "@/types";
+import {
+  advanceScheduledNextRun,
+  buildAggregatePdfBuffer,
+  buildCsvReport,
+  buildReportMetrics,
+  buildScheduledReportEmailHtml,
+  computeNextRunUtc,
+  defaultReportFilters,
+  fetchReportBundle,
+  parseReportFilters,
+  type ReportMetricsSummary,
+} from "@/lib/reports";
 
 /** Prompt 18: hard cap so the dashboard never spins forever (must be ≥ `GRAPH_INVOKE_MAX_MS` in graph). */
 const START_CAMPAIGN_MAX_MS = 90_000;
@@ -435,6 +454,32 @@ async function queryReplyRowsForAnalytics(
   return [];
 }
 
+function buildReplyInterestByThreadMap(rows: Record<string, unknown>[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const row of rows) {
+    const tid = typeof row.thread_id === "string" ? row.thread_id : null;
+    if (!tid) continue;
+    const fromCol = coerceInterestScoreColumn(row.interest_score, NaN);
+    let interest = Number.isNaN(fromCol) ? 5 : fromCol;
+    const a = row.analysis;
+    if (isRecord(a) && typeof a.interest_level_0_to_10 === "number") {
+      interest = Math.min(10, Math.max(0, Math.round(a.interest_level_0_to_10)));
+    }
+    const prev = map.get(tid);
+    if (prev == null || interest > prev) map.set(tid, interest);
+  }
+  return map;
+}
+
+function mondayWeekStartUtc(isoDate: string): string {
+  const d = new Date(isoDate);
+  if (Number.isNaN(d.getTime())) return isoDate.slice(0, 10);
+  const day = d.getUTCDay();
+  const diff = (day + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - diff);
+  return d.toISOString().slice(0, 10);
+}
+
 function voiceLabelFromCheckpointLead(lead: {
   sdr_voice_tone?: string;
   custom_voice_id?: string;
@@ -490,6 +535,25 @@ const incomingLeadSchema = z.object({
     .transform((v) => (v === undefined || v === "" ? undefined : v)),
   /** Carried from snapshots / reruns; optional on fresh submits. */
   custom_voice_name: z.string().max(200).optional(),
+});
+
+const campaignRunOptionsSchema = z.object({
+  ab_test_id: z.string().uuid().optional(),
+  ab_variant: z.enum(["A", "B"]).optional(),
+  template_id: z.string().uuid().optional(),
+  template_voice_note: z.string().max(2000).optional(),
+});
+
+const startCampaignWithOptionsPayloadSchema = z.object({
+  lead: incomingLeadSchema,
+  options: campaignRunOptionsSchema.optional(),
+});
+
+const abVoicePairSchema = z.object({
+  lead: incomingLeadSchema,
+  voice_a: z.enum(SDR_VOICE_TONE_VALUES),
+  voice_b: z.enum(SDR_VOICE_TONE_VALUES),
+  voice_b_note: z.string().max(1200).optional(),
 });
 
 export type StartCampaignResult =
@@ -704,53 +768,65 @@ export async function updateWorkspaceMemberRoleAction(
   return { ok: true };
 }
 
+type WorkspaceCtx = Awaited<ReturnType<typeof resolveWorkspaceContext>>;
+
 /**
- * Core campaign runner: new `thread_id` per invocation, full graph, persist + revalidate.
- * Prefer {@link startCampaignAction} from Client Components so imports read as an explicit server action.
+ * Prompt 85 — shared graph invocation (templates + A/B meta optional).
  */
-export async function startCampaign(
-  raw: z.input<typeof incomingLeadSchema>,
+async function runSingleCampaignPipeline(
+  supabase: SupabaseClient,
+  user: { id: string; email?: string | null; user_metadata?: Record<string, unknown> },
+  ws: WorkspaceCtx,
+  parsedLead: z.infer<typeof incomingLeadSchema>,
+  options?: z.infer<typeof campaignRunOptionsSchema> | null,
 ): Promise<StartCampaignResult> {
-  const parsed = incomingLeadSchema.safeParse(raw);
-  if (!parsed.success) {
-    const msg = parsed.error.flatten().fieldErrors;
-    return {
-      ok: false,
-      error: Object.values(msg)
-        .flat()
-        .filter(Boolean)
-        .join(", "),
-    };
-  }
+  let formLead: LeadFormInput = {
+    name: parsedLead.name,
+    email: parsedLead.email,
+    company: parsedLead.company,
+    linkedin_url: parsedLead.linkedin_url ?? "",
+    phone: parsedLead.phone,
+    notes: parsedLead.notes ?? "",
+    status: parsedLead.status,
+    sdr_voice_tone: parsedLead.sdr_voice_tone,
+    custom_voice_id: parsedLead.custom_voice_id,
+    custom_voice_name: parsedLead.custom_voice_name,
+  };
 
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return { ok: false, error: "Unauthorized" };
+  const tid = options?.template_id?.trim();
+  if (tid) {
+    const { data: tmpl } = await supabase
+      .from("campaign_templates")
+      .select("payload, workspace_id")
+      .eq("id", tid)
+      .maybeSingle();
+    const tw = tmpl as { workspace_id?: string; payload?: unknown } | null;
+    if (
+      tw?.workspace_id === ws.workspaceId &&
+      tw.payload &&
+      typeof tw.payload === "object" &&
+      !Array.isArray(tw.payload)
+    ) {
+      formLead = mergeTemplatePayloadIntoLeadForm(
+        formLead,
+        tw.payload as Record<string, unknown>,
+      );
+    }
   }
-  await ensurePersonalWorkspaceMembership(supabase, user.id);
-  const ws = await resolveWorkspaceContext(supabase, {
-    id: user.id,
-    email: user.email ?? null,
-  });
 
   let custom_voice_profile: CustomVoiceProfile | undefined;
   let lead: Lead = {
-    id: parsed.data.id ?? randomUUID(),
-    name: parsed.data.name,
-    email: parsed.data.email,
-    company: parsed.data.company,
-    linkedin_url: parsed.data.linkedin_url,
-    phone: parsed.data.phone,
-    notes: parsed.data.notes,
-    status: parsed.data.status,
-    sdr_voice_tone: parsed.data.sdr_voice_tone,
-    custom_voice_id: parsed.data.custom_voice_id,
-    custom_voice_name: parsed.data.custom_voice_name,
+    id: parsedLead.id ?? randomUUID(),
+    name: formLead.name,
+    email: formLead.email,
+    company: formLead.company,
+    linkedin_url: formLead.linkedin_url || undefined,
+    phone: formLead.phone,
+    notes: formLead.notes,
+    status: formLead.status ?? "new",
+    sdr_voice_tone: formLead.sdr_voice_tone,
+    custom_voice_id: formLead.custom_voice_id,
+    custom_voice_name: formLead.custom_voice_name,
   };
 
   if (lead.custom_voice_id) {
@@ -791,6 +867,10 @@ export async function startCampaign(
         sender_signoff_name: senderSignoffName || undefined,
         custom_voice_profile,
         brand_display_name: wl.brandSignoff,
+        ab_test_id: options?.ab_test_id,
+        ab_variant: options?.ab_variant,
+        template_id: options?.template_id,
+        template_voice_note: options?.template_voice_note,
       }),
       START_CAMPAIGN_MAX_MS,
       "startCampaign.runCampaignGraph",
@@ -816,6 +896,322 @@ export async function startCampaign(
     console.error("[AgentForge] startCampaign", e);
     return { ok: false, error: humanizeServerFailureMessage(message) };
   }
+}
+
+/**
+ * Core campaign runner: new `thread_id` per invocation, full graph, persist + revalidate.
+ * Prefer {@link startCampaignAction} from Client Components so imports read as an explicit server action.
+ */
+export async function startCampaign(
+  raw: z.input<typeof incomingLeadSchema>,
+): Promise<StartCampaignResult> {
+  const parsed = incomingLeadSchema.safeParse(raw);
+  if (!parsed.success) {
+    const msg = parsed.error.flatten().fieldErrors;
+    return {
+      ok: false,
+      error: Object.values(msg)
+        .flat()
+        .filter(Boolean)
+        .join(", "),
+    };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+
+  return runSingleCampaignPipeline(supabase, user, ws, parsed.data, null);
+}
+
+/**
+ * Prompt 85 — start campaign with template merge + optional A/B tracking fields.
+ */
+export async function startCampaignWithOptionsAction(
+  raw: z.input<typeof startCampaignWithOptionsPayloadSchema>,
+): Promise<StartCampaignResult> {
+  const parsed = startCampaignWithOptionsPayloadSchema.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: Object.values(parsed.error.flatten().fieldErrors)
+        .flat()
+        .filter(Boolean)
+        .join(", "),
+    };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  return runSingleCampaignPipeline(supabase, user, ws, parsed.data.lead, parsed.data.options);
+}
+
+export type AbVoicePairResult =
+  | {
+      ok: true;
+      ab_test_id: string;
+      thread_id_a: string;
+      thread_id_b: string;
+      message: string;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Prompt 85 — run the same lead through two preset SDR voices (sequential full pipelines).
+ */
+export async function startAbVoicePairAction(
+  raw: z.input<typeof abVoicePairSchema>,
+): Promise<AbVoicePairResult> {
+  const parsed = abVoicePairSchema.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: Object.values(parsed.error.flatten().fieldErrors)
+        .flat()
+        .filter(Boolean)
+        .join(", "),
+    };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+
+  const ab_test_id = randomUUID();
+  const base = parsed.data.lead;
+  const leadA: z.infer<typeof incomingLeadSchema> = {
+    ...base,
+    sdr_voice_tone: parsed.data.voice_a,
+    custom_voice_id: undefined,
+    custom_voice_name: undefined,
+  };
+  const leadB: z.infer<typeof incomingLeadSchema> = {
+    ...base,
+    sdr_voice_tone: parsed.data.voice_b,
+    custom_voice_id: undefined,
+    custom_voice_name: undefined,
+  };
+
+  const resA = await runSingleCampaignPipeline(supabase, user, ws, leadA, {
+    ab_test_id,
+    ab_variant: "A",
+  });
+  if (!resA.ok) {
+    return { ok: false, error: resA.error };
+  }
+
+  const noteB = parsed.data.voice_b_note?.trim();
+  const resB = await runSingleCampaignPipeline(supabase, user, ws, leadB, {
+    ab_test_id,
+    ab_variant: "B",
+    template_voice_note: noteB || undefined,
+  });
+  if (!resB.ok) {
+    return { ok: false, error: `Variant B failed: ${resB.error}` };
+  }
+
+  return {
+    ok: true,
+    ab_test_id,
+    thread_id_a: resA.thread_id,
+    thread_id_b: resB.thread_id,
+    message: "A/B voice test completed — both variants saved. Compare in Analytics.",
+  };
+}
+
+const saveTemplateSchema = z.object({
+  campaign_id: z.string().uuid(),
+  name: z.string().min(1).max(200),
+  description: z.string().max(500).optional(),
+});
+
+const deleteTemplateSchema = z.object({
+  id: z.string().uuid(),
+});
+
+/**
+ * Prompt 85 — persist voice/notes defaults from a completed campaign row.
+ */
+export async function saveCampaignAsTemplateAction(
+  raw: z.input<typeof saveTemplateSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = saveTemplateSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid template payload." };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  const memberIds = ws.memberUserIds;
+
+  const { data: row, error: qErr } = await supabase
+    .from("campaigns")
+    .select("id, results, user_id")
+    .eq("id", parsed.data.campaign_id)
+    .maybeSingle();
+
+  if (qErr || !row) {
+    return { ok: false, error: "Campaign not found." };
+  }
+  const owner = String((row as { user_id?: unknown }).user_id ?? "");
+  if (!memberIds.includes(owner)) {
+    return { ok: false, error: "Campaign not found." };
+  }
+
+  const snap = snapshotFromPersistedResults((row as { results?: unknown }).results);
+  const l = snap?.lead;
+  if (!l) {
+    return { ok: false, error: "Campaign snapshot has no lead to template." };
+  }
+
+  const payload: Record<string, unknown> = {
+    sdr_voice_tone: l.sdr_voice_tone,
+    notes: l.notes ?? "",
+    linkedin_url: l.linkedin_url ?? "",
+    phone: l.phone ?? "",
+    custom_voice_id: l.custom_voice_id,
+    custom_voice_name: l.custom_voice_name,
+  };
+
+  const { error: insErr } = await supabase.from("campaign_templates").insert({
+    workspace_id: ws.workspaceId,
+    user_id: user.id,
+    name: parsed.data.name.trim(),
+    description: parsed.data.description?.trim() || null,
+    payload,
+    source_campaign_id: parsed.data.campaign_id,
+  });
+
+  if (insErr) {
+    console.error("[AgentForge] saveCampaignAsTemplate", insErr.message);
+    return {
+      ok: false,
+      error: insErr.message.includes("campaign_templates")
+        ? "Templates table missing — run supabase/campaign_templates_ab_p85.sql."
+        : insErr.message,
+    };
+  }
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/** Prompt 85 — list templates for the active workspace. */
+export async function listCampaignTemplatesAction(): Promise<CampaignTemplateRow[]> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return [];
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+
+  const { data, error } = await supabase
+    .from("campaign_templates")
+    .select("id, name, description, payload, created_at")
+    .eq("workspace_id", ws.workspaceId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) {
+    if (!isMissingColumnOrSchemaError(error.message)) {
+      console.warn("[AgentForge] listCampaignTemplates", error.message);
+    }
+    return [];
+  }
+
+  return (data ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      id: String(row.id ?? ""),
+      name: String(row.name ?? ""),
+      description: row.description != null ? String(row.description) : null,
+      created_at: String(row.created_at ?? ""),
+      payload:
+        row.payload && typeof row.payload === "object" && !Array.isArray(row.payload)
+          ? (row.payload as Record<string, unknown>)
+          : {},
+    };
+  });
+}
+
+export async function deleteCampaignTemplateAction(
+  raw: z.input<typeof deleteTemplateSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = deleteTemplateSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid id." };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+
+  const { error } = await supabase
+    .from("campaign_templates")
+    .delete()
+    .eq("id", parsed.data.id)
+    .eq("workspace_id", ws.workspaceId);
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  revalidatePath("/");
+  return { ok: true };
 }
 
 /**
@@ -1720,6 +2116,52 @@ export async function listProspectReplies(): Promise<PersistedReplyAnalysisRow[]
   return out;
 }
 
+function buildAbTestComparisonsFromRows(
+  rows: Record<string, unknown>[] | null | undefined,
+): AbTestComparisonRow[] {
+  if (!rows?.length) return [];
+  const map = new Map<string, { A?: Record<string, unknown>; B?: Record<string, unknown> }>();
+  for (const r of rows) {
+    const id = typeof r.ab_test_id === "string" ? r.ab_test_id : "";
+    const v = String(r.ab_variant || "").toUpperCase();
+    if (!id || (v !== "A" && v !== "B")) continue;
+    const cur = map.get(id) ?? {};
+    if (v === "A") cur.A = r;
+    else cur.B = r;
+    map.set(id, cur);
+  }
+  const out: AbTestComparisonRow[] = [];
+  for (const [abId, pair] of map) {
+    if (!pair.A || !pair.B) continue;
+    const snapA = snapshotFromPersistedResults(pair.A.results);
+    const snapB = snapshotFromPersistedResults(pair.B.results);
+    if (!snapA || !snapB) continue;
+    const ca = computeCampaignStrength(snapA);
+    const cb = computeCampaignStrength(snapB);
+    out.push({
+      ab_test_id: abId,
+      lead_name: String(pair.A.lead_name ?? pair.B.lead_name ?? "Lead"),
+      completed_at: String(pair.B.completed_at ?? pair.A.completed_at ?? ""),
+      variantA: {
+        thread_id: String(pair.A.thread_id ?? ""),
+        composite: ca.composite,
+        qual: ca.qual,
+        icp: ca.icp,
+        voice_label: snapA.lead ? voiceLabelForLead(snapA.lead) : "—",
+      },
+      variantB: {
+        thread_id: String(pair.B.thread_id ?? ""),
+        composite: cb.composite,
+        qual: cb.qual,
+        icp: cb.icp,
+        voice_label: snapB.lead ? voiceLabelForLead(snapB.lead) : "—",
+      },
+    });
+  }
+  out.sort((a, b) => b.completed_at.localeCompare(a.completed_at));
+  return out.slice(0, 24);
+}
+
 const EMPTY_ANALYTICS: DashboardAnalyticsSummary = {
   campaignCount: 0,
   avgCompositeScore: null,
@@ -1739,6 +2181,12 @@ const EMPTY_ANALYTICS: DashboardAnalyticsSummary = {
   warmupEmailsLast7Days: 0,
   avgWarmupPlacementScore: null,
   warmupEnabled: false,
+  abTestComparisons: [],
+  forecastWeightedPipelineUsd: 0,
+  forecastTotalPipelineUsd: 0,
+  forecastAvgWinProbability: null,
+  forecastDealCount: 0,
+  forecastTrend: [],
 };
 
 /**
@@ -1768,14 +2216,28 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
   const isoSeven = sevenAgo.toISOString().slice(0, 10);
   const isoToday = today.toISOString().slice(0, 10);
 
-  const [campRes, replyRows, liveSignalsFeed, spamRowsRes, prefsRes, warmup7Res] =
+  let campRes = await campaignsReader
+    .from("campaigns")
+    .select("results, thread_id, completed_at, predicted_revenue, win_probability")
+    .in("user_id", memberIds)
+    .limit(500);
+  if (campRes.error && isMissingColumnOrSchemaError(campRes.error.message)) {
+    campRes = (await campaignsReader
+      .from("campaigns")
+      .select("results, thread_id, completed_at")
+      .in("user_id", memberIds)
+      .limit(500)) as typeof campRes;
+  }
+
+  const [replyRows, replyThreadRes, liveSignalsFeed, spamRowsRes, prefsRes, warmup7Res, abTestRes] =
     await Promise.all([
-      campaignsReader
-        .from("campaigns")
-        .select("results")
-        .in("user_id", memberIds)
-        .limit(500),
       queryReplyRowsForAnalytics(campaignsReader, memberIds),
+      campaignsReader
+        .from("reply_analyses")
+        .select("thread_id, interest_score, analysis")
+        .in("user_id", memberIds)
+        .not("thread_id", "is", null)
+        .limit(3000),
       queryCampaignSignalsFeed(campaignsReader, memberIds),
       campaignsReader
         .from("campaigns")
@@ -1793,6 +2255,13 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
         .in("user_id", memberIds)
         .gte("log_date", isoSeven)
         .lte("log_date", isoToday),
+      campaignsReader
+        .from("campaigns")
+        .select("ab_test_id, ab_variant, thread_id, lead_name, results, completed_at")
+        .in("user_id", memberIds)
+        .not("ab_test_id", "is", null)
+        .order("completed_at", { ascending: false })
+        .limit(120),
     ]);
 
   if (campRes.error) {
@@ -1807,6 +2276,20 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
   if (warmup7Res.error) {
     console.warn("[AgentForge] getDashboardAnalytics warmup_logs", warmup7Res.error.message);
   }
+  if (abTestRes.error && !isMissingColumnOrSchemaError(abTestRes.error.message)) {
+    console.warn("[AgentForge] getDashboardAnalytics ab_tests", abTestRes.error.message);
+  }
+  if (replyThreadRes.error && !isMissingColumnOrSchemaError(replyThreadRes.error.message)) {
+    console.warn("[AgentForge] getDashboardAnalytics reply thread map", replyThreadRes.error.message);
+  }
+
+  const abTestComparisons = abTestRes.error
+    ? []
+    : buildAbTestComparisonsFromRows((abTestRes.data ?? []) as Record<string, unknown>[]);
+
+  const interestByThread = buildReplyInterestByThreadMap(
+    replyThreadRes.error ? [] : ((replyThreadRes.data ?? []) as Record<string, unknown>[]),
+  );
 
   const spamScores: number[] = [];
   for (const row of spamRowsRes.data ?? []) {
@@ -1842,6 +2325,12 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
 
   const composites: number[] = [];
   const buckets = [0, 0, 0, 0];
+  let forecastWeightedPipelineUsd = 0;
+  let forecastTotalPipelineUsd = 0;
+  let forecastWinSum = 0;
+  let forecastDealCount = 0;
+  const weekMap = new Map<string, { weighted: number; count: number }>();
+
   for (const row of campRes.data ?? []) {
     const snap = snapshotFromPersistedResults(
       (row as { results?: unknown }).results,
@@ -1853,7 +2342,61 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
     else if (c < 60) buckets[1] += 1;
     else if (c < 80) buckets[2] += 1;
     else buckets[3] += 1;
+
+    const r = row as {
+      thread_id?: unknown;
+      completed_at?: unknown;
+      predicted_revenue?: unknown;
+      win_probability?: unknown;
+    };
+    const tid = typeof r.thread_id === "string" ? r.thread_id : "";
+    const replyInt = tid ? interestByThread.get(tid) : undefined;
+    const pr = r.predicted_revenue;
+    const wp = r.win_probability;
+    let winP: number;
+    let rev: number;
+    if (
+      typeof pr === "number" &&
+      Number.isFinite(pr) &&
+      typeof wp === "number" &&
+      Number.isFinite(wp)
+    ) {
+      winP = Math.min(100, Math.max(0, wp));
+      rev = Math.max(0, pr);
+    } else {
+      const fc = computeForecastFromSnapshot(snap, { replyInterest0to10: replyInt ?? null });
+      winP = fc.winProbability;
+      rev = fc.predictedRevenueUsd;
+    }
+    forecastWeightedPipelineUsd += rev * (winP / 100);
+    forecastTotalPipelineUsd += rev;
+    forecastWinSum += winP;
+    forecastDealCount += 1;
+
+    if (typeof r.completed_at === "string") {
+      const wk = mondayWeekStartUtc(r.completed_at);
+      const prev = weekMap.get(wk) ?? { weighted: 0, count: 0 };
+      prev.weighted += rev * (winP / 100);
+      prev.count += 1;
+      weekMap.set(wk, prev);
+    }
   }
+
+  const forecastAvgWinProbability =
+    forecastDealCount > 0 ? Math.round(forecastWinSum / forecastDealCount) : null;
+
+  const sortedWeeks = [...weekMap.keys()].sort();
+  const lastWeeks = sortedWeeks.slice(-8);
+  const forecastTrend: ForecastTrendPoint[] = lastWeeks.map((weekStart) => {
+    const v = weekMap.get(weekStart)!;
+    const d = new Date(`${weekStart}T00:00:00.000Z`);
+    return {
+      weekStart,
+      label: d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }),
+      weightedPipelineUsd: Math.round(v.weighted),
+      dealCount: v.count,
+    };
+  });
 
   const interests: number[] = [];
   for (const row of replyRows) {
@@ -1909,6 +2452,12 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
     warmupEmailsLast7Days,
     avgWarmupPlacementScore,
     warmupEnabled,
+    abTestComparisons,
+    forecastWeightedPipelineUsd: Math.round(forecastWeightedPipelineUsd),
+    forecastTotalPipelineUsd: Math.round(forecastTotalPipelineUsd),
+    forecastAvgWinProbability,
+    forecastDealCount,
+    forecastTrend,
   };
 }
 
@@ -2454,4 +3003,345 @@ export async function deleteCustomVoiceAction(
   }
   revalidatePath("/");
   return { ok: true };
+}
+
+/* ─── Prompt 86 — Advanced reporting & scheduled email reports ─── */
+
+const reportFiltersSchema = z.object({
+  dateFrom: z.string().nullable().optional(),
+  dateTo: z.string().nullable().optional(),
+  voice: z.string().default("all"),
+  memberUserId: z.string().default("all"),
+});
+
+const generateAdvancedReportSchema = z.object({
+  format: z.enum(["pdf", "csv"]),
+  filters: reportFiltersSchema,
+});
+
+export type GenerateAdvancedReportResult =
+  | {
+      ok: true;
+      format: "csv";
+      csv: string;
+      filename: string;
+      metrics: ReportMetricsSummary;
+    }
+  | {
+      ok: true;
+      format: "pdf";
+      pdfBase64: string;
+      filename: string;
+      metrics: ReportMetricsSummary;
+    }
+  | { ok: false; error: string };
+
+export async function generateAdvancedReportAction(
+  raw: z.input<typeof generateAdvancedReportSchema>,
+): Promise<GenerateAdvancedReportResult> {
+  const parsed = generateAdvancedReportSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid report request." };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ctx = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  const memberIds = ctx.memberUserIds;
+  const sr = getServiceRoleSupabaseOrNull();
+  const sb = sr ?? supabase;
+  const filters: ReportFiltersPayload = {
+    ...defaultReportFilters(),
+    ...parseReportFilters(parsed.data.filters),
+  };
+  const bundle = await fetchReportBundle(sb, memberIds, filters);
+  const metrics = buildReportMetrics(bundle);
+  const stamp = new Date().toISOString().slice(0, 10);
+  const base = `agentforge-report-${stamp}`;
+
+  if (parsed.data.format === "csv") {
+    return {
+      ok: true,
+      format: "csv",
+      csv: buildCsvReport(bundle),
+      filename: `${base}.csv`,
+      metrics,
+    };
+  }
+  const wl = await fetchWhiteLabelSettings(supabase, user.id);
+  const title = wl.appName.trim() || "AgentForge";
+  const pdfBuf = buildAggregatePdfBuffer(bundle, metrics, `${title} — Advanced report`);
+  const pdfBase64 = Buffer.from(pdfBuf).toString("base64");
+  return {
+    ok: true,
+    format: "pdf",
+    pdfBase64,
+    filename: `${base}.pdf`,
+    metrics,
+  };
+}
+
+const saveScheduledReportSchema = z.object({
+  recipient_email: z.string().email(),
+  cadence: z.enum(["daily", "weekly"]),
+  hour_utc: z.number().int().min(0).max(23),
+  weekday_utc: z.number().int().min(0).max(6).nullable().optional(),
+  filters: reportFiltersSchema,
+});
+
+export async function listScheduledReportsAction(): Promise<ScheduledReportRow[]> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return [];
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ctx = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+
+  const { data, error } = await supabase
+    .from("scheduled_reports")
+    .select(
+      "id, workspace_id, user_id, recipient_email, cadence, hour_utc, weekday_utc, filters, enabled, last_run_at, next_run_at, created_at",
+    )
+    .eq("workspace_id", ctx.workspaceId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (error) {
+    if (!isMissingColumnOrSchemaError(error.message)) {
+      console.warn("[AgentForge] listScheduledReports", error.message);
+    }
+    return [];
+  }
+
+  return (data ?? []).map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      id: String(r.id ?? ""),
+      workspace_id: String(r.workspace_id ?? ""),
+      user_id: String(r.user_id ?? ""),
+      recipient_email: String(r.recipient_email ?? ""),
+      cadence: r.cadence === "weekly" ? "weekly" : "daily",
+      hour_utc: typeof r.hour_utc === "number" ? r.hour_utc : 0,
+      weekday_utc: typeof r.weekday_utc === "number" ? r.weekday_utc : null,
+      filters: isRecord(r.filters) ? r.filters : {},
+      enabled: Boolean(r.enabled),
+      last_run_at: r.last_run_at != null ? String(r.last_run_at) : null,
+      next_run_at: r.next_run_at != null ? String(r.next_run_at) : null,
+      created_at: String(r.created_at ?? ""),
+    };
+  });
+}
+
+export async function saveScheduledReportAction(
+  raw: z.input<typeof saveScheduledReportSchema>,
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const parsed = saveScheduledReportSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Check schedule fields." };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ctx = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+
+  const filters = parseReportFilters({
+    ...defaultReportFilters(),
+    ...parsed.data.filters,
+  });
+  const next = computeNextRunUtc(
+    parsed.data.cadence,
+    parsed.data.hour_utc,
+    parsed.data.cadence === "weekly" ? (parsed.data.weekday_utc ?? 1) : null,
+  );
+
+  const insertRow = {
+    workspace_id: ctx.workspaceId,
+    user_id: user.id,
+    recipient_email: parsed.data.recipient_email.trim(),
+    cadence: parsed.data.cadence,
+    hour_utc: parsed.data.hour_utc,
+    weekday_utc: parsed.data.cadence === "weekly" ? (parsed.data.weekday_utc ?? 1) : null,
+    filters,
+    enabled: true,
+    next_run_at: next.toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase.from("scheduled_reports").insert(insertRow).select("id").single();
+
+  if (error) {
+    return {
+      ok: false,
+      error: error.message.includes("scheduled_reports")
+        ? "Schedule table missing — run supabase/scheduled_reports_p86.sql."
+        : error.message,
+    };
+  }
+  revalidatePath("/");
+  return { ok: true, id: String((data as { id?: unknown }).id ?? "") };
+}
+
+export async function deleteScheduledReportAction(
+  id: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sid = z.string().uuid().safeParse(id);
+  if (!sid.success) {
+    return { ok: false, error: "Invalid id." };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ctx = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+
+  const { error } = await supabase
+    .from("scheduled_reports")
+    .delete()
+    .eq("id", sid.data)
+    .eq("workspace_id", ctx.workspaceId);
+
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/**
+ * Called by cron — processes due schedules (PDF + metrics email).
+ * Exported for tests; prefer hitting `/api/cron/scheduled-reports`.
+ */
+export async function runScheduledReportsCronJob(): Promise<{ processed: number; errors: string[] }> {
+  const sr = getServiceRoleSupabaseOrNull();
+  if (!sr) {
+    return { processed: 0, errors: ["Service role unavailable"] };
+  }
+
+  const nowIso = new Date().toISOString();
+  const { data: due, error } = await sr
+    .from("scheduled_reports")
+    .select("*")
+    .eq("enabled", true)
+    .lte("next_run_at", nowIso)
+    .limit(25);
+
+  if (error) {
+    if (isMissingColumnOrSchemaError(error.message)) {
+      return { processed: 0, errors: [] };
+    }
+    return { processed: 0, errors: [error.message] };
+  }
+
+  const errors: string[] = [];
+  let processed = 0;
+
+  for (const row of due ?? []) {
+    const r = row as Record<string, unknown>;
+    const id = String(r.id ?? "");
+    const workspaceId = String(r.workspace_id ?? "");
+    const userId = String(r.user_id ?? "");
+    const recipient = String(r.recipient_email ?? "");
+    const cadence = r.cadence === "weekly" ? "weekly" : "daily";
+    const prevNext = String(r.next_run_at ?? nowIso);
+
+    try {
+      const { data: members } = await sr
+        .from("workspace_members")
+        .select("user_id")
+        .eq("workspace_id", workspaceId)
+        .eq("status", "active");
+      const memberIds = (members ?? [])
+        .map((m) => (m as { user_id?: string }).user_id)
+        .filter((x): x is string => typeof x === "string" && x.length > 0);
+      if (memberIds.length === 0) {
+        errors.push(`Schedule ${id}: no members`);
+        continue;
+      }
+
+      const filters = parseReportFilters(r.filters);
+      const bundle = await fetchReportBundle(sr, memberIds, filters);
+      const metrics = buildReportMetrics(bundle);
+      const { data: wlRow } = await sr
+        .from("white_label_settings")
+        .select("app_name")
+        .eq("user_id", userId)
+        .maybeSingle();
+      const appName =
+        wlRow && typeof (wlRow as { app_name?: unknown }).app_name === "string"
+          ? (wlRow as { app_name: string }).app_name.trim()
+          : "AgentForge";
+      const title = `${appName} — Scheduled report`;
+      const pdfBuf = buildAggregatePdfBuffer(bundle, metrics, title);
+      const { data: prof } = await sr.from("profiles").select("full_name").eq("id", userId).maybeSingle();
+      const fromName =
+        prof && typeof (prof as { full_name?: unknown }).full_name === "string"
+          ? (prof as { full_name: string }).full_name.trim()
+          : null;
+      const from = buildDynamicFromEmail(fromName);
+      const html = buildScheduledReportEmailHtml(metrics, title);
+      const subject = `${appName} — ${cadence === "daily" ? "Daily" : "Weekly"} report`;
+
+      const send = await sendTransactionalEmail({
+        to: recipient,
+        from,
+        subject,
+        html,
+        attachments: [{ filename: `report-${new Date().toISOString().slice(0, 10)}.pdf`, content: Buffer.from(pdfBuf) }],
+      });
+
+      if (!send.ok) {
+        errors.push(`Schedule ${id}: ${send.error}`);
+        continue;
+      }
+
+      const nextRun = advanceScheduledNextRun(prevNext, cadence);
+      await sr
+        .from("scheduled_reports")
+        .update({
+          last_run_at: nowIso,
+          next_run_at: nextRun,
+          updated_at: nowIso,
+        })
+        .eq("id", id);
+
+      processed += 1;
+    } catch (e) {
+      errors.push(`Schedule ${id}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  return { processed, errors };
 }

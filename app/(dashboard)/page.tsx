@@ -2,9 +2,11 @@ import {
   getDashboardAnalytics,
   getDeliverabilitySuiteAction,
   getWorkspaceMembersAction,
+  listCampaignTemplatesAction,
   listCampaignThreads,
   listCustomVoicesAction,
   listRecentCampaigns,
+  listScheduledReportsAction,
   loadObjectionLibraryForDashboard,
 } from "@/app/(dashboard)/actions";
 import { DashboardHomeClient } from "@/components/dashboard/dashboard-home-client";
@@ -13,7 +15,7 @@ import { buildDynamicFromEmail } from "@/lib/resend";
 import { createServerSupabaseClient, getServiceRoleSupabaseOrNull } from "@/lib/supabase-server";
 import { ensurePersonalWorkspaceMembership, resolveWorkspaceContext } from "@/lib/workspace";
 import { fetchWhiteLabelSettings } from "@/lib/white-label";
-import type { CustomVoiceRow, WhiteLabelClientSettingsDTO } from "@/types";
+import type { CampaignTemplateRow, CustomVoiceRow, WhiteLabelClientSettingsDTO } from "@/types";
 
 /** Server actions / Supabase — not compatible with static generation at /. */
 export const dynamic = "force-dynamic";
@@ -39,6 +41,13 @@ export const dynamic = "force-dynamic";
  *
  * Prompt 84 — PWA (`app/manifest.ts`, `public/sw.js`), mobile nav in `DashboardShell`, push via
  * `lib/push.ts` + `supabase/push_subscriptions_p84.sql`, `PwaBanner` for permission + service worker.
+ *
+ * Prompt 85 — `campaign_templates` + A/B columns; templates list via `listCampaignTemplatesAction`.
+ *
+ * Prompt 86 — Advanced reporting tab + `scheduled_reports` (`listScheduledReportsAction`).
+ *
+ * Prompt 87 — Pipeline forecast cards + trend on Analytics (`getDashboardAnalytics`, `lib/forecast.ts`,
+ * optional `campaigns.predicted_revenue` / `win_probability` from `supabase/forecast_p87.sql`).
  */
 export default async function DashboardPage() {
   const envWarnings = getDashboardEnvWarnings();
@@ -114,6 +123,14 @@ export default async function DashboardPage() {
       loadObjectionLibraryForDashboard(),
     ]);
 
+  let campaignTemplates: CampaignTemplateRow[] = [];
+  if (user) {
+    campaignTemplates = await listCampaignTemplatesAction();
+  }
+
+  const scheduledReports = user ? await listScheduledReportsAction() : [];
+  const reportRecipientEmail = user?.email ?? "";
+
   return (
     <DashboardHomeClient
       envWarnings={envWarnings}
@@ -129,6 +146,9 @@ export default async function DashboardPage() {
       workspaceRole={workspaceData?.workspaceRole ?? "admin"}
       objectionLibraryTranscripts={objectionLibrary.transcripts}
       objectionLibraryEntries={objectionLibrary.objections}
+      campaignTemplates={campaignTemplates}
+      scheduledReports={scheduledReports}
+      reportRecipientEmail={reportRecipientEmail}
     />
   );
 }

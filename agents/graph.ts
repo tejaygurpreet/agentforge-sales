@@ -999,11 +999,28 @@ export interface RunCampaignInput {
   custom_voice_profile?: CustomVoiceProfile;
   /** Prompt 79 — from `fetchWhiteLabelSettings`; defaults to AgentForge Sales. */
   brand_display_name?: string;
+  /** Prompt 85 — pair A/B runs; same id on both variants. */
+  ab_test_id?: string | null;
+  ab_variant?: "A" | "B" | null;
+  template_id?: string | null;
+  /** Prompt 85 — appended to lead.notes (and stored on `campaigns.ab_voice_note`). */
+  template_voice_note?: string | null;
+}
+
+function buildLeadWithTemplateAbNote(input: RunCampaignInput): Lead {
+  const base = { ...input.lead };
+  if (input.template_voice_note?.trim()) {
+    const tag = input.ab_variant ? `[A/B ${input.ab_variant}] ` : "";
+    base.notes = [base.notes, `${tag}${input.template_voice_note.trim()}`]
+      .filter(Boolean)
+      .join("\n\n");
+  }
+  return base;
 }
 
 function initialCampaignGraphState(input: RunCampaignInput): SalesGraphState {
   return {
-    lead: input.lead,
+    lead: buildLeadWithTemplateAbNote(input),
     messages: [],
     current_agent: "lead_enrichment_node",
     thread_id: input.thread_id,
@@ -1038,7 +1055,7 @@ export async function runCampaignGraph(
 
   if (!hasLlmProviderConfigured()) {
     const failed: SalesGraphState = {
-      lead: input.lead,
+      lead: buildLeadWithTemplateAbNote(input),
       messages: [],
       current_agent: "research_node",
       thread_id: input.thread_id,
@@ -1070,14 +1087,18 @@ export async function runCampaignGraph(
       current_agent: "research_node",
       final_status: "failed",
       pipeline_error: LLM_CONFIG_ERROR,
-      lead: input.lead,
+      lead: buildLeadWithTemplateAbNote(input),
       results: failed.results,
     });
     await saveCampaign({
       userId: input.user_id,
       threadId: input.thread_id,
-      lead: input.lead,
+      lead: buildLeadWithTemplateAbNote(input),
       snapshot: serializeCampaignStateForClient(failed),
+      abTestId: input.ab_test_id ?? undefined,
+      abVariant: input.ab_variant ?? undefined,
+      templateId: input.template_id ?? undefined,
+      abVoiceNote: input.template_voice_note ?? undefined,
     });
     return failed;
   }
@@ -1133,8 +1154,12 @@ export async function runCampaignGraph(
         await saveCampaign({
           userId: input.user_id,
           threadId: input.thread_id,
-          lead: input.lead,
+          lead: failedRun.lead,
           snapshot: serializeCampaignStateForClient(failedRun),
+          abTestId: input.ab_test_id ?? undefined,
+          abVariant: input.ab_variant ?? undefined,
+          templateId: input.template_id ?? undefined,
+          abVoiceNote: input.template_voice_note ?? undefined,
         });
       } catch (saveErr) {
         console.error(
@@ -1154,8 +1179,12 @@ export async function runCampaignGraph(
       await saveCampaign({
         userId: input.user_id,
         threadId: input.thread_id,
-        lead: input.lead,
+        lead: finished.lead,
         snapshot: serializeCampaignStateForClient(finished),
+        abTestId: input.ab_test_id ?? undefined,
+        abVariant: input.ab_variant ?? undefined,
+        templateId: input.template_id ?? undefined,
+        abVoiceNote: input.template_voice_note ?? undefined,
       });
     } catch (saveErr) {
       const msg =
@@ -1211,8 +1240,12 @@ export async function runCampaignGraph(
       await saveCampaign({
         userId: input.user_id,
         threadId: input.thread_id,
-        lead: input.lead,
+        lead: fatal.lead,
         snapshot: serializeCampaignStateForClient(fatal),
+        abTestId: input.ab_test_id ?? undefined,
+        abVariant: input.ab_variant ?? undefined,
+        templateId: input.template_id ?? undefined,
+        abVoiceNote: input.template_voice_note ?? undefined,
       });
     } catch (saveErr) {
       console.error(
@@ -1232,6 +1265,10 @@ export const runSalesGraph = async (input: {
   senderSignoffName?: string;
   brand_display_name?: string;
   workspace_id?: string;
+  ab_test_id?: string | null;
+  ab_variant?: "A" | "B" | null;
+  template_id?: string | null;
+  template_voice_note?: string | null;
 }) =>
   runCampaignGraph({
     lead: input.lead,
@@ -1240,4 +1277,8 @@ export const runSalesGraph = async (input: {
     sender_signoff_name: input.senderSignoffName,
     brand_display_name: input.brand_display_name,
     workspace_id: input.workspace_id,
+    ab_test_id: input.ab_test_id,
+    ab_variant: input.ab_variant,
+    template_id: input.template_id,
+    template_voice_note: input.template_voice_note,
   });

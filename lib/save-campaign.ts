@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CampaignClientSnapshot, Lead, LeadEnrichmentPayload } from "@/agents/types";
+import { computeForecastFromSnapshot } from "@/lib/forecast";
 import { notifyCampaignCompletedPush } from "@/lib/push";
 import { getServiceRoleSupabaseOrNull } from "@/lib/supabase-server";
 
@@ -14,6 +15,11 @@ export interface SaveCampaignParams {
     spam_score: number;
     deliverability_status: string;
   };
+  /** Prompt 85 — A/B experiment grouping (optional). */
+  abTestId?: string | null;
+  abVariant?: "A" | "B" | null;
+  templateId?: string | null;
+  abVoiceNote?: string | null;
 }
 
 /**
@@ -28,6 +34,10 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
   }
 
   const { snapshot, userId, threadId, lead, deliverability } = params;
+  const abTestId = params.abTestId?.trim() || null;
+  const abVariant = params.abVariant ?? null;
+  const templateId = params.templateId?.trim() || null;
+  const abVoiceNote = params.abVoiceNote?.trim()?.slice(0, 800) || null;
   const completedAt = snapshot.campaign_completed_at ?? null;
 
   let resultsJson: Record<string, unknown>;
@@ -41,6 +51,8 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
   const enriched =
     (snapshot.lead_enrichment_preview as LeadEnrichmentPayload | null | undefined) ??
     null;
+
+  const fc = computeForecastFromSnapshot(snapshot);
 
   const row = {
     user_id: userId,
@@ -62,6 +74,16 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
           enriched_data: enriched as unknown as Record<string, unknown>,
         }
       : {}),
+    ...(abTestId
+      ? {
+          ab_test_id: abTestId,
+          ab_variant: abVariant,
+          ab_voice_note: abVoiceNote,
+        }
+      : {}),
+    ...(templateId ? { template_id: templateId } : {}),
+    predicted_revenue: fc.predictedRevenueUsd,
+    win_probability: fc.winProbability,
   };
 
   let { error } = await sb.from("campaigns").upsert(row, {
@@ -79,6 +101,45 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
       enriched_data?: unknown;
     };
     ({ error } = await sb.from("campaigns").upsert(rowLegacy, {
+      onConflict: "thread_id",
+    }));
+  }
+
+  if (
+    error &&
+    /ab_test_id|ab_variant|template_id|ab_voice_note|column|schema/i.test(
+      `${error.message} ${error.details ?? ""} ${error.hint ?? ""}`,
+    )
+  ) {
+    const {
+      ab_test_id: _a,
+      ab_variant: _b,
+      template_id: _t,
+      ab_voice_note: _n,
+      ...rowNoAb
+    } = row as typeof row & {
+      ab_test_id?: unknown;
+      ab_variant?: unknown;
+      template_id?: unknown;
+      ab_voice_note?: unknown;
+    };
+    ({ error } = await sb.from("campaigns").upsert(rowNoAb, {
+      onConflict: "thread_id",
+    }));
+  }
+
+  if (
+    error &&
+    /predicted_revenue|win_probability|column|schema/i.test(
+      `${error.message} ${error.details ?? ""} ${error.hint ?? ""}`,
+    )
+  ) {
+    const {
+      predicted_revenue: _pr,
+      win_probability: _wp,
+      ...rowNoForecast
+    } = row as typeof row & { predicted_revenue?: unknown; win_probability?: unknown };
+    ({ error } = await sb.from("campaigns").upsert(rowNoForecast, {
       onConflict: "thread_id",
     }));
   }

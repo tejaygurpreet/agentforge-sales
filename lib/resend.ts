@@ -101,6 +101,8 @@ export async function sendTransactionalEmail(params: {
   from?: string;
   /** Logged-in user's real inbox — prospect replies route here (Prompt 73). */
   reply_to?: string | string[];
+  /** Prompt 86 — PDF/CSV attachments (Buffer or base64 content). */
+  attachments?: { filename: string; content: Buffer | string }[];
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const client = getResendClient();
   const env = getServerEnv();
@@ -117,6 +119,9 @@ export async function sendTransactionalEmail(params: {
       to: params.to,
       subject: params.subject,
       html: params.html,
+      ...(params.attachments?.length
+        ? { attachments: params.attachments.map((a) => ({ filename: a.filename, content: a.content })) }
+        : {}),
       ...(params.reply_to != null && params.reply_to !== ""
         ? { reply_to: params.reply_to }
         : {}),

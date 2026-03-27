@@ -153,6 +153,35 @@ export type LiveSignalFeedItem = {
 };
 
 /** Aggregates for `/analytics` + main dashboard Analytics tab (Prompt 50 + 70). */
+/** Prompt 85 — one A/B pair (variant A vs B) for analytics. */
+export type AbTestComparisonRow = {
+  ab_test_id: string;
+  lead_name: string;
+  completed_at: string;
+  variantA: {
+    thread_id: string;
+    composite: number;
+    qual: number | null;
+    icp: number | null;
+    voice_label: string;
+  };
+  variantB: {
+    thread_id: string;
+    composite: number;
+    qual: number | null;
+    icp: number | null;
+    voice_label: string;
+  };
+};
+
+/** Prompt 87 — weekly bucket for weighted pipeline trend chart. */
+export type ForecastTrendPoint = {
+  weekStart: string;
+  label: string;
+  weightedPipelineUsd: number;
+  dealCount: number;
+};
+
 export type DashboardAnalyticsSummary = {
   campaignCount: number;
   avgCompositeScore: number | null;
@@ -171,6 +200,51 @@ export type DashboardAnalyticsSummary = {
   warmupEmailsLast7Days: number;
   avgWarmupPlacementScore: number | null;
   warmupEnabled: boolean;
+  /** Prompt 85 — completed A/B pairs with side-by-side scores. */
+  abTestComparisons: AbTestComparisonRow[];
+  /** Prompt 87 — Σ (predicted_revenue × win_probability/100). */
+  forecastWeightedPipelineUsd: number;
+  /** Prompt 87 — Σ predicted_revenue (unweighted). */
+  forecastTotalPipelineUsd: number;
+  /** Prompt 87 — mean win probability across deals with snapshots. */
+  forecastAvgWinProbability: number | null;
+  /** Prompt 87 — same as campaignCount when forecasts computed. */
+  forecastDealCount: number;
+  /** Prompt 87 — last weeks weighted pipeline. */
+  forecastTrend: ForecastTrendPoint[];
+};
+
+/** Prompt 85 — workspace template library row. */
+export type CampaignTemplateRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  payload: Record<string, unknown>;
+};
+
+/** Prompt 86 — advanced report + scheduled email filters (JSON on `scheduled_reports`). */
+export type ReportFiltersPayload = {
+  dateFrom: string | null;
+  dateTo: string | null;
+  voice: string;
+  memberUserId: string;
+};
+
+/** Prompt 86 — `scheduled_reports` row for dashboard + cron. */
+export type ScheduledReportRow = {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  recipient_email: string;
+  cadence: "daily" | "weekly";
+  hour_utc: number;
+  weekday_utc: number | null;
+  filters: Record<string, unknown>;
+  enabled: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  created_at: string;
 };
 
 /** Prompt 80 — warm-up chart + prefs for Deliverability tab. */

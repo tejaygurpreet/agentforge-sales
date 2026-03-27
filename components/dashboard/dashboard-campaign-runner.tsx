@@ -24,7 +24,7 @@ import type {
 } from "@/types";
 import { Layers, Loader2, Play } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
 
 export type { CampaignRerunPayload } from "@/components/dashboard/campaign-rerun-types";
@@ -41,6 +41,9 @@ type Props = {
   customVoices?: CustomVoiceRow[];
   /** Prompt 79 — PDF / Markdown / JSON branding. */
   whiteLabel?: WhiteLabelClientSettingsDTO | null;
+  /** Prompt 85 — prefill from Templates tab (Apply). */
+  templatePrefillRequest?: CampaignRerunPayload | null;
+  onTemplatePrefillConsumed?: () => void;
 };
 
 const batchJsonSchema = z.array(leadFormSchema);
@@ -54,9 +57,17 @@ export function DashboardCampaignRunner({
   hubspotConnected = false,
   customVoices = [],
   whiteLabel = null,
+  templatePrefillRequest = null,
+  onTemplatePrefillConsumed,
 }: Props) {
   const router = useRouter();
   const [rerunRequest, setRerunRequest] = useState<CampaignRerunPayload | null>(null);
+
+  useEffect(() => {
+    if (!templatePrefillRequest) return;
+    setRerunRequest(templatePrefillRequest);
+    onTemplatePrefillConsumed?.();
+  }, [templatePrefillRequest, onTemplatePrefillConsumed]);
   const [batchMode, setBatchMode] = useState(false);
   const [batchJson, setBatchJson] = useState(
     '[\n  {\n    "name": "Sample Lead",\n    "email": "lead@company.example",\n    "company": "Company Inc",\n    "notes": "",\n    "sdr_voice_tone": "default"\n  }\n]',

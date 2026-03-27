@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ComponentType, ReactNode } from "react";
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import type { CampaignRerunPayload } from "@/components/dashboard/campaign-rerun-types";
 import { useForm } from "react-hook-form";
 import {
@@ -41,6 +41,7 @@ import {
   previewLeadEnrichmentAction,
   sendOutreachEmailAction,
   startCampaignAction,
+  startCampaignWithOptionsAction,
 } from "@/app/(dashboard)/actions";
 import { DashboardReplyStrip } from "@/components/dashboard/dashboard-reply-strip";
 import { useReplyIntel } from "@/components/dashboard/reply-intel-context";
@@ -717,6 +718,8 @@ export function CampaignWorkspace({
   const [enrichmentPreview, setEnrichmentPreview] = useState<LeadEnrichmentPayload | null>(null);
   const [enrichmentBusy, setEnrichmentBusy] = useState(false);
   const [enrichmentError, setEnrichmentError] = useState<string | null>(null);
+  /** Prompt 85 — next Start campaign passes `template_id` when prefill came from the template library. */
+  const pendingTemplateIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!snapshot) {
@@ -772,13 +775,20 @@ export function CampaignWorkspace({
       setSnapshot(null);
       setEnrichmentPreview(null);
       startTransition(async () => {
-        const res = await startCampaignAction({
+        const tid = pendingTemplateIdRef.current;
+        const baseLead = {
           ...values,
           status: values.status ?? "new",
           sdr_voice_tone: values.sdr_voice_tone ?? "default",
           custom_voice_id: values.custom_voice_id,
           custom_voice_name: values.custom_voice_name,
-        });
+        };
+        const res = tid
+          ? await startCampaignWithOptionsAction({
+              lead: baseLead,
+              options: { template_id: tid },
+            })
+          : await startCampaignAction(baseLead);
         if (!res.ok) {
           const msg = humanizeClientError(res.error);
           setFeedback({ type: "error", text: msg });
@@ -789,6 +799,7 @@ export function CampaignWorkspace({
           });
           return;
         }
+        if (tid) pendingTemplateIdRef.current = null;
         setSnapshot(res.snapshot);
         const when = formatCompletedAt(res.snapshot.campaign_completed_at);
         setFeedback({
@@ -861,7 +872,8 @@ export function CampaignWorkspace({
 
   useEffect(() => {
     if (!rerunRequest) return;
-    const { values, autoStart } = rerunRequest;
+    const { values, autoStart, source_template_id } = rerunRequest;
+    pendingTemplateIdRef.current = source_template_id ?? null;
     form.reset({
       name: values.name,
       email: values.email,

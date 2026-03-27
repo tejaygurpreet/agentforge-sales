@@ -15,6 +15,8 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Line,
+  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -24,11 +26,13 @@ import {
   Activity,
   BarChart3,
   Flame,
+  GitCompare,
   Heart,
   LayoutGrid,
   MessageSquare,
   Radio,
   ShieldCheck,
+  Sparkles,
   TrendingUp,
   Wallet,
 } from "lucide-react";
@@ -84,6 +88,12 @@ export function AnalyticsDashboard({ data, variant = "page" }: Props) {
     warmupEmailsLast7Days,
     avgWarmupPlacementScore,
     warmupEnabled,
+    abTestComparisons,
+    forecastWeightedPipelineUsd,
+    forecastTotalPipelineUsd,
+    forecastAvgWinProbability,
+    forecastDealCount,
+    forecastTrend,
   } = data;
 
   const chartData = strengthBuckets.map((b, i) => ({
@@ -118,10 +128,82 @@ export function AnalyticsDashboard({ data, variant = "page" }: Props) {
           ) : (
             <span className="font-medium text-foreground/90">Replies</span>
           )}{" "}
-          tab holds full reply intelligence. Pipeline and ROI figures below are directional placeholders
-          until CRM sync.
+          tab holds full reply intelligence. Pipeline forecast (below) blends composite, qualification,
+          ICP, BANT proxy, and reply interest — heuristic until CRM sync.
         </p>
       </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <StatCard
+          title="Weighted pipeline"
+          value={`$${forecastWeightedPipelineUsd.toLocaleString()}`}
+          hint={`Σ(deal × P(win)) · ${forecastDealCount} deal${forecastDealCount === 1 ? "" : "s"}`}
+          icon={Sparkles}
+        />
+        <StatCard
+          title="Total deal value"
+          value={`$${forecastTotalPipelineUsd.toLocaleString()}`}
+          hint="Unweighted sum of predicted revenue per campaign."
+          icon={Wallet}
+        />
+        <StatCard
+          title="Avg win probability"
+          value={forecastAvgWinProbability != null ? `${forecastAvgWinProbability}%` : "—"}
+          hint="Mean close score across saved snapshots (forecast engine)."
+          icon={TrendingUp}
+        />
+      </div>
+
+      <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-md dark:bg-card/90">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Sparkles className="h-5 w-5 text-primary" aria-hidden />
+            Pipeline forecast trend
+          </CardTitle>
+          <CardDescription>
+            Weekly weighted pipeline (UTC week start) from completed campaign timestamps.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="h-[260px] min-h-[200px]">
+          {forecastTrend.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No weekly trend yet — run campaigns with completion timestamps to populate.
+            </p>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={forecastTrend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border/60" />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis
+                  tick={{ fontSize: 11 }}
+                  stroke="hsl(var(--muted-foreground))"
+                  tickFormatter={(v) => `$${Number(v) >= 1000 ? `${(v / 1000).toFixed(1)}k` : v}`}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: 8,
+                  }}
+                  labelStyle={{ color: "hsl(var(--foreground))" }}
+                  formatter={(value) => [
+                    typeof value === "number" ? `$${value.toLocaleString()}` : "—",
+                    "Weighted",
+                  ]}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="weightedPipelineUsd"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  name="Weighted pipeline"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
@@ -225,6 +307,90 @@ export function AnalyticsDashboard({ data, variant = "page" }: Props) {
           </CardContent>
         </Card>
       </div>
+
+      {abTestComparisons.length > 0 ? (
+        <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <GitCompare className="h-5 w-5 text-primary" aria-hidden />
+              A/B voice tests
+            </CardTitle>
+            <CardDescription>
+              Side-by-side composite, qualification, and ICP scores for the same lead pair (two SDR
+              voices or variant B notes).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {abTestComparisons.map((row) => (
+              <div
+                key={row.ab_test_id}
+                className="rounded-xl border border-border/60 bg-muted/10 p-4 dark:bg-muted/5"
+              >
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <p className="font-medium text-foreground">{row.lead_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(row.completed_at).toLocaleString()}
+                  </p>
+                </div>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-lg border border-border/50 bg-background/80 px-3 py-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Variant A ({row.variantA.voice_label})
+                    </p>
+                    <p className="mt-2 font-mono text-[11px] text-muted-foreground">
+                      {row.variantA.thread_id.slice(0, 14)}…
+                    </p>
+                    <dl className="mt-3 space-y-1 text-sm">
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-muted-foreground">Composite</dt>
+                        <dd className="tabular-nums font-semibold">{row.variantA.composite}</dd>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-muted-foreground">Qual</dt>
+                        <dd className="tabular-nums">
+                          {row.variantA.qual != null ? row.variantA.qual : "—"}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-muted-foreground">ICP</dt>
+                        <dd className="tabular-nums">
+                          {row.variantA.icp != null ? row.variantA.icp : "—"}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                  <div className="rounded-lg border border-border/50 bg-background/80 px-3 py-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Variant B ({row.variantB.voice_label})
+                    </p>
+                    <p className="mt-2 font-mono text-[11px] text-muted-foreground">
+                      {row.variantB.thread_id.slice(0, 14)}…
+                    </p>
+                    <dl className="mt-3 space-y-1 text-sm">
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-muted-foreground">Composite</dt>
+                        <dd className="tabular-nums font-semibold">{row.variantB.composite}</dd>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-muted-foreground">Qual</dt>
+                        <dd className="tabular-nums">
+                          {row.variantB.qual != null ? row.variantB.qual : "—"}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-muted-foreground">ICP</dt>
+                        <dd className="tabular-nums">
+                          {row.variantB.icp != null ? row.variantB.icp : "—"}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-md">

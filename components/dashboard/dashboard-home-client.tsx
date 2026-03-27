@@ -3,29 +3,35 @@
 import type {
   BatchRunItem,
   CallTranscriptRow,
+  CampaignTemplateRow,
   CampaignThreadRow,
   CustomVoiceRow,
   DashboardAnalyticsSummary,
   ObjectionLibraryEntryRow,
   PersistedCampaignRow,
+  ScheduledReportRow,
 } from "@/types";
 import { ActiveAgents } from "@/components/dashboard/active-agents";
 import { AnalyticsDashboard } from "@/components/dashboard/analytics-dashboard";
 import { CampaignList } from "@/components/dashboard/campaign-list";
 import { BetaProgramSignupCard } from "@/components/dashboard/beta-program-signup-card";
+import type { CampaignRerunPayload } from "@/components/dashboard/campaign-rerun-types";
+import { CampaignTemplatesSection } from "@/components/dashboard/campaign-templates-section";
 import { DashboardCampaignRunner } from "@/components/dashboard/dashboard-campaign-runner";
 import { CustomVoicesSection } from "@/components/dashboard/custom-voices-section";
 import { HubSpotConnectSection } from "@/components/dashboard/hubspot-connect-section";
 import { CompetitiveEdgePanel } from "@/components/dashboard/competitive-edge-panel";
 import { DashboardHero } from "@/components/dashboard/dashboard-hero";
 import { ProductRoadmapSection } from "@/components/dashboard/product-roadmap-section";
+import { ReportsSection } from "@/components/dashboard/reports-section";
 import { WorkspaceMembersCard } from "@/components/dashboard/workspace-members-card";
 import { DeliverabilityPanel } from "@/components/dashboard/deliverability-panel";
 import { WhiteLabelSettingsCard } from "@/components/dashboard/white-label-settings-card";
 import { ObjectionLibrarySection } from "@/components/dashboard/objection-library-section";
 import { PwaBanner } from "@/components/pwa/pwa-banner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useState } from "react";
 import type { DeliverabilitySuitePayload, WhiteLabelClientSettingsDTO } from "@/types";
 import type { WorkspaceMemberDTO, WorkspaceMemberRole } from "@/types";
 
@@ -50,11 +56,18 @@ type Props = {
   /** Prompt 83 — AI-transcribed calls + objections for active workspace. */
   objectionLibraryTranscripts: CallTranscriptRow[];
   objectionLibraryEntries: ObjectionLibraryEntryRow[];
+  /** Prompt 85 — saved campaign templates for the active workspace. */
+  campaignTemplates: CampaignTemplateRow[];
+  /** Prompt 86 — scheduled report rows + recipient default. */
+  scheduledReports: ScheduledReportRow[];
+  reportRecipientEmail: string;
 };
 
 /**
  * Prompt 70 — client shell: batch progress to Active agents, Workspace | Analytics tabs.
  * Prompt 84 — PWA banner (SW + optional push) + scrollable tabs on small screens.
+ * Prompt 85 — Templates tab (library + A/B voice runner).
+ * Prompt 86 — Reports tab (PDF/CSV + scheduled emails).
  */
 export function DashboardHomeClient({
   envWarnings,
@@ -70,8 +83,23 @@ export function DashboardHomeClient({
   workspaceRole,
   objectionLibraryTranscripts,
   objectionLibraryEntries,
+  campaignTemplates,
+  scheduledReports,
+  reportRecipientEmail,
 }: Props) {
+  const router = useRouter();
   const [batchProgress, setBatchProgress] = useState<BatchRunItem[] | null>(null);
+  const [mainTab, setMainTab] = useState("workspace");
+  const [templatePrefill, setTemplatePrefill] = useState<CampaignRerunPayload | null>(null);
+
+  const onTemplatePrefillConsumed = useCallback(() => {
+    setTemplatePrefill(null);
+  }, []);
+
+  const onApplyTemplateToWorkspace = useCallback((payload: CampaignRerunPayload) => {
+    setTemplatePrefill(payload);
+    setMainTab("workspace");
+  }, []);
 
   return (
     <div className="mx-auto max-w-6xl animate-in fade-in slide-in-from-bottom-2 space-y-10 px-4 py-6 duration-700 sm:space-y-12 sm:px-6 sm:py-8 lg:px-8">
@@ -115,8 +143,8 @@ export function DashboardHomeClient({
         }}
       />
 
-      <Tabs defaultValue="workspace" className="w-full">
-        <TabsList className="flex h-auto w-full max-w-4xl flex-nowrap justify-start gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:grid sm:grid-cols-4 sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden">
+      <Tabs value={mainTab} onValueChange={setMainTab} className="w-full">
+        <TabsList className="flex h-auto w-full max-w-6xl flex-nowrap justify-start gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:grid sm:grid-cols-6 sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden">
           <TabsTrigger
             value="workspace"
             className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
@@ -128,6 +156,18 @@ export function DashboardHomeClient({
             className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
           >
             Analytics
+          </TabsTrigger>
+          <TabsTrigger
+            value="templates"
+            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
+          >
+            Templates
+          </TabsTrigger>
+          <TabsTrigger
+            value="reports"
+            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
+          >
+            Reports
           </TabsTrigger>
           <TabsTrigger
             value="deliverability"
@@ -150,11 +190,28 @@ export function DashboardHomeClient({
             hubspotConnected={hubspotConnected}
             customVoices={customVoices}
             whiteLabel={whiteLabel}
+            templatePrefillRequest={templatePrefill}
+            onTemplatePrefillConsumed={onTemplatePrefillConsumed}
           />
           <BetaProgramSignupCard />
         </TabsContent>
         <TabsContent value="analytics">
           <AnalyticsDashboard data={analytics} variant="embedded" />
+        </TabsContent>
+        <TabsContent value="templates" className="space-y-8 pt-2">
+          <CampaignTemplatesSection
+            templates={campaignTemplates}
+            recentCampaigns={recentCampaigns}
+            onTemplatesChange={() => router.refresh()}
+            onApplyToWorkspace={onApplyTemplateToWorkspace}
+          />
+        </TabsContent>
+        <TabsContent value="reports" className="space-y-8 pt-2">
+          <ReportsSection
+            workspaceMembers={workspaceMembers}
+            scheduledReports={scheduledReports}
+            defaultRecipientEmail={reportRecipientEmail}
+          />
         </TabsContent>
         <TabsContent value="deliverability" className="pt-2">
           <DeliverabilityPanel initial={deliverabilitySuite} analytics={analytics} />

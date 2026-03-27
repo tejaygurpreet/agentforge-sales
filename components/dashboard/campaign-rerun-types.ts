@@ -5,4 +5,6 @@ export type CampaignRerunPayload = {
   nonce: number;
   values: LeadFormInput;
   autoStart: boolean;
+  /** Prompt 85 — persisted on next run via `startCampaignWithOptionsAction`. */
+  source_template_id?: string;
 };
