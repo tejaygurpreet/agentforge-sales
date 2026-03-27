@@ -9,6 +9,7 @@ import type {
 import { ActiveAgents } from "@/components/dashboard/active-agents";
 import { AnalyticsDashboard } from "@/components/dashboard/analytics-dashboard";
 import { CampaignList } from "@/components/dashboard/campaign-list";
+import { BetaProgramSignupCard } from "@/components/dashboard/beta-program-signup-card";
 import { DashboardCampaignRunner } from "@/components/dashboard/dashboard-campaign-runner";
 import { CompetitiveEdgePanel } from "@/components/dashboard/competitive-edge-panel";
 import { DashboardHero } from "@/components/dashboard/dashboard-hero";
@@ -83,6 +84,7 @@ export function DashboardHomeClient({
             recentCampaigns={recentCampaigns}
             onBatchProgressChange={setBatchProgress}
           />
+          <BetaProgramSignupCard />
         </TabsContent>
         <TabsContent value="analytics">
           <AnalyticsDashboard data={analytics} variant="embedded" />

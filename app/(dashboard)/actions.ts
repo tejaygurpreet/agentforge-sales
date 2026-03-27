@@ -1118,3 +1118,78 @@ export async function uploadBrandingLogoAction(
   const { data: pub } = supabase.storage.from("branding-logos").getPublicUrl(path);
   return { ok: true, publicUrl: pub.publicUrl };
 }
+
+const betaSignupSchema = z.object({
+  full_name: z.string().trim().min(1, "Full name is required.").max(200),
+  company: z.string().trim().min(1, "Company is required.").max(200),
+  role: z.string().trim().min(1, "Role is required.").max(120),
+  linkedin_url: z
+    .string()
+    .max(500)
+    .transform((s) => s.trim())
+    .transform((s) => (s === "" ? null : s))
+    .refine(
+      (v) => v === null || z.string().url().safeParse(v).success,
+      "Enter a valid URL or leave blank.",
+    ),
+  motivation: z
+    .string()
+    .trim()
+    .min(10, "Please share a bit more (at least 10 characters).")
+    .max(4000),
+});
+
+export type SubmitBetaSignupResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Prompt 75 — saves beta interest to `beta_signups` (upsert per user). Run `supabase/beta_signups.sql` first.
+ */
+export async function submitBetaSignupAction(
+  raw: z.input<typeof betaSignupSchema>,
+): Promise<SubmitBetaSignupResult> {
+  const parsed = betaSignupSchema.safeParse(raw);
+  if (!parsed.success) {
+    const flat = parsed.error.flatten();
+    const msg =
+      Object.values(flat.fieldErrors).flat()[0] ??
+      flat.formErrors[0] ??
+      "Check your entries.";
+    return { ok: false, error: msg };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Sign in to join the beta." };
+  }
+
+  const { error } = await supabase.from("beta_signups").upsert(
+    {
+      user_id: user.id,
+      full_name: parsed.data.full_name,
+      company: parsed.data.company,
+      role: parsed.data.role,
+      linkedin_url: parsed.data.linkedin_url,
+      motivation: parsed.data.motivation,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" },
+  );
+
+  if (error) {
+    console.error("[AgentForge] beta_signups", error.message);
+    return {
+      ok: false,
+      error:
+        error.message.includes("relation") || error.message.includes("does not exist")
+          ? "Beta signup table missing — run supabase/beta_signups.sql in Supabase."
+          : error.message,
+    };
+  }
+
+  revalidatePath("/");
+  return { ok: true };
+}
