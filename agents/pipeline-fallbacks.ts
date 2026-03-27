@@ -1,4 +1,5 @@
 import type { Lead, NurtureOutput, OutreachDraft, ResearchOutput } from "@/agents/types";
+import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import { normalizeOutreachEmailHtml } from "@/lib/outreach-email-format";
 import { resolveOutreachSignoffName } from "@/lib/outreach-signoff";
 import {
@@ -182,11 +183,13 @@ export function buildFallbackOutreachDraft(
   lead: Lead,
   errorHint: string,
   senderSignoffName?: string,
+  brandDisplayName?: string,
 ): OutreachDraft {
   const company = (lead.company || "your team").trim();
   const rawFirst = (lead.name || "there").split(/\s+/)[0] || "there";
   const first = rawFirst.replace(/^[^a-zA-ZÀ-ÿ]+/u, "").replace(/[^a-zA-ZÀ-ÿ'-].*$/u, "") || "there";
   const signer = resolveOutreachSignoffName(senderSignoffName);
+  const brand = brandDisplayName?.trim() || DEFAULT_BRAND_DISPLAY_NAME;
   const noteHook = lead.notes?.trim().slice(0, 200);
   const mid = noteHook
     ? `Something in your notes stuck with me — ${noteHook.replace(/"/g, "'").slice(0, 118)}. If that's still a live thing at ${company}, I'd love to put something useful in front of whoever actually runs with it. If it's old news, say so and I'll vanish.`
@@ -197,6 +200,7 @@ export function buildFallbackOutreachDraft(
     email_body: normalizeOutreachEmailHtml(rawBody, {
       firstName: first,
       signOffName: signer,
+      brandDisplayName: brand,
     }),
     linkedin_message:
       `${first} — hey — at ${company.slice(0, 22)} still you for rev/handoff, or who should I ask?`.slice(

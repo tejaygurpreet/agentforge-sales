@@ -4,6 +4,7 @@ import {
 } from "@/agents/graph-prompts";
 import { buildFallbackNurtureOutput } from "@/agents/pipeline-fallbacks";
 import type {
+  CustomVoiceProfile,
   Lead,
   NurtureOutput,
   OutreachOutput,
@@ -16,6 +17,7 @@ import {
   invokeWithGroqRateLimitResilience,
   type GroqInvokeMeta,
 } from "@/lib/agent-model";
+import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import { getSdrVoiceNurtureInstructions, sdrVoiceLabel } from "@/lib/sdr-voice";
 
 export type NurtureAgentResult = {
@@ -32,6 +34,7 @@ export async function runNurtureAgent(
     outreach_output?: OutreachOutput;
   },
   sdrVoice: SdrVoiceTone,
+  opts?: { customVoice?: CustomVoiceProfile | null; brandDisplayName?: string },
 ): Promise<NurtureAgentResult> {
   const qualBlob = ctx.qualification_detail
     ? JSON.stringify({
@@ -43,9 +46,14 @@ export async function runNurtureAgent(
     : "(infer from score only)";
 
   const voice = sdrVoice;
-  const nurtureVoice = getSdrVoiceNurtureInstructions(voice);
+  const custom = opts?.customVoice ?? undefined;
+  const brand = opts?.brandDisplayName?.trim() || DEFAULT_BRAND_DISPLAY_NAME;
+  const nurtureVoice = getSdrVoiceNurtureInstructions(voice, custom);
+  const voiceLine = custom?.name?.trim()
+    ? `${sdrVoiceLabel(voice)} / ${custom.name}`
+    : sdrVoiceLabel(voice);
   const human = `=== ACTIVE_CAMPAIGN_VOICE (graph → nurture_node) ===
-sdrVoice: ${voice} (${sdrVoiceLabel(voice)})
+sdrVoice: ${voice} (${voiceLine})
 
 LEAD: ${JSON.stringify(lead)}
 QUAL_SCORE: ${ctx.qualification_score}
@@ -59,7 +67,7 @@ Prompt 38 + **49** + **57** + **58** + **69**: 3 steps — **value-driven + crea
 
 **MANDATORY:** sequence_summary + every step's summary, value_add_idea, content_asset_suggestion, and timing_rationale must **sound unmistakably like SDR_VOICE_PRESET** above. If preset is data_driven_analyst, include **concrete metric/benchmark/ROI hooks** where honest. If warm_relationship_builder, **empathetic conversational** cadence — **consultative friend**, not drip automation. If bold_challenger, **professional tension**. If consultative_enterprise, **strategic long-horizon** advisor tone. Default: effortless human Slack-to-colleague clarity.`;
 
-  const systemPrompt = buildNurtureSystemPrompt(sdrVoice);
+  const systemPrompt = buildNurtureSystemPrompt(sdrVoice, custom, brand);
   const prompt = `${systemPrompt}\n\n---\n${human}`;
 
   try {

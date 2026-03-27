@@ -1,12 +1,13 @@
 import { replaceLegacyNewsSummaryIfNeeded } from "@/agents/pipeline-fallbacks";
 import type { CampaignClientSnapshot, SdrVoiceTone } from "@/agents/types";
+import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import { computeCampaignStrength } from "@/lib/campaign-strength";
 import { emailPlainTextFromHtml } from "@/lib/email-plain";
 import { userFacingLeadNotes } from "@/lib/user-facing-lead-notes";
 
 export type CampaignSummaryExport = {
   meta: {
-    product: "AgentForge Sales";
+    product: string;
     exportKind: "summary_v2";
     exportedAt: string;
   };
@@ -89,7 +90,12 @@ export type CampaignSummaryExport = {
 /** Clean JSON handoff for CRM, demos, integrations, and full PDF generation (Prompt 22). */
 export function buildCampaignSummaryExport(
   snapshot: CampaignClientSnapshot,
+  opts?: { productLabel?: string },
 ): CampaignSummaryExport {
+  const productLabel =
+    opts?.productLabel?.trim() ||
+    snapshot.brand_display_name?.trim() ||
+    DEFAULT_BRAND_DISPLAY_NAME;
   const strength = computeCampaignStrength(snapshot);
   const q = snapshot.qualification_detail;
   const r = snapshot.research_output;
@@ -98,7 +104,7 @@ export function buildCampaignSummaryExport(
 
   return {
     meta: {
-      product: "AgentForge Sales",
+      product: productLabel,
       exportKind: "summary_v2",
       exportedAt: new Date().toISOString(),
     },

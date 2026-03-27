@@ -1,7 +1,9 @@
 /**
  * Prompt 68 — deterministic HTML email structure for outreach: greeting on its own line,
- * short body paragraphs, canonical Best regards + name + AgentForge Sales.
+ * short body paragraphs, canonical Best regards + name + brand line (Prompt 79).
  */
+
+import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 
 export function escapeHtmlText(s: string): string {
   return s
@@ -25,12 +27,12 @@ function extractParagraphInners(html: string): string[] {
   return [...html.matchAll(re)].map((m) => m[1]!.trim());
 }
 
-function looksLikeSignoffParagraph(inner: string): boolean {
+function looksLikeSignoffParagraph(inner: string, brandLower: string): boolean {
   const t = stripInnerToPlain(inner).toLowerCase();
-  return (
-    /(best|warm)\s+regards/.test(t) ||
-    (t.includes("agentforge") && t.includes("sales"))
-  );
+  if (/(best|warm)\s+regards/.test(t)) return true;
+  const b = brandLower.trim().toLowerCase();
+  if (b.length >= 2 && t.includes(b)) return true;
+  return t.includes("agentforge") && t.includes("sales");
 }
 
 /** Split plain body into 2–3 readable paragraphs (2 sentences each when possible). */
@@ -50,6 +52,8 @@ export type NormalizeOutreachEmailOptions = {
   firstName: string;
   /** Full name from signup / profile; may be empty (company-only sign-off). */
   signOffName: string;
+  /** Prompt 79 — company line under the sender name. */
+  brandDisplayName?: string;
 };
 
 /**
@@ -62,13 +66,18 @@ export function normalizeOutreachEmailHtml(
 ): string {
   const first = (opts.firstName.trim() || "there").replace(/\s+/g, " ");
   const sign = opts.signOffName.trim();
+  const brand = (opts.brandDisplayName?.trim() || DEFAULT_BRAND_DISPLAY_NAME).replace(
+    /\s+/g,
+    " ",
+  );
+  const brandLower = brand.toLowerCase();
 
   let parts = extractParagraphInners(html);
   if (parts.length === 0 && html.trim().length > 0) {
     parts = [stripInnerToPlain(html)];
   }
 
-  while (parts.length > 0 && looksLikeSignoffParagraph(parts[parts.length - 1]!)) {
+  while (parts.length > 0 && looksLikeSignoffParagraph(parts[parts.length - 1]!, brandLower)) {
     parts.pop();
   }
 
@@ -99,8 +108,8 @@ export function normalizeOutreachEmailHtml(
   }
 
   const signBlock = sign
-    ? `<p>Best regards,<br/>${escapeHtmlText(sign)}<br/>AgentForge Sales</p>`
-    : `<p>Best regards,<br/>AgentForge Sales</p>`;
+    ? `<p>Best regards,<br/>${escapeHtmlText(sign)}<br/>${escapeHtmlText(brand)}</p>`
+    : `<p>Best regards,<br/>${escapeHtmlText(brand)}</p>`;
 
   const out: string[] = [`<p>Hi ${escapeHtmlText(first)},</p>`];
   for (const chunk of paras) {

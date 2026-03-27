@@ -1,8 +1,9 @@
 import type { CampaignClientSnapshot } from "@/agents/types";
 import { buildCampaignSummaryExport } from "@/lib/campaign-summary-export";
+import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import { safeCampaignDownloadBasename } from "@/lib/campaign-strength";
 import { userFacingLeadNotes } from "@/lib/user-facing-lead-notes";
-import { sdrVoiceLabel } from "@/lib/sdr-voice";
+import { voiceLabelForLead } from "@/lib/sdr-voice";
 import { textBodiesTooSimilar, textEchoesAnyCorpus } from "@/lib/text-similarity";
 import { jsPDF } from "jspdf";
 
@@ -77,19 +78,21 @@ function detectImageFormat(dataUrl: string): "PNG" | "JPEG" | "WEBP" {
 
 /**
  * Multi-page branded PDF — premium executive one-pager, full dossier, optional logo & dark mode (Prompt 40 + 44 + 58).
- * Browser-only; async to allow logo fetch via data URL.
+ * Async to allow logo fetch via data URL (browser); also used server-side for HubSpot file upload.
  */
-export async function downloadCampaignPdfSummary(
+async function renderCampaignPdfDocument(
   snapshot: CampaignClientSnapshot,
   options?: CampaignPdfExportOptions,
-): Promise<void> {
-  const data = buildCampaignSummaryExport(snapshot);
+): Promise<{ doc: InstanceType<typeof jsPDF>; base: string }> {
+  const orgLine = options?.reportTitle?.trim() || DEFAULT_BRAND_DISPLAY_NAME;
+  const data = buildCampaignSummaryExport(snapshot, {
+    productLabel: orgLine,
+  });
   const base = safeCampaignDownloadBasename(snapshot.lead.company, snapshot.thread_id);
   const dark = options?.mode === "dark";
   const primary = options?.primaryRgb ?? DEFAULT_PRIMARY;
   const secondary = options?.secondaryRgb ?? DEFAULT_SECONDARY;
   const logoDataUrl = options?.logoDataUrl?.trim() || undefined;
-  const orgLine = options?.reportTitle?.trim() || "AgentForge Sales";
   const bandAccent = mixRgb(primary, secondary, 0.35);
 
   const pageBg: CampaignPdfRgb = dark
@@ -116,7 +119,7 @@ export async function downloadCampaignPdfSummary(
     title: forPdf(`${orgLine} — ${data.lead.company}`),
     subject: forPdf("Consultant-grade campaign intelligence dossier"),
     author: forPdf(orgLine),
-    keywords: "AgentForge, sales, campaign, intelligence, dossier",
+    keywords: forPdf(`${orgLine}, sales, campaign, intelligence, dossier`),
   });
 
   const margin = 54;
@@ -300,7 +303,7 @@ export async function downloadCampaignPdfSummary(
   doc.text(forPdf("Snapshot & recommended motion"), margin, y);
   y += 26;
 
-  const voiceLabel = sdrVoiceLabel(snapshot.lead.sdr_voice_tone);
+  const voiceLabel = voiceLabelForLead(snapshot.lead);
   const metaBlock = [
     `Account: ${data.lead.company}`,
     `Contact: ${data.lead.name} <${data.lead.email}>`,
@@ -648,15 +651,30 @@ export async function downloadCampaignPdfSummary(
     doc.setFont("helvetica", "italic");
     doc.setFontSize(6.8);
     doc.setTextColor(muted.r, muted.g, muted.b);
-    doc.text(
-      forPdf("Powered by AgentForge Sales"),
-      pageW / 2,
-      pageH - 15,
-      { align: "center" },
-    );
+    doc.text(forPdf(`Powered by ${orgLine}`), pageW / 2, pageH - 15, { align: "center" });
     doc.setFont("helvetica", "normal");
     doc.setTextColor(ink.r, ink.g, ink.b);
   }
 
+  return { doc, base };
+}
+
+export async function downloadCampaignPdfSummary(
+  snapshot: CampaignClientSnapshot,
+  options?: CampaignPdfExportOptions,
+): Promise<void> {
+  const { doc, base } = await renderCampaignPdfDocument(snapshot, options);
   doc.save(`${base}-full-report.pdf`);
+}
+
+/**
+ * Same dossier as the download — returns bytes for CRM uploads (server actions).
+ */
+export async function generateCampaignPdfArrayBuffer(
+  snapshot: CampaignClientSnapshot,
+  options?: CampaignPdfExportOptions,
+): Promise<{ data: ArrayBuffer; filename: string }> {
+  const { doc, base } = await renderCampaignPdfDocument(snapshot, options);
+  const data = doc.output("arraybuffer") as ArrayBuffer;
+  return { data, filename: `${base}-full-report.pdf` };
 }

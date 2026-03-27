@@ -1,4 +1,5 @@
 import type { CampaignClientSnapshot } from "@/agents/types";
+import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import { computeCampaignStrength } from "@/lib/campaign-strength";
 import { emailPlainTextFromHtml } from "@/lib/email-plain";
 
@@ -6,6 +7,8 @@ import { emailPlainTextFromHtml } from "@/lib/email-plain";
 export type MarkdownExportBranding = {
   orgName?: string;
   logoPublicUrl?: string;
+  /** Prompt 79 — product name in section titles (default AgentForge Sales). */
+  productName?: string;
 };
 
 /** Human-readable markdown export for demos and handoff. */
@@ -15,6 +18,10 @@ export function campaignSnapshotToMarkdown(
 ): string {
   const { lead, thread_id, final_status, campaign_completed_at } = snapshot;
   const strength = computeCampaignStrength(snapshot);
+  const product =
+    branding?.productName?.trim() ||
+    snapshot.brand_display_name?.trim() ||
+    DEFAULT_BRAND_DISPLAY_NAME;
   const lines: string[] = [];
   if (branding?.orgName?.trim()) {
     lines.push(`# ${branding.orgName.trim()}`, "");
@@ -24,7 +31,7 @@ export function campaignSnapshotToMarkdown(
   }
   const headBlock = (
     [
-      `# AgentForge campaign — ${lead.company}`,
+      `# ${product} campaign — ${lead.company}`,
       "",
       `- **Thread:** \`${thread_id}\``,
       `- **Status:** ${final_status}`,

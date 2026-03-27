@@ -23,10 +23,12 @@ import {
 import {
   Activity,
   BarChart3,
+  Flame,
   Heart,
   LayoutGrid,
   MessageSquare,
   Radio,
+  ShieldCheck,
   TrendingUp,
   Wallet,
 } from "lucide-react";
@@ -77,6 +79,11 @@ export function AnalyticsDashboard({ data, variant = "page" }: Props) {
     liveSignalsFeed,
     estimatedPipelineValueUsd,
     estimatedRoiMultiplier,
+    avgInboxHealthScore,
+    deliverabilitySampleCount,
+    warmupEmailsLast7Days,
+    avgWarmupPlacementScore,
+    warmupEnabled,
   } = data;
 
   const chartData = strengthBuckets.map((b, i) => ({
@@ -140,6 +147,37 @@ export function AnalyticsDashboard({ data, variant = "page" }: Props) {
           value={avgReplyInterest != null ? `${avgReplyInterest}/10` : "—"}
           hint="Mean interest score from reply analyses."
           icon={Heart}
+        />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Inbox health (avg)"
+          value={avgInboxHealthScore != null ? `${avgInboxHealthScore}/100` : "—"}
+          hint={
+            deliverabilitySampleCount > 0
+              ? `From ${deliverabilitySampleCount} outreach sends with scores.`
+              : "Scores appear after you send outreach from the workspace."
+          }
+          icon={ShieldCheck}
+        />
+        <StatCard
+          title="Warm-up (7d)"
+          value={String(warmupEmailsLast7Days)}
+          hint="Logged warm-up touches (Deliverability tab)."
+          icon={Activity}
+        />
+        <StatCard
+          title="Warm-up placement"
+          value={avgWarmupPlacementScore != null ? `${avgWarmupPlacementScore}/100` : "—"}
+          hint="Synthetic placement from daily warm-up logs."
+          icon={Radio}
+        />
+        <StatCard
+          title="Warm-up mode"
+          value={warmupEnabled ? "On" : "Off"}
+          hint="Toggle in the Deliverability tab."
+          icon={Flame}
         />
       </div>
 

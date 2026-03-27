@@ -1,4 +1,13 @@
-import type { Lead, SdrVoiceTone } from "@/agents/types";
+import type { CustomVoiceProfile, Lead, SdrVoiceTone } from "@/agents/types";
+import {
+  customVoiceQualificationHint,
+  customVoiceQualificationPlaybookBlock,
+  customVoiceQualificationScoringSupplement,
+  customVoiceNurtureInstructionsBlock,
+  customVoiceOutreachInstructionsBlock,
+  customVoiceOutreachPriorityNote as customVoiceOutreachPriorityBlock,
+  customVoiceResearchHumanBlock,
+} from "@/lib/custom-voice-blocks";
 
 export const SDR_VOICE_OPTIONS: {
   value: SdrVoiceTone;
@@ -37,8 +46,21 @@ export function resolveSdrVoiceTone(lead: Lead): SdrVoiceTone {
   return lead.sdr_voice_tone ?? "default";
 }
 
+/** Prompt 78 — dashboard + exports: show custom name when a custom voice is selected. */
+export function voiceLabelForLead(lead: Lead): string {
+  const n = lead.custom_voice_name?.trim();
+  if (lead.custom_voice_id && n) return n;
+  return sdrVoiceLabel(lead.sdr_voice_tone);
+}
+
 /** Research phase: shape intel so downstream copy can execute the voice. */
-export function getSdrVoiceResearchInstructions(tone: SdrVoiceTone): string {
+export function getSdrVoiceResearchInstructions(
+  tone: SdrVoiceTone,
+  custom?: CustomVoiceProfile | null,
+): string {
+  if (custom) {
+    return customVoiceResearchHumanBlock(custom);
+  }
   switch (tone) {
     case "data_driven_analyst":
       return `RESEARCH_VOICE (Data-Driven Analyst) — MUST influence all narrative fields (Prompt 43):
@@ -79,7 +101,13 @@ export function getSdrVoiceResearchInstructions(tone: SdrVoiceTone): string {
 /**
  * Outreach: dominant block. When not default, explicitly overrides generic "warmth first" copy rules.
  */
-export function getSdrVoiceOutreachInstructions(tone: SdrVoiceTone): string {
+export function getSdrVoiceOutreachInstructions(
+  tone: SdrVoiceTone,
+  custom?: CustomVoiceProfile | null,
+): string {
+  if (custom) {
+    return customVoiceOutreachInstructionsBlock(custom);
+  }
   switch (tone) {
     case "data_driven_analyst":
       return `SDR_VOICE — Data-Driven Analyst (**WINS over any generic warmth rule**) — Prompt 43:
@@ -119,7 +147,13 @@ export function getSdrVoiceOutreachInstructions(tone: SdrVoiceTone): string {
 }
 
 /** When voice !== default, tell the model not to dilute preset with generic default-tone smoothing. */
-export function getSdrVoiceOutreachPriorityNote(tone: SdrVoiceTone): string {
+export function getSdrVoiceOutreachPriorityNote(
+  tone: SdrVoiceTone,
+  custom?: CustomVoiceProfile | null,
+): string {
+  if (custom) {
+    return customVoiceOutreachPriorityBlock(custom);
+  }
   switch (tone) {
     case "default":
       return "VOICE_PRIORITY: default — follow Path 39 beta polish (warm, smooth, human-first) as primary stylistic anchor.";
@@ -136,7 +170,13 @@ export function getSdrVoiceOutreachPriorityNote(tone: SdrVoiceTone): string {
   }
 }
 
-export function getSdrVoiceNurtureInstructions(tone: SdrVoiceTone): string {
+export function getSdrVoiceNurtureInstructions(
+  tone: SdrVoiceTone,
+  custom?: CustomVoiceProfile | null,
+): string {
+  if (custom) {
+    return customVoiceNurtureInstructionsBlock(custom);
+  }
   switch (tone) {
     case "data_driven_analyst":
       return `NURTURE_VOICE (Data-Driven Analyst) — **mandatory across all 3 steps** (Prompt 43):
@@ -167,7 +207,13 @@ export function getSdrVoiceNurtureInstructions(tone: SdrVoiceTone): string {
 }
 
 /** Qualification human: scoring alignment. */
-export function getSdrVoiceQualificationHint(tone: SdrVoiceTone): string {
+export function getSdrVoiceQualificationHint(
+  tone: SdrVoiceTone,
+  custom?: CustomVoiceProfile | null,
+): string {
+  if (custom) {
+    return customVoiceQualificationHint(custom);
+  }
   switch (tone) {
     case "consultative_enterprise":
       return "Score/copy test: consultative enterprise — reward strategic, measured playbook; penalize hype and slang.";
@@ -183,7 +229,13 @@ export function getSdrVoiceQualificationHint(tone: SdrVoiceTone): string {
 }
 
 /** bant_summary + next_best_action must sound like this voice. */
-export function getSdrVoiceQualificationPlaybookInstructions(tone: SdrVoiceTone): string {
+export function getSdrVoiceQualificationPlaybookInstructions(
+  tone: SdrVoiceTone,
+  custom?: CustomVoiceProfile | null,
+): string {
+  if (custom) {
+    return customVoiceQualificationPlaybookBlock(custom);
+  }
   switch (tone) {
     case "data_driven_analyst":
       return `Write **bant_summary** and **next_best_action** in **Data-Driven Analyst** voice: cite **specific metrics to validate**, benchmarks to bring, and ROI discovery steps. Name **artifacts** (e.g. baseline funnel math, cohort readout). Objections: still buyer-voice, but your reasoning lines can reference **quantified risk**. **Prompt 48:** do not echo research exec / ICP / news / BANT evidence strings — synthesize freshly.`;
@@ -199,7 +251,13 @@ export function getSdrVoiceQualificationPlaybookInstructions(tone: SdrVoiceTone)
 }
 
 /** Appended to qualification ANCHOR from graph — shifts scoring rubric by voice. */
-export function getSdrVoiceQualificationScoringSupplement(tone: SdrVoiceTone): string {
+export function getSdrVoiceQualificationScoringSupplement(
+  tone: SdrVoiceTone,
+  custom?: CustomVoiceProfile | null,
+): string {
+  if (custom) {
+    return customVoiceQualificationScoringSupplement(custom);
+  }
   switch (tone) {
     case "data_driven_analyst":
       return `Reward outreach that **anchors claims in numbers, benchmarks, or operational metrics** (honest hedging in prose when extrapolating). Penalize fluffy benefits with no measurable hook. Qual scores should reflect **evidence-forward** fit.`;

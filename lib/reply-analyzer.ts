@@ -2,6 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 import { SDR_VOICE_TONE_VALUES } from "@/agents/types";
+import { DEFAULT_BRAND_DISPLAY_NAME, substituteBrandInPrompt } from "@/lib/brand-prompt";
 import {
   assertLlmConfigured,
   invokeWithGroqRateLimitResilience,
@@ -27,10 +28,14 @@ export type ReplyAnalysisWithLabels = ReplyAnalysisResult & {
 /**
  * Prompt 45 — Prospect reply triage for nurture / voice tuning (server-only).
  */
-export async function analyzeProspectReply(replyText: string): Promise<ReplyAnalysisResult> {
+export async function analyzeProspectReply(
+  replyText: string,
+  brandDisplayName: string = DEFAULT_BRAND_DISPLAY_NAME,
+): Promise<ReplyAnalysisResult> {
   assertLlmConfigured();
   const trimmed = replyText.trim().slice(0, 12_000);
-  const system = `You are AgentForge Sales — a principal-level revenue operator. Analyze the prospect's reply only from the text provided.
+  const system = substituteBrandInPrompt(
+    `You are AgentForge Sales — a principal-level revenue operator. Analyze the prospect's reply only from the text provided.
 
 Output strict JSON matching the schema. Be specific and actionable — no generic CRM fluff.
 
@@ -45,7 +50,9 @@ Output strict JSON matching the schema. Be specific and actionable — no generi
 - data_driven_analyst: they asked for numbers, ROI, proof, or metrics
 - consultative_enterprise: exec steering, procurement, multi-stakeholder tone
 
-**interest_level_0_to_10**: 0 = hard no / unsubscribe tone; 5 = polite fence; 8+ = clear curiosity or meeting intent.`;
+**interest_level_0_to_10**: 0 = hard no / unsubscribe tone; 5 = polite fence; 8+ = clear curiosity or meeting intent.`,
+    brandDisplayName.trim() || DEFAULT_BRAND_DISPLAY_NAME,
+  );
 
   const human = `PROSPECT_REPLY:\n---\n${trimmed}\n---\n\nReturn JSON only.`;
 

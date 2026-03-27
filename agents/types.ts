@@ -18,15 +18,31 @@ export const SDR_VOICE_TONE_VALUES = [
 
 export type SdrVoiceTone = (typeof SDR_VOICE_TONE_VALUES)[number];
 
+/** Prompt 78 — user-authored voice loaded from `custom_voices` and passed through the graph. */
+export interface CustomVoiceProfile {
+  id: string;
+  name: string;
+  description: string;
+  /** 2–3 example lines the model should emulate in rhythm (not copy). */
+  examples: string[];
+  tone_instructions: string;
+}
+
 export interface Lead {
   id: string;
   name: string;
   email: string;
   company: string;
+  /** E.164 when set — used for Twilio dial / voicemail drop (Prompt 77). */
+  phone?: string;
   linkedin_url?: string;
   status: LeadStatus;
   notes?: string;
   sdr_voice_tone?: SdrVoiceTone;
+  /** When set, pipeline uses `CustomVoiceProfile` instead of preset-only instructions (Prompt 78). */
+  custom_voice_id?: string;
+  /** Denormalized for dashboard labels / exports when a custom voice is selected. */
+  custom_voice_name?: string;
 }
 
 export type AgentMessageRole = "human" | "ai";
@@ -71,11 +87,22 @@ export const leadFormSchema = z.object({
     .union([z.string().url(), z.literal("")])
     .optional()
     .transform((v) => (v === "" ? undefined : v)),
+  /** Optional E.164 (+15551234567) — Twilio outbound dial. */
+  phone: z
+    .union([z.string(), z.literal("")])
+    .optional()
+    .transform((v) => (v === undefined || v === "" ? undefined : v.trim())),
   notes: z.string().optional(),
   status: z
     .enum(["new", "contacted", "qualified", "nurtured", "closed"])
     .default("new"),
   sdr_voice_tone: z.enum(SDR_VOICE_TONE_VALUES).default("default"),
+  custom_voice_id: z
+    .union([z.string().uuid(), z.literal("")])
+    .optional()
+    .transform((v) => (v === undefined || v === "" ? undefined : v)),
+  /** Set when re-running from snapshot — not a form field. */
+  custom_voice_name: z.string().optional(),
 });
 
 export type LeadFormInput = z.input<typeof leadFormSchema>;
@@ -163,6 +190,8 @@ export const outreachDraftSchema = z.object({
   /** Full email body as HTML (ready for ESP). */
   email_body: z.string(),
   linkedin_message: z.string(),
+  /** Plain text, ~25–45s spoken — Twilio Say + Amazon Polly (Prompt 77). */
+  voicemail_script: z.string().max(600).optional(),
   personalization_hooks: z.array(z.string()).min(2).max(6),
   primary_angle: z.string(),
   cta_strategy: z.string(),
@@ -281,4 +310,6 @@ export interface CampaignClientSnapshot {
   live_signals?: CampaignLiveSignal[] | null;
   /** Prompt 73 — for manual Resend send (`buildDynamicFromEmail`). */
   sender_signoff_name?: string | null;
+  /** Prompt 79 — display/sign-off brand line (falls back to AgentForge Sales when unset). */
+  brand_display_name?: string | null;
 }

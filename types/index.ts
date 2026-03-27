@@ -7,6 +7,29 @@ export type {
   LeadStatus,
 } from "@/agents/types";
 
+/** Serializable white-label fields for client components (Prompt 79). */
+export type WhiteLabelClientSettingsDTO = {
+  appName: string;
+  companyName: string;
+  primaryColor: string;
+  secondaryColor: string;
+  supportEmail: string;
+  logoUrl: string;
+  brandSignoff: string;
+};
+
+export type WorkspaceMemberRole = "admin" | "member" | "viewer";
+
+export type WorkspaceMemberDTO = {
+  workspace_id: string;
+  user_id: string | null;
+  role: WorkspaceMemberRole;
+  invited_email: string | null;
+  status: "active" | "pending";
+  created_at: string;
+  is_self: boolean;
+};
+
 export interface CampaignThreadRow {
   thread_id: string;
   updated_at: string;
@@ -19,6 +42,16 @@ export interface CampaignThreadRow {
 }
 
 /** Row from `public.campaigns` (persisted campaign runs). */
+/** Prompt 78 — `custom_voices` table row for dashboard lists. */
+export interface CustomVoiceRow {
+  id: string;
+  name: string;
+  description: string;
+  examples: unknown;
+  tone_instructions: string;
+  created_at: string;
+}
+
 export interface PersistedCampaignRow {
   id: string;
   thread_id: string;
@@ -35,6 +68,10 @@ export interface PersistedCampaignRow {
    * without retyping (Prompt 23).
    */
   rerun_lead: LeadFormInput | null;
+  /** Prompt 80 — inbox health 0–100 after outreach send (null if not recorded). */
+  spam_score?: number | null;
+  /** Prompt 80 — excellent | good | fair | poor */
+  deliverability_status?: string | null;
 }
 
 /** JSON stored in `reply_analyses.analysis` (matches ReplyAnalysisWithLabels). */
@@ -103,4 +140,26 @@ export type DashboardAnalyticsSummary = {
   estimatedPipelineValueUsd: number;
   /** Placeholder ROI multiple vs tooling cost (Prompt 70). */
   estimatedRoiMultiplier: number;
+  /** Prompt 80 — avg inbox health where `campaigns.spam_score` is set. */
+  avgInboxHealthScore: number | null;
+  deliverabilitySampleCount: number;
+  warmupEmailsLast7Days: number;
+  avgWarmupPlacementScore: number | null;
+  warmupEnabled: boolean;
+};
+
+/** Prompt 80 — warm-up chart + prefs for Deliverability tab. */
+export type DeliverabilityWarmupLogDTO = {
+  log_date: string;
+  emails_sent: number;
+  inbox_placement_score: number;
+};
+
+export type DeliverabilitySuitePayload = {
+  warmupEnabled: boolean;
+  logs14d: DeliverabilityWarmupLogDTO[];
+  emailsSentLast7Days: number;
+  avgPlacementLast7d: number | null;
+  todayEmails: number;
+  todayPlacement: number | null;
 };

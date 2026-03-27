@@ -2,9 +2,11 @@ import {
   buildResearchSystemPrompt,
   SALES_AGENT_TEMPERATURE,
 } from "@/agents/graph-prompts";
+import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import { normalizeResearchLlmToCanonical } from "@/agents/research-normalize";
 import { buildFallbackResearchOutput } from "@/agents/pipeline-fallbacks";
 import {
+  type CustomVoiceProfile,
   type Lead,
   type ResearchOutput,
   type SdrVoiceTone,
@@ -32,10 +34,13 @@ export interface ResearchPhaseResult {
 export async function runResearchAgent(
   lead: Lead,
   sdrVoice: SdrVoiceTone,
+  opts?: { customVoice?: CustomVoiceProfile | null; brandDisplayName?: string },
 ): Promise<ResearchPhaseResult> {
   const voice = sdrVoice;
-  const voiceLabel = sdrVoiceLabel(voice);
-  const researchVoice = getSdrVoiceResearchInstructions(voice);
+  const custom = opts?.customVoice ?? undefined;
+  const brand = opts?.brandDisplayName?.trim() || DEFAULT_BRAND_DISPLAY_NAME;
+  const voiceLabel = custom?.name?.trim() || sdrVoiceLabel(voice);
+  const researchVoice = getSdrVoiceResearchInstructions(voice, custom);
 
   const web = await gatherWebResearchDigest(lead);
   if (web.provider !== "none") {
@@ -54,7 +59,7 @@ export async function runResearchAgent(
       : "";
 
   const human = `=== ACTIVE_CAMPAIGN_VOICE (graph → research_node) ===
-sdrVoice: ${voice} (${voiceLabel})
+sdrVoice: ${voice} (${voiceLabel})${custom ? ` — **CUSTOM VOICE: ${custom.name}**` : ""}
 ${researchVoice}
 
 Full research JSON for this lead.
@@ -64,7 +69,7 @@ ${JSON.stringify(lead)}${webBlock}
 
 Prompt 38 + **48** + **50** + **57** + **58** + **69**: **Insightful + stable** — zero generic filler; **zero** leakage (no API/LLM/schema/meta in strings). **icp_fit_score**: strong named B2B + work email + buyer title → **80–93** when fit holds; never absurd lows on real leads. Exec + ICP + news + pains + angles + BANT evidence: **sharp, distinct, zero repeated phrasing** across fields. **reasoning_steps** = **exactly 6–8** strings — **human SDR prep** + **consultant depth** (mixed cadence, validate-on-call notes) — **not** parallel corporate bullets. **Hard-ban** wallpaper phrases ("scaling aggressively", "finance enablement", "hypergrowth", "moving fast" as filler, etc.) unless **verbatim** from a cited fact — replace with **this** company's specifics. **Swap-test** exec + ICP: must break if company name is swapped for a sector peer. **Prompt 58:** **Product-surface terms** from web/notes when real; **no circular** exec↔ICP; pains/angles = **operational hooks**. **Prompt 69:** **Elite intelligence** — every field **earns** its place in a **full dossier export**; **no** enrichment-table shallowness. **Apply CAMPAIGN SDR VOICE + RESEARCH_VOICE**. When WEB_RESEARCH_DIGEST is present, **weave** concrete items into narrative fields — **plain sentences**; **no** "(inferred)", **no** "unknown" placeholders, **no** digest meta, **no** pasting section headers into JSON. JSON only.`;
 
-  const systemPrompt = buildResearchSystemPrompt(sdrVoice);
+  const systemPrompt = buildResearchSystemPrompt(sdrVoice, custom, brand);
   const prompt = `${systemPrompt}\n\n---\n${human}`;
 
   try {

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { fetchWhiteLabelSettings } from "@/lib/white-label";
 
 /** Auth + Supabase use cookies — must not be statically generated (Vercel / Next.js). */
 export const dynamic = "force-dynamic";
@@ -36,10 +37,17 @@ export default async function DashboardLayout({
     displayName = profileRow.full_name.trim();
   }
 
+  const wl = await fetchWhiteLabelSettings(supabase, user.id);
+
   return (
     <DashboardShell
       email={user.email ?? ""}
       displayName={displayName}
+      whiteLabel={{
+        appName: wl.appName,
+        logoUrl: wl.logoUrl,
+        primaryColor: wl.primaryColor,
+      }}
       nav={
         <nav className="flex flex-wrap items-center gap-1 text-sm font-medium sm:gap-2">
           <Link

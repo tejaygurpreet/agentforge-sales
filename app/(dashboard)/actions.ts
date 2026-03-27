@@ -10,6 +10,7 @@ import { saveCampaign as persistCampaignToDatabase } from "@/lib/save-campaign";
 import { deleteThreadCheckpoint, mergeDashboardState } from "@/agents/supabase-checkpointer";
 import {
   type CampaignClientSnapshot,
+  type CustomVoiceProfile,
   type Lead,
   type LeadFormInput,
   type OutreachOutput,
@@ -26,18 +27,39 @@ import {
 } from "@/lib/reply-analyzer";
 import type {
   CampaignThreadRow,
+  CustomVoiceRow,
   DashboardAnalyticsSummary,
+  DeliverabilitySuitePayload,
   LiveSignalFeedItem,
   PersistedCampaignRow,
   PersistedReplyAnalysisRow,
   ProspectReplyAnalysisPayload,
+  WorkspaceMemberDTO,
+  WorkspaceMemberRole,
 } from "@/types";
 import { computeCampaignStrength } from "@/lib/campaign-strength";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { withTimeout } from "@/lib/async-timeout";
-import { sdrVoiceLabel } from "@/lib/sdr-voice";
+import { fetchCustomVoiceProfileForUser } from "@/lib/custom-voices";
+import { sdrVoiceLabel, voiceLabelForLead } from "@/lib/sdr-voice";
+import { generateCampaignPdfArrayBuffer } from "@/lib/campaign-pdf";
+import { syncCampaignToHubSpot } from "@/lib/hubspot";
 import { buildDynamicFromEmail, sendTransactionalEmail } from "@/lib/resend";
+import {
+  analyzeDeliverability,
+  inboxPlacementFromWarmupVolume,
+  placementScoreForDailyLog,
+} from "@/lib/deliverability";
+import {
+  buildCampaignPdfExportOptionsFromWhiteLabel,
+  fetchWhiteLabelSettings,
+} from "@/lib/white-label";
+import {
+  ensurePersonalWorkspaceMembership,
+  resolveWorkspaceContext,
+  type WorkspaceRole,
+} from "@/lib/workspace";
 
 /** Prompt 18: hard cap so the dashboard never spins forever (must be ≥ `GRAPH_INVOKE_MAX_MS` in graph). */
 const START_CAMPAIGN_MAX_MS = 90_000;
@@ -68,6 +90,21 @@ function parseRerunLeadFromResults(results: unknown): LeadFormInput | null {
     ? (voiceRaw as SdrVoiceTone)
     : "default";
 
+  const phoneRaw = l.phone;
+  const phone =
+    typeof phoneRaw === "string" && phoneRaw.trim() ? phoneRaw.trim() : undefined;
+  const cvIdRaw = l.custom_voice_id;
+  const custom_voice_id =
+    typeof cvIdRaw === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      cvIdRaw.trim(),
+    )
+      ? cvIdRaw.trim()
+      : undefined;
+  const custom_voice_name =
+    typeof l.custom_voice_name === "string" && l.custom_voice_name.trim()
+      ? l.custom_voice_name.trim()
+      : undefined;
+
   return {
     name: l.name.trim(),
     email: l.email.trim(),
@@ -76,9 +113,12 @@ function parseRerunLeadFromResults(results: unknown): LeadFormInput | null {
       typeof l.linkedin_url === "string" && l.linkedin_url.trim()
         ? l.linkedin_url.trim()
         : "",
+    phone,
     notes: typeof l.notes === "string" ? l.notes : "",
     status,
     sdr_voice_tone,
+    custom_voice_id,
+    custom_voice_name,
   };
 }
 
@@ -86,7 +126,7 @@ function parseRerunLeadFromResults(results: unknown): LeadFormInput | null {
 function parseSdrVoiceLabelFromResults(results: unknown): string | null {
   const lead = parseRerunLeadFromResults(results);
   if (!lead) return null;
-  return sdrVoiceLabel(lead.sdr_voice_tone);
+  return voiceLabelForLead(lead as unknown as Lead);
 }
 
 type SupabaseErrorShape = {
@@ -109,7 +149,13 @@ function logCheckpointListError(context: string, error: SupabaseErrorShape | nul
 }
 
 function readCheckpointDashboardFields(state: unknown): {
-  lead?: { name?: string; company?: string; sdr_voice_tone?: string };
+  lead?: {
+    name?: string;
+    company?: string;
+    sdr_voice_tone?: string;
+    custom_voice_id?: string;
+    custom_voice_name?: string;
+  };
   current_agent?: string;
   outreach_sent?: boolean;
   outreach_output?: { email_sent?: boolean };
@@ -119,7 +165,15 @@ function readCheckpointDashboardFields(state: unknown): {
   }
   const st = state as Record<string, unknown>;
   const rawLead = st.lead;
-  let lead: { name?: string; company?: string; sdr_voice_tone?: string } | undefined;
+  let lead:
+    | {
+        name?: string;
+        company?: string;
+        sdr_voice_tone?: string;
+        custom_voice_id?: string;
+        custom_voice_name?: string;
+      }
+    | undefined;
   if (rawLead && typeof rawLead === "object" && !Array.isArray(rawLead)) {
     const l = rawLead as Record<string, unknown>;
     lead = {
@@ -127,6 +181,10 @@ function readCheckpointDashboardFields(state: unknown): {
       company: typeof l.company === "string" ? l.company : undefined,
       sdr_voice_tone:
         typeof l.sdr_voice_tone === "string" ? l.sdr_voice_tone : undefined,
+      custom_voice_id:
+        typeof l.custom_voice_id === "string" ? l.custom_voice_id : undefined,
+      custom_voice_name:
+        typeof l.custom_voice_name === "string" ? l.custom_voice_name : undefined,
     };
   }
   const outreach_output = st.outreach_output;
@@ -317,12 +375,12 @@ async function queryReplyAnalysesForList(
 
 async function queryCampaignSignalsFeed(
   supabase: SupabaseClient,
-  userId: string,
+  userIds: string[],
 ): Promise<LiveSignalFeedItem[]> {
   const { data, error } = await supabase
     .from("campaign_signals")
     .select("id, thread_id, signal_type, signal_text, created_at")
-    .eq("user_id", userId)
+    .in("user_id", userIds)
     .order("created_at", { ascending: false })
     .limit(50);
   if (error) {
@@ -347,12 +405,12 @@ async function queryCampaignSignalsFeed(
 
 async function queryReplyRowsForAnalytics(
   supabase: SupabaseClient,
-  userId: string,
+  userIds: string[],
 ): Promise<Record<string, unknown>[]> {
   const full = await supabase
     .from("reply_analyses")
     .select("interest_score, analysis")
-    .eq("user_id", userId)
+    .in("user_id", userIds)
     .limit(2000);
   if (!full.error) {
     return (full.data ?? []) as Record<string, unknown>[];
@@ -361,7 +419,7 @@ async function queryReplyRowsForAnalytics(
     const fb = await supabase
       .from("reply_analyses")
       .select("analysis")
-      .eq("user_id", userId)
+      .in("user_id", userIds)
       .limit(2000);
     if (!fb.error) {
       return (fb.data ?? []) as Record<string, unknown>[];
@@ -370,11 +428,13 @@ async function queryReplyRowsForAnalytics(
   return [];
 }
 
-function voiceLabelFromCheckpointTone(tone: string | undefined): string | null {
-  if (!tone || !SDR_VOICE_TONE_VALUES.includes(tone as SdrVoiceTone)) {
-    return null;
-  }
-  return sdrVoiceLabel(tone as SdrVoiceTone);
+function voiceLabelFromCheckpointLead(lead: {
+  sdr_voice_tone?: string;
+  custom_voice_id?: string;
+  custom_voice_name?: string;
+} | undefined): string | null {
+  if (!lead) return null;
+  return voiceLabelForLead(lead as unknown as Lead);
 }
 
 type CheckpointRowInput = {
@@ -395,7 +455,7 @@ function mapCheckpointRowToThread(row: CheckpointRowInput): CampaignThreadRow {
     company_preview: st.lead?.company,
     current_agent: st.current_agent,
     outreach_sent: sent,
-    sdr_voice_label: voiceLabelFromCheckpointTone(st.lead?.sdr_voice_tone),
+    sdr_voice_label: voiceLabelFromCheckpointLead(st.lead),
   };
 }
 
@@ -408,11 +468,21 @@ const incomingLeadSchema = z.object({
     .union([z.string().url(), z.literal("")])
     .optional()
     .transform((v) => (v === "" ? undefined : v)),
+  phone: z
+    .union([z.string(), z.literal("")])
+    .optional()
+    .transform((v) => (v === undefined || v === "" ? undefined : v.trim())),
   notes: z.string().optional(),
   status: z
     .enum(["new", "contacted", "qualified", "nurtured", "closed"])
     .default("new"),
   sdr_voice_tone: z.enum(SDR_VOICE_TONE_VALUES).default("default"),
+  custom_voice_id: z
+    .union([z.string().uuid(), z.literal("")])
+    .optional()
+    .transform((v) => (v === undefined || v === "" ? undefined : v)),
+  /** Carried from snapshots / reruns; optional on fresh submits. */
+  custom_voice_name: z.string().max(200).optional(),
 });
 
 export type StartCampaignResult =
@@ -460,6 +530,173 @@ export async function saveCampaign(params: {
   await persistCampaignToDatabase(params);
 }
 
+const workspaceRoleSchema = z.enum(["admin", "member", "viewer"]);
+
+const inviteWorkspaceMemberSchema = z.object({
+  email: z.string().email(),
+  role: workspaceRoleSchema.default("member"),
+});
+
+export type InviteWorkspaceMemberResult = { ok: true } | { ok: false; error: string };
+
+const updateWorkspaceMemberRoleSchema = z.object({
+  user_id: z.string().uuid(),
+  role: workspaceRoleSchema,
+});
+
+export type UpdateWorkspaceMemberRoleResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Prompt 81 — list members + pending invites for the active workspace.
+ */
+export async function getWorkspaceMembersAction(): Promise<{
+  workspaceRole: WorkspaceMemberRole;
+  members: WorkspaceMemberDTO[];
+} | null> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return null;
+
+  const ctx = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+
+  const { data, error } = await supabase
+    .from("workspace_members")
+    .select("workspace_id, user_id, role, invited_email, status, created_at")
+    .eq("workspace_id", ctx.workspaceId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("[AgentForge] getWorkspaceMembersAction", error.message);
+    return {
+      workspaceRole: ctx.currentUserRole,
+      members: [
+        {
+          workspace_id: ctx.workspaceId,
+          user_id: user.id,
+          role: "admin",
+          invited_email: user.email ?? null,
+          status: "active",
+          created_at: new Date().toISOString(),
+          is_self: true,
+        },
+      ],
+    };
+  }
+
+  const members: WorkspaceMemberDTO[] = (data ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      workspace_id: String(row.workspace_id ?? ctx.workspaceId),
+      user_id: typeof row.user_id === "string" ? row.user_id : null,
+      role: workspaceRoleSchema.parse(row.role),
+      invited_email: typeof row.invited_email === "string" ? row.invited_email : null,
+      status: row.status === "pending" ? "pending" : "active",
+      created_at: String(row.created_at ?? ""),
+      is_self: row.user_id === user.id,
+    };
+  });
+
+  return {
+    workspaceRole: ctx.currentUserRole,
+    members,
+  };
+}
+
+/**
+ * Prompt 81 — invite user by email into active workspace.
+ * If user already exists and has profile row, grant active membership immediately.
+ */
+export async function inviteWorkspaceMemberAction(
+  raw: z.input<typeof inviteWorkspaceMemberSchema>,
+): Promise<InviteWorkspaceMemberResult> {
+  const parsed = inviteWorkspaceMemberSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid email or role." };
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+
+  const ctx = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  if (ctx.currentUserRole !== "admin") {
+    return { ok: false, error: "Only workspace admins can invite members." };
+  }
+
+  const email = parsed.data.email.trim().toLowerCase();
+  const role = parsed.data.role;
+
+  const { error: cleanupErr } = await supabase
+    .from("workspace_members")
+    .delete()
+    .eq("workspace_id", ctx.workspaceId)
+    .is("user_id", null)
+    .eq("invited_email", email)
+    .eq("status", "pending");
+  if (cleanupErr) return { ok: false, error: cleanupErr.message };
+
+  const { error } = await supabase.from("workspace_members").insert({
+    workspace_id: ctx.workspaceId,
+    user_id: null,
+    invited_email: email,
+    role,
+    status: "pending",
+  });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/**
+ * Prompt 81 — admins can change member role in active workspace.
+ */
+export async function updateWorkspaceMemberRoleAction(
+  raw: z.input<typeof updateWorkspaceMemberRoleSchema>,
+): Promise<UpdateWorkspaceMemberRoleResult> {
+  const parsed = updateWorkspaceMemberRoleSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid payload." };
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+
+  const ctx = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  if (ctx.currentUserRole !== "admin") {
+    return { ok: false, error: "Only workspace admins can update roles." };
+  }
+  if (parsed.data.user_id === user.id) {
+    return { ok: false, error: "Cannot change your own role here." };
+  }
+
+  const { error } = await supabase
+    .from("workspace_members")
+    .update({ role: parsed.data.role })
+    .eq("workspace_id", ctx.workspaceId)
+    .eq("user_id", parsed.data.user_id)
+    .eq("status", "active");
+
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/");
+  return { ok: true };
+}
+
 /**
  * Core campaign runner: new `thread_id` per invocation, full graph, persist + revalidate.
  * Prefer {@link startCampaignAction} from Client Components so imports read as an explicit server action.
@@ -488,17 +725,36 @@ export async function startCampaign(
   if (authError || !user) {
     return { ok: false, error: "Unauthorized" };
   }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
 
-  const lead: Lead = {
+  let custom_voice_profile: CustomVoiceProfile | undefined;
+  let lead: Lead = {
     id: parsed.data.id ?? randomUUID(),
     name: parsed.data.name,
     email: parsed.data.email,
     company: parsed.data.company,
     linkedin_url: parsed.data.linkedin_url,
+    phone: parsed.data.phone,
     notes: parsed.data.notes,
     status: parsed.data.status,
     sdr_voice_tone: parsed.data.sdr_voice_tone,
+    custom_voice_id: parsed.data.custom_voice_id,
+    custom_voice_name: parsed.data.custom_voice_name,
   };
+
+  if (lead.custom_voice_id) {
+    const profile = await fetchCustomVoiceProfileForUser(user.id, lead.custom_voice_id);
+    if (profile) {
+      custom_voice_profile = profile;
+      lead = { ...lead, custom_voice_name: profile.name };
+    } else {
+      lead = { ...lead, custom_voice_id: undefined, custom_voice_name: undefined };
+    }
+  }
 
   const thread_id = `${user.id}_${Date.now()}`;
 
@@ -517,6 +773,7 @@ export async function startCampaign(
 
   try {
     warnIfResendNotConfigured();
+    const wl = await fetchWhiteLabelSettings(supabase, ws.workspaceId);
     await deleteThreadCheckpoint(thread_id);
     const finalState = await withTimeout(
       runCampaignGraph({
@@ -524,6 +781,8 @@ export async function startCampaign(
         thread_id,
         user_id: user.id,
         sender_signoff_name: senderSignoffName || undefined,
+        custom_voice_profile,
+        brand_display_name: wl.brandSignoff,
       }),
       START_CAMPAIGN_MAX_MS,
       "startCampaign.runCampaignGraph",
@@ -566,14 +825,29 @@ export async function listRecentCampaigns(): Promise<PersistedCampaignRow[]> {
     return [];
   }
 
-  const { data, error } = await supabase
-    .from("campaigns")
-    .select(
-      "id, thread_id, lead_name, company, email, status, created_at, completed_at, results",
-    )
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(25);
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ctx = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  const memberIds = ctx.memberUserIds;
+  const sr = getServiceRoleSupabaseOrNull();
+
+  const query = sr
+    ? sr
+        .from("campaigns")
+        .select(
+          "id, thread_id, lead_name, company, email, status, created_at, completed_at, results, spam_score, deliverability_status",
+        )
+        .in("user_id", memberIds)
+    : supabase
+        .from("campaigns")
+        .select(
+          "id, thread_id, lead_name, company, email, status, created_at, completed_at, results, spam_score, deliverability_status",
+        )
+        .eq("user_id", user.id);
+
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(25);
 
   if (error) {
     console.error(
@@ -591,6 +865,10 @@ export async function listRecentCampaigns(): Promise<PersistedCampaignRow[]> {
 
   return data.map((row) => {
     const results = (row as { results?: unknown }).results;
+    const r = row as {
+      spam_score?: unknown;
+      deliverability_status?: unknown;
+    };
     return {
       id: String(row.id),
       thread_id: String(row.thread_id),
@@ -602,6 +880,9 @@ export async function listRecentCampaigns(): Promise<PersistedCampaignRow[]> {
       completed_at: row.completed_at != null ? String(row.completed_at) : null,
       sdr_voice_label: parseSdrVoiceLabelFromResults(results),
       rerun_lead: parseRerunLeadFromResults(results),
+      spam_score: typeof r.spam_score === "number" ? r.spam_score : null,
+      deliverability_status:
+        typeof r.deliverability_status === "string" ? r.deliverability_status : null,
     };
   });
 }
@@ -617,6 +898,12 @@ export async function listCampaignThreads(): Promise<CampaignThreadRow[]> {
     if (authError || !user) {
       return [];
     }
+    await ensurePersonalWorkspaceMembership(supabase, user.id);
+    const ctx = await resolveWorkspaceContext(supabase, {
+      id: user.id,
+      email: user.email ?? null,
+    });
+    const memberIds = ctx.memberUserIds;
 
     const sb = getServiceRoleSupabaseOrNull();
     if (!sb) {
@@ -629,7 +916,7 @@ export async function listCampaignThreads(): Promise<CampaignThreadRow[]> {
     const primary = await sb
       .from("agent_graph_checkpoints")
       .select("thread_id, updated_at, state")
-      .eq("user_id", user.id)
+      .in("user_id", memberIds)
       .order("updated_at", { ascending: false })
       .limit(50);
 
@@ -638,7 +925,7 @@ export async function listCampaignThreads(): Promise<CampaignThreadRow[]> {
       const fallback = await sb
         .from("agent_graph_checkpoints")
         .select("thread_id, updated_at")
-        .eq("user_id", user.id)
+        .in("user_id", memberIds)
         .order("updated_at", { ascending: false })
         .limit(50);
 
@@ -682,7 +969,15 @@ const sendOutreachEmailSchema = z.object({
 });
 
 export type SendOutreachEmailResult =
-  | { ok: true; snapshot: CampaignClientSnapshot }
+  | {
+      ok: true;
+      snapshot: CampaignClientSnapshot;
+      deliverability?: {
+        inboxHealthScore: number;
+        status: string;
+        flags: string[];
+      };
+    }
   | { ok: false; error: string };
 
 /**
@@ -713,12 +1008,29 @@ export async function sendOutreachEmailAction(
     return { ok: false, error: "Account email missing — cannot set Reply-To." };
   }
 
-  const { data: row, error: rowError } = await supabase
-    .from("campaigns")
-    .select("results")
-    .eq("thread_id", parsed.data.thread_id)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  const memberIds = ws.memberUserIds;
+  const sr = getServiceRoleSupabaseOrNull();
+
+  const q = sr
+    ? sr
+        .from("campaigns")
+        .select("results")
+        .eq("thread_id", parsed.data.thread_id)
+        .in("user_id", memberIds)
+        .maybeSingle()
+    : supabase
+        .from("campaigns")
+        .select("results")
+        .eq("thread_id", parsed.data.thread_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+  const { data: row, error: rowError } = await q;
 
   if (rowError || row?.results == null) {
     return { ok: false, error: "Campaign not found." };
@@ -744,6 +1056,8 @@ export async function sendOutreachEmailAction(
       senderName = profileForSignoff.full_name.trim();
     }
   }
+
+  const preSendDv = analyzeDeliverability(oo.subject, oo.email_body);
 
   warnIfResendNotConfigured();
   const send = await sendTransactionalEmail({
@@ -798,12 +1112,291 @@ export async function sendOutreachEmailAction(
     threadId: parsed.data.thread_id,
     lead: updatedLead,
     snapshot: snap2,
+    deliverability: {
+      spam_score: preSendDv.inboxHealthScore,
+      deliverability_status: preSendDv.deliverabilityStatus,
+    },
   });
 
   revalidatePath("/");
   revalidatePath("/analytics");
 
-  return { ok: true, snapshot: snap2 };
+  return {
+    ok: true,
+    snapshot: snap2,
+    deliverability: {
+      inboxHealthScore: preSendDv.inboxHealthScore,
+      status: preSendDv.deliverabilityStatus,
+      flags: preSendDv.flags,
+    },
+  };
+}
+
+/**
+ * Prompt 80 — full warm-up + chart payload for the Deliverability tab.
+ */
+export async function getDeliverabilitySuiteAction(): Promise<DeliverabilitySuitePayload | null> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return null;
+
+  const today = new Date();
+  const isoToday = today.toISOString().slice(0, 10);
+  const fourteen = new Date(today);
+  fourteen.setDate(fourteen.getDate() - 14);
+  const iso14 = fourteen.toISOString().slice(0, 10);
+  const seven = new Date(today);
+  seven.setDate(seven.getDate() - 7);
+  const isoSeven = seven.toISOString().slice(0, 10);
+
+  const [prefsRes, logsRes, logs7Res, todayRes] = await Promise.all([
+    supabase
+      .from("user_deliverability_prefs")
+      .select("warmup_enabled")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("email_warmup_logs")
+      .select("log_date, emails_sent, inbox_placement_score")
+      .eq("user_id", user.id)
+      .gte("log_date", iso14)
+      .order("log_date", { ascending: true }),
+    supabase
+      .from("email_warmup_logs")
+      .select("emails_sent, inbox_placement_score")
+      .eq("user_id", user.id)
+      .gte("log_date", isoSeven)
+      .lte("log_date", isoToday),
+    supabase
+      .from("email_warmup_logs")
+      .select("emails_sent, inbox_placement_score")
+      .eq("user_id", user.id)
+      .eq("log_date", isoToday)
+      .maybeSingle(),
+  ]);
+
+  if (prefsRes.error) {
+    console.warn("[AgentForge] getDeliverabilitySuiteAction prefs", prefsRes.error.message);
+  }
+  if (logsRes.error) {
+    console.warn("[AgentForge] getDeliverabilitySuiteAction logs", logsRes.error.message);
+  }
+
+  const warmupEnabled =
+    prefsRes.data != null &&
+    typeof (prefsRes.data as { warmup_enabled?: unknown }).warmup_enabled === "boolean"
+      ? Boolean((prefsRes.data as { warmup_enabled: boolean }).warmup_enabled)
+      : false;
+
+  const logs14d = (logsRes.data ?? []).map((row) => {
+    const r = row as {
+      log_date?: unknown;
+      emails_sent?: unknown;
+      inbox_placement_score?: unknown;
+    };
+    return {
+      log_date: String(r.log_date ?? ""),
+      emails_sent: typeof r.emails_sent === "number" ? r.emails_sent : 0,
+      inbox_placement_score:
+        typeof r.inbox_placement_score === "number" ? r.inbox_placement_score : 0,
+    };
+  });
+
+  let emailsSentLast7Days = 0;
+  const place7: number[] = [];
+  for (const row of logs7Res.data ?? []) {
+    const r = row as { emails_sent?: unknown; inbox_placement_score?: unknown };
+    emailsSentLast7Days += typeof r.emails_sent === "number" ? r.emails_sent : 0;
+    if (typeof r.emails_sent === "number" && r.emails_sent > 0) {
+      if (typeof r.inbox_placement_score === "number") place7.push(r.inbox_placement_score);
+    }
+  }
+
+  const avgPlacementLast7d =
+    place7.length > 0
+      ? Math.round(place7.reduce((a, b) => a + b, 0) / place7.length)
+      : null;
+
+  const todayRow = todayRes.data as { emails_sent?: unknown; inbox_placement_score?: unknown } | null;
+  const todayEmails = typeof todayRow?.emails_sent === "number" ? todayRow.emails_sent : 0;
+  const todayPlacement =
+    typeof todayRow?.inbox_placement_score === "number" ? todayRow.inbox_placement_score : null;
+
+  return {
+    warmupEnabled,
+    logs14d,
+    emailsSentLast7Days,
+    avgPlacementLast7d,
+    todayEmails,
+    todayPlacement,
+  };
+}
+
+const warmupToggleSchema = z.object({
+  enabled: z.boolean(),
+});
+
+export type SetWarmupEnabledResult = { ok: true } | { ok: false; error: string };
+
+/** Prompt 80 — enable/disable warm-up tracking. */
+export async function setWarmupEnabledAction(
+  raw: z.input<typeof warmupToggleSchema>,
+): Promise<SetWarmupEnabledResult> {
+  const parsed = warmupToggleSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid request." };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+
+  const { error } = await supabase.from("user_deliverability_prefs").upsert(
+    {
+      user_id: user.id,
+      warmup_enabled: parsed.data.enabled,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" },
+  );
+
+  if (error) {
+    console.error("[AgentForge] setWarmupEnabledAction", error.message);
+    return {
+      ok: false,
+      error:
+        error.message.includes("user_deliverability_prefs") || error.code === "42P01"
+          ? "Run supabase/email_deliverability.sql in Supabase."
+          : error.message,
+    };
+  }
+  revalidatePath("/");
+  revalidatePath("/analytics");
+  return { ok: true };
+}
+
+export type RecordWarmupEmailResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Prompt 80 — record one warm-up send for today (simulated; no outbound mail).
+ * Caps at 50/day per user.
+ */
+export async function recordWarmupEmailAction(): Promise<RecordWarmupEmailResult> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+
+  const isoToday = new Date().toISOString().slice(0, 10);
+
+  const { data: existing, error: readErr } = await supabase
+    .from("email_warmup_logs")
+    .select("emails_sent")
+    .eq("user_id", user.id)
+    .eq("log_date", isoToday)
+    .maybeSingle();
+
+  if (readErr) {
+    console.error("[AgentForge] recordWarmupEmailAction", readErr.message);
+    return {
+      ok: false,
+      error:
+        readErr.message.includes("email_warmup_logs") || readErr.code === "42P01"
+          ? "Run supabase/email_deliverability.sql in Supabase."
+          : readErr.message,
+    };
+  }
+
+  const prev = typeof existing?.emails_sent === "number" ? existing.emails_sent : 0;
+  const next = Math.min(50, prev + 1);
+  const inbox_placement_score = placementScoreForDailyLog(next);
+
+  const { error } = await supabase.from("email_warmup_logs").upsert(
+    {
+      user_id: user.id,
+      log_date: isoToday,
+      emails_sent: next,
+      inbox_placement_score,
+    },
+    { onConflict: "user_id,log_date" },
+  );
+
+  if (error) {
+    console.error("[AgentForge] recordWarmupEmailAction upsert", error.message);
+    return { ok: false, error: error.message };
+  }
+
+  revalidatePath("/");
+  revalidatePath("/analytics");
+  return { ok: true };
+}
+
+const spamCheckSchema = z.object({
+  subject: z.string().max(500).optional(),
+  html: z.string().max(200_000).optional(),
+});
+
+export type SpamCheckResult =
+  | {
+      ok: true;
+      inboxHealthScore: number;
+      spamRiskScore: number;
+      status: string;
+      flags: string[];
+      estimatedWeekPlacement: number;
+    }
+  | { ok: false; error: string };
+
+/** Prompt 80 — offline spam / inbox-health check (before send). */
+export async function checkSpamScoreAction(
+  raw: z.input<typeof spamCheckSchema>,
+): Promise<SpamCheckResult> {
+  const parsed = spamCheckSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid payload." };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+
+  const a = analyzeDeliverability(parsed.data.subject ?? "", parsed.data.html ?? "");
+
+  const seven = new Date();
+  seven.setDate(seven.getDate() - 7);
+  const isoSeven = seven.toISOString().slice(0, 10);
+  const isoToday = new Date().toISOString().slice(0, 10);
+
+  const { data: warmRows } = await supabase
+    .from("email_warmup_logs")
+    .select("emails_sent")
+    .eq("user_id", user.id)
+    .gte("log_date", isoSeven)
+    .lte("log_date", isoToday);
+
+  let emailsSentLast7Days = 0;
+  for (const row of warmRows ?? []) {
+    const n = (row as { emails_sent?: unknown }).emails_sent;
+    if (typeof n === "number") emailsSentLast7Days += n;
+  }
+
+  const estimatedWeekPlacement = inboxPlacementFromWarmupVolume(emailsSentLast7Days);
+
+  return {
+    ok: true,
+    inboxHealthScore: a.inboxHealthScore,
+    spamRiskScore: a.spamRiskScore,
+    status: a.deliverabilityStatus,
+    flags: a.flags,
+    estimatedWeekPlacement,
+  };
 }
 
 const pasteReplySchema = z.object({
@@ -862,7 +1455,13 @@ export async function analyzeProspectReplyAction(
     return { ok: false, error: "Configure GROQ_API_KEY (or Anthropic) to run reply analysis." };
   }
   try {
-    const core = await analyzeProspectReply(parsed.data.text);
+    await ensurePersonalWorkspaceMembership(supabase, user.id);
+    const ws = await resolveWorkspaceContext(supabase, {
+      id: user.id,
+      email: user.email ?? null,
+    });
+    const wl = await fetchWhiteLabelSettings(supabase, ws.workspaceId);
+    const core = await analyzeProspectReply(parsed.data.text, wl.brandSignoff);
     const analysis = replyAnalysisWithLabels(core);
     const fullText = parsed.data.text.trim();
     const preview = fullText.replace(/\s+/g, " ").slice(0, 280);
@@ -965,6 +1564,11 @@ const EMPTY_ANALYTICS: DashboardAnalyticsSummary = {
   liveSignalsFeed: [],
   estimatedPipelineValueUsd: 0,
   estimatedRoiMultiplier: 0,
+  avgInboxHealthScore: null,
+  deliverabilitySampleCount: 0,
+  warmupEmailsLast7Days: 0,
+  avgWarmupPlacementScore: null,
+  warmupEnabled: false,
 };
 
 /**
@@ -979,16 +1583,92 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
   if (authError || !user) {
     return EMPTY_ANALYTICS;
   }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  const memberIds = ws.memberUserIds;
+  const sr = getServiceRoleSupabaseOrNull();
+  const campaignsReader = sr ?? supabase;
 
-  const [campRes, replyRows, liveSignalsFeed] = await Promise.all([
-    supabase.from("campaigns").select("results").eq("user_id", user.id).limit(500),
-    queryReplyRowsForAnalytics(supabase, user.id),
-    queryCampaignSignalsFeed(supabase, user.id),
-  ]);
+  const today = new Date();
+  const sevenAgo = new Date(today);
+  sevenAgo.setDate(sevenAgo.getDate() - 7);
+  const isoSeven = sevenAgo.toISOString().slice(0, 10);
+  const isoToday = today.toISOString().slice(0, 10);
+
+  const [campRes, replyRows, liveSignalsFeed, spamRowsRes, prefsRes, warmup7Res] =
+    await Promise.all([
+      campaignsReader
+        .from("campaigns")
+        .select("results")
+        .in("user_id", memberIds)
+        .limit(500),
+      queryReplyRowsForAnalytics(campaignsReader, memberIds),
+      queryCampaignSignalsFeed(campaignsReader, memberIds),
+      campaignsReader
+        .from("campaigns")
+        .select("spam_score")
+        .in("user_id", memberIds)
+        .limit(500),
+      campaignsReader
+        .from("user_deliverability_prefs")
+        .select("warmup_enabled")
+        .eq("user_id", ws.workspaceId)
+        .maybeSingle(),
+      campaignsReader
+        .from("email_warmup_logs")
+        .select("emails_sent, inbox_placement_score")
+        .in("user_id", memberIds)
+        .gte("log_date", isoSeven)
+        .lte("log_date", isoToday),
+    ]);
 
   if (campRes.error) {
     console.error("[AgentForge] getDashboardAnalytics campaigns", campRes.error.message);
   }
+  if (spamRowsRes.error) {
+    console.warn("[AgentForge] getDashboardAnalytics spam_score", spamRowsRes.error.message);
+  }
+  if (prefsRes.error) {
+    console.warn("[AgentForge] getDashboardAnalytics deliverability_prefs", prefsRes.error.message);
+  }
+  if (warmup7Res.error) {
+    console.warn("[AgentForge] getDashboardAnalytics warmup_logs", warmup7Res.error.message);
+  }
+
+  const spamScores: number[] = [];
+  for (const row of spamRowsRes.data ?? []) {
+    const n = (row as { spam_score?: unknown }).spam_score;
+    if (typeof n === "number" && !Number.isNaN(n)) spamScores.push(n);
+  }
+  const deliverabilitySampleCount = spamScores.length;
+  const avgInboxHealthScore =
+    deliverabilitySampleCount > 0
+      ? Math.round(spamScores.reduce((a, b) => a + b, 0) / deliverabilitySampleCount)
+      : null;
+
+  let warmupEmailsLast7Days = 0;
+  const placements: number[] = [];
+  for (const row of warmup7Res.data ?? []) {
+    const r = row as { emails_sent?: unknown; inbox_placement_score?: unknown };
+    const es = typeof r.emails_sent === "number" ? r.emails_sent : 0;
+    warmupEmailsLast7Days += es;
+    if (es > 0 && typeof r.inbox_placement_score === "number") {
+      placements.push(r.inbox_placement_score);
+    }
+  }
+  const avgWarmupPlacementScore =
+    placements.length > 0
+      ? Math.round(placements.reduce((a, b) => a + b, 0) / placements.length)
+      : null;
+
+  const warmupEnabled =
+    prefsRes.data != null &&
+    typeof (prefsRes.data as { warmup_enabled?: unknown }).warmup_enabled === "boolean"
+      ? Boolean((prefsRes.data as { warmup_enabled: boolean }).warmup_enabled)
+      : false;
 
   const composites: number[] = [];
   const buckets = [0, 0, 0, 0];
@@ -1054,6 +1734,11 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
     liveSignalsFeed,
     estimatedPipelineValueUsd,
     estimatedRoiMultiplier,
+    avgInboxHealthScore,
+    deliverabilitySampleCount,
+    warmupEmailsLast7Days,
+    avgWarmupPlacementScore,
+    warmupEnabled,
   };
 }
 
@@ -1116,7 +1801,98 @@ export async function uploadBrandingLogoAction(
   }
 
   const { data: pub } = supabase.storage.from("branding-logos").getPublicUrl(path);
-  return { ok: true, publicUrl: pub.publicUrl };
+  const publicUrl = pub.publicUrl;
+
+  const { data: wlRow } = await supabase
+    .from("white_label_settings")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (wlRow) {
+    await supabase
+      .from("white_label_settings")
+      .update({ logo_url: publicUrl, updated_at: new Date().toISOString() })
+      .eq("user_id", user.id);
+  } else {
+    await supabase.from("white_label_settings").insert({
+      user_id: user.id,
+      logo_url: publicUrl,
+    });
+  }
+
+  return { ok: true, publicUrl };
+}
+
+const whiteLabelSaveSchema = z.object({
+  app_name: z.string().max(120).optional(),
+  company_name: z.string().max(120).optional(),
+  primary_color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Primary color must be #RRGGBB"),
+  secondary_color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Secondary color must be #RRGGBB"),
+  support_email: z.union([z.string().email(), z.literal("")]).optional(),
+  logo_url: z.string().max(2048).optional(),
+});
+
+export type SaveWhiteLabelSettingsResult = { ok: true } | { ok: false; error: string };
+
+/** Prompt 79 — persist white-label row (Supabase). */
+export async function saveWhiteLabelSettingsAction(
+  raw: z.input<typeof whiteLabelSaveSchema>,
+): Promise<SaveWhiteLabelSettingsResult> {
+  const parsed = whiteLabelSaveSchema.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: Object.values(parsed.error.flatten().fieldErrors)
+        .flat()
+        .filter(Boolean)
+        .join(", "),
+    };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+
+  const app_name = (parsed.data.app_name ?? "").trim().slice(0, 120);
+  const company_name = (parsed.data.company_name ?? "").trim().slice(0, 120);
+  const support_email = (parsed.data.support_email ?? "").trim();
+  const logo_url = (parsed.data.logo_url ?? "").trim().slice(0, 2048);
+
+  const { error } = await supabase.from("white_label_settings").upsert(
+    {
+      user_id: user.id,
+      app_name,
+      company_name,
+      primary_color: parsed.data.primary_color,
+      secondary_color: parsed.data.secondary_color,
+      support_email,
+      logo_url,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" },
+  );
+
+  if (error) {
+    console.error("[AgentForge] saveWhiteLabelSettingsAction", error.message);
+    return {
+      ok: false,
+      error:
+        error.message.includes("white_label_settings") || error.code === "42P01"
+          ? "Run supabase/white_label_settings.sql in Supabase, then try again."
+          : error.message,
+    };
+  }
+
+  revalidatePath("/");
+  return { ok: true };
 }
 
 const betaSignupSchema = z.object({
@@ -1190,6 +1966,322 @@ export async function submitBetaSignupAction(
     };
   }
 
+  revalidatePath("/");
+  return { ok: true };
+}
+
+const hubSpotTokenSchema = z.object({
+  access_token: z.string().trim().min(20).max(2048),
+});
+
+export type SaveHubSpotTokenResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Stores HubSpot Private App access token (service role only — see supabase/hubspot_credentials.sql).
+ */
+export async function saveHubSpotAccessTokenAction(
+  raw: z.input<typeof hubSpotTokenSchema>,
+): Promise<SaveHubSpotTokenResult> {
+  const parsed = hubSpotTokenSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Paste a valid HubSpot private app access token." };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  const sr = getServiceRoleSupabaseOrNull();
+  if (!sr) {
+    return { ok: false, error: "Server missing SUPABASE_SERVICE_ROLE_KEY — cannot store CRM credentials." };
+  }
+  const { error } = await sr.from("user_hubspot_credentials").upsert(
+    {
+      user_id: user.id,
+      access_token: parsed.data.access_token,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" },
+  );
+  if (error) {
+    console.error("[AgentForge] hubspot save", error.message);
+    return {
+      ok: false,
+      error:
+        error.message.includes("relation") || error.message.includes("does not exist")
+          ? "HubSpot table missing — run supabase/hubspot_credentials.sql in Supabase."
+          : error.message,
+    };
+  }
+  revalidatePath("/");
+  return { ok: true };
+}
+
+export async function disconnectHubSpotAction(): Promise<SaveHubSpotTokenResult> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  const sr = getServiceRoleSupabaseOrNull();
+  if (!sr) {
+    return { ok: false, error: "Server misconfigured." };
+  }
+  const { error } = await sr.from("user_hubspot_credentials").delete().eq("user_id", user.id);
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  revalidatePath("/");
+  return { ok: true };
+}
+
+const exportHubSpotSchema = z.object({
+  thread_id: z.string().min(1).max(260),
+});
+
+export type ExportCampaignToHubSpotResult =
+  | { ok: true; dealId: string }
+  | { ok: false; error: string };
+
+/**
+ * Full campaign → HubSpot: contact, deal, insights note, PDF note+attachment, reply analysis text.
+ */
+export async function exportCampaignToHubSpotAction(
+  raw: z.input<typeof exportHubSpotSchema>,
+): Promise<ExportCampaignToHubSpotResult> {
+  const parsed = exportHubSpotSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid campaign." };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  const sr = getServiceRoleSupabaseOrNull();
+  if (!sr) {
+    return { ok: false, error: "Server missing service role — cannot load HubSpot credentials." };
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  const memberIds = ws.memberUserIds;
+
+  const { data: cred, error: credErr } = await sr
+    .from("user_hubspot_credentials")
+    .select("access_token")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (credErr || !cred?.access_token) {
+    return { ok: false, error: "Connect HubSpot first (dashboard)." };
+  }
+
+  const { data: row, error: rowError } = await sr
+    .from("campaigns")
+    .select("results")
+    .eq("thread_id", parsed.data.thread_id)
+    .in("user_id", memberIds)
+    .maybeSingle();
+
+  if (rowError || row?.results == null) {
+    return { ok: false, error: "Campaign not found." };
+  }
+
+  const snap = row.results as CampaignClientSnapshot;
+  if (snap.final_status === "failed" || snap.final_status === "running") {
+    return { ok: false, error: "Finish a successful campaign before exporting to HubSpot." };
+  }
+
+  let replyAnalysisText: string | null = null;
+  const { data: replyRow } = await sr
+    .from("reply_analyses")
+    .select("reply_preview, reply_full, analysis, sentiment, interest_score")
+    .in("user_id", memberIds)
+    .eq("thread_id", parsed.data.thread_id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (replyRow && typeof replyRow === "object") {
+    const r = replyRow as Record<string, unknown>;
+    const parts: string[] = [];
+    if (typeof r.sentiment === "string") parts.push(`Sentiment: ${r.sentiment}`);
+    if (r.interest_score != null) parts.push(`Interest: ${String(r.interest_score)}`);
+    if (typeof r.reply_preview === "string" && r.reply_preview.trim()) {
+      parts.push(`Reply preview: ${r.reply_preview.trim()}`);
+    }
+    if (typeof r.reply_full === "string" && r.reply_full.trim()) {
+      parts.push(`Reply (excerpt): ${r.reply_full.trim().slice(0, 4000)}`);
+    }
+    if (r.analysis != null) {
+      try {
+        parts.push(`Analysis JSON: ${JSON.stringify(r.analysis).slice(0, 8000)}`);
+      } catch {
+        parts.push("Analysis: (present)");
+      }
+    }
+    replyAnalysisText = parts.length > 0 ? parts.join("\n\n") : null;
+  }
+
+  const wl = await fetchWhiteLabelSettings(supabase, ws.workspaceId);
+
+  let pdfBytes: ArrayBuffer;
+  let pdfFilename: string;
+  try {
+    const pdfOpts = await buildCampaignPdfExportOptionsFromWhiteLabel(wl);
+    const gen = await generateCampaignPdfArrayBuffer(snap, pdfOpts);
+    pdfBytes = gen.data;
+    pdfFilename = gen.filename;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "PDF generation failed";
+    console.error("[AgentForge] HubSpot PDF", e);
+    return { ok: false, error: msg };
+  }
+
+  const sync = await syncCampaignToHubSpot({
+    accessToken: cred.access_token,
+    snapshot: snap,
+    pdfBytes,
+    pdfFilename,
+    replyAnalysisText,
+    productDisplayName: snap.brand_display_name?.trim() || wl.brandSignoff,
+  });
+
+  if (!sync.ok) {
+    return { ok: false, error: sync.error };
+  }
+
+  return { ok: true, dealId: sync.dealId };
+}
+
+const customVoiceCreateSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(120),
+  description: z.string().trim().min(1, "Description is required").max(2000),
+  examples: z
+    .array(z.string().trim().min(1).max(2000))
+    .min(2, "Add at least 2 example messages")
+    .max(3),
+  tone_instructions: z.string().trim().min(1, "Tone instructions are required").max(8000),
+});
+
+export type CreateCustomVoiceResult =
+  | { ok: true; id: string }
+  | { ok: false; error: string };
+
+/**
+ * Prompt 78 — list saved custom voices for the signed-in user.
+ */
+export async function listCustomVoicesAction(): Promise<CustomVoiceRow[]> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return [];
+  }
+  const { data, error } = await supabase
+    .from("custom_voices")
+    .select("id, name, description, examples, tone_instructions, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("[AgentForge] listCustomVoicesAction", error.message);
+    return [];
+  }
+  return (data ?? []) as CustomVoiceRow[];
+}
+
+/**
+ * Prompt 78 — create a custom SDR voice (RLS-scoped).
+ */
+export async function createCustomVoiceAction(
+  raw: z.input<typeof customVoiceCreateSchema>,
+): Promise<CreateCustomVoiceResult> {
+  const parsed = customVoiceCreateSchema.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: Object.values(parsed.error.flatten().fieldErrors)
+        .flat()
+        .filter(Boolean)
+        .join(", "),
+    };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  const { data, error } = await supabase
+    .from("custom_voices")
+    .insert({
+      user_id: user.id,
+      name: parsed.data.name,
+      description: parsed.data.description,
+      examples: parsed.data.examples,
+      tone_instructions: parsed.data.tone_instructions,
+      updated_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+  if (error) {
+    console.error("[AgentForge] createCustomVoiceAction", error.message);
+    return {
+      ok: false,
+      error:
+        error.message.includes("relation") || error.message.includes("does not exist")
+          ? "Custom voices table missing — run supabase/custom_voices.sql in Supabase."
+          : error.message,
+    };
+  }
+  revalidatePath("/");
+  return { ok: true, id: String(data?.id ?? "") };
+}
+
+const deleteCustomVoiceSchema = z.object({
+  id: z.string().uuid(),
+});
+
+export type DeleteCustomVoiceResult = { ok: true } | { ok: false; error: string };
+
+export async function deleteCustomVoiceAction(
+  raw: z.input<typeof deleteCustomVoiceSchema>,
+): Promise<DeleteCustomVoiceResult> {
+  const parsed = deleteCustomVoiceSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid voice." };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  const { error } = await supabase
+    .from("custom_voices")
+    .delete()
+    .eq("id", parsed.data.id)
+    .eq("user_id", user.id);
+  if (error) {
+    return { ok: false, error: error.message };
+  }
   revalidatePath("/");
   return { ok: true };
 }

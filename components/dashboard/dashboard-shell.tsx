@@ -1,10 +1,12 @@
 "use client";
 
 import { LogOut } from "lucide-react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { ReplyIntelProvider } from "@/components/dashboard/reply-intel-context";
 import { Button } from "@/components/ui/button";
+import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import { createClient } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
@@ -12,11 +14,23 @@ interface DashboardShellProps {
   email: string;
   /** From signup (user_metadata.full_name); optional. */
   displayName?: string;
+  /** Prompt 79 — header product name + optional mark. */
+  whiteLabel?: {
+    appName: string;
+    logoUrl: string;
+    primaryColor: string;
+  };
   nav: React.ReactNode;
   children: React.ReactNode;
 }
 
-export function DashboardShell({ email, displayName, nav, children }: DashboardShellProps) {
+export function DashboardShell({
+  email,
+  displayName,
+  whiteLabel,
+  nav,
+  children,
+}: DashboardShellProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -40,8 +54,27 @@ export function DashboardShell({ email, displayName, nav, children }: DashboardS
       <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:h-[3.75rem]">
           <div className="flex items-center gap-6 sm:gap-8">
-            <span className="text-sm font-semibold tracking-tight text-foreground">
-              AgentForge Sales
+            <span
+              className="flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground"
+              style={
+                whiteLabel?.primaryColor
+                  ? { color: whiteLabel.primaryColor }
+                  : undefined
+              }
+            >
+              {whiteLabel?.logoUrl?.trim() ? (
+                <span className="relative h-7 w-7 shrink-0 overflow-hidden rounded-md bg-background/50">
+                  <Image
+                    src={whiteLabel.logoUrl.trim()}
+                    alt=""
+                    width={28}
+                    height={28}
+                    className="object-contain"
+                    unoptimized
+                  />
+                </span>
+              ) : null}
+              {whiteLabel?.appName?.trim() || DEFAULT_BRAND_DISPLAY_NAME}
             </span>
             {nav}
           </div>

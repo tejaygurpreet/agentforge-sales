@@ -1,6 +1,8 @@
-/** Client-only: PDF export branding (colors, org line, logo URL, dark PDF). */
+/** PDF export branding (colors, org line, logo URL, dark PDF). Client `loadPdfBranding`; server may override via Prompt 79 DTO. */
 
 import type { CampaignPdfExportOptions } from "@/lib/campaign-pdf";
+import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
+import type { WhiteLabelClientSettingsDTO } from "@/types";
 
 export const PDF_BRANDING_STORAGE_KEY = "agentforge_pdf_branding_v1";
 
@@ -99,16 +101,28 @@ export async function resolveLogoDataUrl(
 }
 
 /** Merges saved branding into PDF export options (fetches logo for jsPDF). */
-export async function buildCampaignPdfExportOptions(): Promise<CampaignPdfExportOptions> {
+export async function buildCampaignPdfExportOptions(
+  serverWhiteLabel?: WhiteLabelClientSettingsDTO | null,
+): Promise<CampaignPdfExportOptions> {
   const b = loadPdfBranding();
-  const primaryRgb = hexToRgb(b.primaryHex) ?? undefined;
-  const secondaryRgb = hexToRgb(b.secondaryHex) ?? undefined;
-  const logoDataUrl = await resolveLogoDataUrl(b.logoPublicUrl);
+  const useServer = serverWhiteLabel != null;
+  const primaryHex = useServer ? serverWhiteLabel!.primaryColor : b.primaryHex;
+  const secondaryHex = useServer ? serverWhiteLabel!.secondaryColor : b.secondaryHex;
+  const orgTitle = useServer
+    ? serverWhiteLabel!.appName.trim() || b.orgName.trim() || DEFAULT_BRAND_DISPLAY_NAME
+    : b.orgName.trim() || DEFAULT_BRAND_DISPLAY_NAME;
+  const logoRef =
+    useServer && serverWhiteLabel!.logoUrl.trim().length > 0
+      ? serverWhiteLabel!.logoUrl
+      : b.logoPublicUrl;
+  const primaryRgb = hexToRgb(primaryHex) ?? undefined;
+  const secondaryRgb = hexToRgb(secondaryHex) ?? undefined;
+  const logoDataUrl = await resolveLogoDataUrl(logoRef);
   return {
     mode: b.pdfDark ? "dark" : "light",
     primaryRgb,
     secondaryRgb,
     logoDataUrl,
-    reportTitle: b.orgName.trim() ? b.orgName.trim() : null,
+    reportTitle: orgTitle,
   };
 }

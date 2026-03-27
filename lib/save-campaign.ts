@@ -8,6 +8,11 @@ export interface SaveCampaignParams {
   threadId: string;
   lead: Lead;
   snapshot: CampaignClientSnapshot;
+  /** Prompt 80 — optional inbox health + status on `campaigns` row when columns exist. */
+  deliverability?: {
+    spam_score: number;
+    deliverability_status: string;
+  };
 }
 
 /**
@@ -21,7 +26,7 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
     return;
   }
 
-  const { snapshot, userId, threadId, lead } = params;
+  const { snapshot, userId, threadId, lead, deliverability } = params;
   const completedAt = snapshot.campaign_completed_at ?? null;
 
   let resultsJson: Record<string, unknown>;
@@ -41,6 +46,12 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
     status: snapshot.final_status,
     completed_at: completedAt,
     results: resultsJson,
+    ...(deliverability
+      ? {
+          spam_score: Math.max(0, Math.min(100, Math.round(deliverability.spam_score))),
+          deliverability_status: deliverability.deliverability_status.slice(0, 32),
+        }
+      : {}),
   };
 
   const { error } = await sb.from("campaigns").upsert(row, {

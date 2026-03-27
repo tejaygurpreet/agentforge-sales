@@ -6,15 +6,20 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import { cn } from "@/lib/utils";
+import type { WhiteLabelClientSettingsDTO } from "@/types";
 import { FileText, Info, Layers, Radio, Sparkles } from "lucide-react";
 
 type HeroProps = {
   /** Same `From` header as `sendTransactionalEmail` for this user (see `buildDynamicFromEmail`). */
   outboundFromPreview: string;
+  /** Prompt 79 — dashboard hero title. */
+  whiteLabel?: WhiteLabelClientSettingsDTO | null;
 };
 
-export function DashboardHero({ outboundFromPreview }: HeroProps) {
+export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
+  const title = whiteLabel?.appName?.trim() || DEFAULT_BRAND_DISPLAY_NAME;
   return (
     <header
       className={cn(
@@ -26,7 +31,7 @@ export function DashboardHero({ outboundFromPreview }: HeroProps) {
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="bg-gradient-to-br from-foreground via-foreground to-muted-foreground bg-clip-text text-3xl font-semibold tracking-tight text-transparent sm:text-4xl">
-              AgentForge Sales
+              {title}
             </h1>
             <Badge
               variant="outline"

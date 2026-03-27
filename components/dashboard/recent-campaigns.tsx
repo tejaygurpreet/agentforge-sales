@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, Inbox, Mail, RefreshCw, User } from "lucide-react";
+import { Calendar, Inbox, Mail, RefreshCw, Shield, User } from "lucide-react";
 import type { LeadFormInput } from "@/agents/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -147,6 +147,17 @@ export function RecentCampaigns({
                         title={`SDR voice: ${c.sdr_voice_label}`}
                       >
                         Voice: {c.sdr_voice_label}
+                      </Badge>
+                    ) : null}
+                    {c.spam_score != null ? (
+                      <Badge
+                        variant="outline"
+                        className="gap-1 border-sky-500/40 bg-sky-500/[0.1] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-950 dark:border-sky-400/40 dark:bg-sky-500/15 dark:text-sky-50"
+                        title="Inbox health after send (Prompt 80)"
+                      >
+                        <Shield className="h-3 w-3" aria-hidden />
+                        {c.spam_score}/100
+                        {c.deliverability_status ? ` · ${c.deliverability_status}` : ""}
                       </Badge>
                     ) : null}
                   </div>

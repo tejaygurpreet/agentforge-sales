@@ -4,6 +4,7 @@ import type {
   CampaignClientSnapshot,
   CampaignFinalStatus,
   CampaignLiveSignal,
+  CustomVoiceProfile,
   Lead,
   NurtureOutput,
   OutreachDraft,
@@ -31,6 +32,7 @@ import {
   buildFallbackResearchOutput,
 } from "@/agents/pipeline-fallbacks";
 import { withTimeout } from "@/lib/async-timeout";
+import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import { hasLlmProviderConfigured } from "@/lib/env";
 import type { GroqInvokeMeta } from "@/lib/agent-model";
 import { saveCampaign } from "@/lib/save-campaign";
@@ -95,17 +97,18 @@ function priorNodesReportedError(results: Record<string, unknown>): boolean {
 function buildQualificationScoringAnchor(
   research: ResearchOutput | undefined,
   voice: SdrVoiceTone,
+  custom?: CustomVoiceProfile | null,
 ): string {
-  const voiceMod = getSdrVoiceQualificationScoringSupplement(voice);
+  const voiceMod = getSdrVoiceQualificationScoringSupplement(voice, custom);
   if (!research) {
     return `No research JSON — score from lead + outreach only. Spread 38–89. **Upward** for copy that **reads smooth aloud** — **warmer** open, short-to-medium <p>, **statement-led**, **0 ? ideal / max 1** in body, tiny reply path, **curiosity-native subject**. **Downward** for **any awkward line**, brochure rhythm, survey tone, swap-test generic, corporate soup, metronome sentences. Objections: three distinct **buyer mechanisms** (beliefs/politics). next_best_action: named artifacts + **sequenced** triggers. **Prompt 57 + 58 + 67 + 69** apply (dossier premium + **research-grounded** qual when research exists; warm preset must **outshine** default on consultative ease + relationship depth).
 
-**SDR_VOICE (${voice}):** ${voiceMod}`;
+**SDR_VOICE (${custom ? `${voice} + custom:"${custom.name}"` : voice}):** ${voiceMod}`;
   }
   const icp = research.icp_fit_score;
   return `ICP anchor: icp_fit_score=${icp} (stabilized upstream — directional). Prompt 39 + **57** + **58** + **67** + **69**: **Nuanced strategic** qual — **belief gaps**, silent blockers, budget theater, competing priorities, **internal-political** risk. **bant_summary** must sound **human** (AE Slack) — penalize memo boilerplate. **Prompt 67:** objections + bant_summary must **not** read like **templated BANT** — reward **specific**, **deal-real** language. **Prompt 69:** reward qual that **tracks** the **research narrative** (pains, hypotheses, angles) — penalize generic playbook text. **Reward** outreach that is **warm, smooth, high-reply** when voice is **default**; for **warm_relationship_builder**, reward **consultative homework + low-pressure + relationship-aware** copy that is **clearly premium** vs generic warm; for other voices, reward **faithful preset execution** per SDR_VOICE modifier below. **Penalize** stiff/awkward sentences, template feel, interrogation, brochure transitions, or hook that fits any logo — **and penalize preset mismatch** (e.g. vague fluff when voice demands data). If generic, **cap** qual **44–66** and name the tell. Strong fit + correct voice execution → **72–93** when BANT allows. Odd scores when split. If |qual - icp| > 14, one sentence in bant_summary explains. top_objections: three **different** mechanisms (buyer psychology / politics). next_best_action: two+ deliverables + **sequenced** logic. **Never** API/schema/timeout/model leakage in output fields.
 
-**SDR_VOICE (${voice}):** ${voiceMod}`;
+**SDR_VOICE (${custom ? `${voice} + custom:"${custom.name}"` : voice}):** ${voiceMod}`;
 }
 
 let loggedCompactPipelineMemory = false;
@@ -228,6 +231,16 @@ const GraphState = Annotation.Root({
     reducer: (_c, n) => n,
     default: () => undefined,
   }),
+  /** Prompt 78 — user-authored voice; drives prompts when set. */
+  custom_voice_profile: Annotation<CustomVoiceProfile | undefined>({
+    reducer: (_c, n) => n,
+    default: () => undefined,
+  }),
+  /** Prompt 79 — white-label display name for prompts, outreach sign-off, exports. */
+  brand_display_name: Annotation<string>({
+    reducer: (_c, n) => n,
+    default: () => DEFAULT_BRAND_DISPLAY_NAME,
+  }),
 });
 
 export type SalesGraphState = typeof GraphState.State;
@@ -252,6 +265,7 @@ export function serializeCampaignStateForClient(
     campaign_completed_at: state.campaign_completed_at ?? null,
     live_signals: state.live_signals ?? null,
     sender_signoff_name: state.sender_signoff_name ?? null,
+    brand_display_name: state.brand_display_name ?? null,
   };
 }
 
@@ -303,7 +317,10 @@ async function researchNode(
     let phase: ResearchPhaseResult;
     try {
       phase = await withTimeout(
-        runResearchAgent(state.lead, sdrVoice),
+        runResearchAgent(state.lead, sdrVoice, {
+          customVoice: state.custom_voice_profile,
+          brandDisplayName: state.brand_display_name,
+        }),
         RESEARCH_AGENT_MAX_MS,
         "research_agent",
       );
@@ -445,8 +462,10 @@ async function outreachNode(
     try {
       const out = await withTimeout(
         runOutreachAgent(state.lead, priorContext, sdrVoice, {
-        senderSignoffName: state.sender_signoff_name,
-      }),
+          senderSignoffName: state.sender_signoff_name,
+          customVoice: state.custom_voice_profile,
+          brandDisplayName: state.brand_display_name,
+        }),
         OUTREACH_AGENT_MAX_MS,
         "outreach_agent",
       );
@@ -457,7 +476,12 @@ async function outreachNode(
       outreachDegraded = true;
       outreachErrorNote = message.slice(0, 500);
       console.error("[AgentForge] outreach_node:fallback", state.thread_id, message);
-      draft = buildFallbackOutreachDraft(state.lead, message, state.sender_signoff_name);
+      draft = buildFallbackOutreachDraft(
+        state.lead,
+        message,
+        state.sender_signoff_name,
+        state.brand_display_name,
+      );
     }
     /** Prompt 73 — draft only; user sends from the dashboard (no auto-send). */
     const outreach_output: OutreachOutput = {
@@ -522,7 +546,12 @@ async function outreachNode(
   } catch (e) {
     const message = e instanceof Error ? e.message : "Outreach failed";
     console.error("[AgentForge] outreach_node:error", state.thread_id, message);
-    const fbDraft = buildFallbackOutreachDraft(state.lead, message, state.sender_signoff_name);
+    const fbDraft = buildFallbackOutreachDraft(
+      state.lead,
+      message,
+      state.sender_signoff_name,
+      state.brand_display_name,
+    );
     const fallback: OutreachOutput = {
       ...fbDraft,
       email_sent: false,
@@ -555,6 +584,7 @@ function draftFromOutreachOutput(o: OutreachOutput): OutreachDraft {
     subject: o.subject,
     email_body: o.email_body,
     linkedin_message: o.linkedin_message,
+    voicemail_script: o.voicemail_script,
     personalization_hooks: o.personalization_hooks,
     primary_angle: o.primary_angle,
     cta_strategy: o.cta_strategy,
@@ -566,7 +596,9 @@ const emptyOutreachDraft: OutreachDraft = {
   subject: "(no outreach draft)",
   email_body:
     "<p>Earlier pipeline step did not produce outreach; scoring from lead + research context only.</p>",
-  linkedin_message: "",
+  linkedin_message:
+    "Hi — quick context-only note: outreach draft missing; paste your own DM here or re-run outreach.",
+  voicemail_script: undefined,
   personalization_hooks: [
     "Outreach step missing — qualification uses lead + pipeline memory only",
   ],
@@ -598,6 +630,7 @@ async function qualificationNode(
     const scoringAnchor = buildQualificationScoringAnchor(
       state.research_output,
       sdrVoice,
+      state.custom_voice_profile,
     );
 
     let pack: {
@@ -612,6 +645,8 @@ async function qualificationNode(
           scoringAnchor,
           icpFromResearch: state.research_output?.icp_fit_score,
           sdrVoice,
+          customVoice: state.custom_voice_profile,
+          brandDisplayName: state.brand_display_name,
         }),
         QUALIFICATION_AGENT_MAX_MS,
         "qualification_agent",
@@ -744,6 +779,10 @@ async function nurtureNode(
           outreach_output: state.outreach_output,
         },
         sdrVoice,
+        {
+          customVoice: state.custom_voice_profile,
+          brandDisplayName: state.brand_display_name,
+        },
       ),
       NURTURE_AGENT_MAX_MS,
       "nurture_agent",
@@ -849,6 +888,10 @@ export interface RunCampaignInput {
   user_id: string;
   /** Prompt 68 — profile / signup full name for outreach sign-off (optional). */
   sender_signoff_name?: string;
+  /** Prompt 78 — loaded server-side when `lead.custom_voice_id` is set. */
+  custom_voice_profile?: CustomVoiceProfile;
+  /** Prompt 79 — from `fetchWhiteLabelSettings`; defaults to AgentForge Sales. */
+  brand_display_name?: string;
 }
 
 function initialCampaignGraphState(input: RunCampaignInput): SalesGraphState {
@@ -869,6 +912,8 @@ function initialCampaignGraphState(input: RunCampaignInput): SalesGraphState {
     campaign_completed_at: undefined,
     sender_signoff_name: input.sender_signoff_name,
     live_signals: undefined,
+    custom_voice_profile: input.custom_voice_profile,
+    brand_display_name: input.brand_display_name?.trim() || DEFAULT_BRAND_DISPLAY_NAME,
   };
 }
 
@@ -905,6 +950,8 @@ export async function runCampaignGraph(
       },
       campaign_completed_at: completedAt(),
       live_signals: undefined,
+      custom_voice_profile: input.custom_voice_profile,
+      brand_display_name: input.brand_display_name?.trim() || DEFAULT_BRAND_DISPLAY_NAME,
     };
     await mergeDashboardState(input.thread_id, input.user_id, {
       current_agent: "research_node",
@@ -1070,10 +1117,12 @@ export const runSalesGraph = async (input: {
   userId: string;
   lead: Lead;
   senderSignoffName?: string;
+  brand_display_name?: string;
 }) =>
   runCampaignGraph({
     lead: input.lead,
     thread_id: input.threadId,
     user_id: input.userId,
     sender_signoff_name: input.senderSignoffName,
+    brand_display_name: input.brand_display_name,
   });

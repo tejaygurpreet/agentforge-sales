@@ -10,8 +10,10 @@ import {
   CheckCircle2,
   ChevronDown,
   ClipboardCopy,
+  CloudUpload,
   Cpu,
   Download,
+  ExternalLink,
   Eye,
   HelpCircle,
   FileJson,
@@ -34,7 +36,11 @@ import type { ComponentType, ReactNode } from "react";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import type { CampaignRerunPayload } from "@/components/dashboard/campaign-rerun-types";
 import { useForm } from "react-hook-form";
-import { sendOutreachEmailAction, startCampaignAction } from "@/app/(dashboard)/actions";
+import {
+  exportCampaignToHubSpotAction,
+  sendOutreachEmailAction,
+  startCampaignAction,
+} from "@/app/(dashboard)/actions";
 import { DashboardReplyStrip } from "@/components/dashboard/dashboard-reply-strip";
 import { useReplyIntel } from "@/components/dashboard/reply-intel-context";
 import { PdfBrandingPanel } from "@/components/dashboard/pdf-branding-panel";
@@ -55,7 +61,8 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { buildCampaignPdfExportOptions, loadPdfBranding } from "@/lib/pdf-branding";
 import { getVoiceSampleEmailPreview } from "@/lib/sdr-voice-preview";
-import { SDR_VOICE_OPTIONS, sdrVoiceLabel } from "@/lib/sdr-voice";
+import { SDR_VOICE_OPTIONS, sdrVoiceLabel, voiceLabelForLead } from "@/lib/sdr-voice";
+import type { CustomVoiceRow, WhiteLabelClientSettingsDTO } from "@/types";
 import { textEchoesAnyCorpus } from "@/lib/text-similarity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -648,11 +655,19 @@ function outreachEmailHtml(o: Record<string, unknown>): string {
 type CampaignWorkspaceProps = {
   rerunRequest?: CampaignRerunPayload | null;
   onRerunConsumed?: () => void;
+  hubspotConnected?: boolean;
+  /** Prompt 78 — saved custom voices (same tab lists presets + these). */
+  customVoices?: CustomVoiceRow[];
+  /** Prompt 79 — server white-label for exports. */
+  whiteLabel?: WhiteLabelClientSettingsDTO | null;
 };
 
 export function CampaignWorkspace({
   rerunRequest = null,
   onRerunConsumed,
+  hubspotConnected = false,
+  customVoices = [],
+  whiteLabel = null,
 }: CampaignWorkspaceProps) {
   const { setReplyIntel } = useReplyIntel();
   const router = useRouter();
@@ -663,11 +678,12 @@ export function CampaignWorkspace({
   const [snapshot, setSnapshot] = useState<CampaignClientSnapshot | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [voicePreviewOpen, setVoicePreviewOpen] = useState(false);
-  const [copyTip, setCopyTip] = useState<"email" | "linkedin" | null>(null);
+  const [copyTip, setCopyTip] = useState<"email" | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [exportTip, setExportTip] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [sendEmailPending, setSendEmailPending] = useState(false);
+  const [hubspotExportBusy, setHubspotExportBusy] = useState(false);
 
   useEffect(() => {
     if (!snapshot) {
@@ -689,9 +705,12 @@ export function CampaignWorkspace({
       email: "jordan@acme.example",
       company: "Acme Corp",
       linkedin_url: "",
+      phone: "",
       notes: "Evaluating sales automation.",
       status: "new",
       sdr_voice_tone: "default",
+      custom_voice_id: undefined,
+      custom_voice_name: undefined,
     },
   });
 
@@ -704,6 +723,8 @@ export function CampaignWorkspace({
           ...values,
           status: values.status ?? "new",
           sdr_voice_tone: values.sdr_voice_tone ?? "default",
+          custom_voice_id: values.custom_voice_id,
+          custom_voice_name: values.custom_voice_name,
         });
         if (!res.ok) {
           const msg = humanizeClientError(res.error);
@@ -745,12 +766,45 @@ export function CampaignWorkspace({
         return;
       }
       setSnapshot(res.snapshot);
-      toast({ title: "Email sent successfully." });
+      if (res.deliverability) {
+        const d = res.deliverability;
+        toast({
+          title: "Email sent",
+          description: `Inbox health ${d.inboxHealthScore}/100 (${d.status}).`,
+        });
+      } else {
+        toast({ title: "Email sent successfully." });
+      }
       router.refresh();
     } finally {
       setSendEmailPending(false);
     }
   }, [snapshot, router]);
+
+  const onExportToHubSpot = useCallback(async () => {
+    if (!snapshot?.thread_id) return;
+    setHubspotExportBusy(true);
+    setExportTip(null);
+    try {
+      const res = await exportCampaignToHubSpotAction({ thread_id: snapshot.thread_id });
+      if (!res.ok) {
+        toast({
+          variant: "destructive",
+          title: "HubSpot export failed",
+          description: res.error,
+        });
+        return;
+      }
+      setExportTip(`HubSpot — deal created (${res.dealId}).`);
+      toast({
+        title: "Exported to HubSpot",
+        description: `Deal ${res.dealId}`,
+      });
+      window.setTimeout(() => setExportTip(null), 6000);
+    } finally {
+      setHubspotExportBusy(false);
+    }
+  }, [snapshot]);
 
   useEffect(() => {
     if (!rerunRequest) return;
@@ -760,9 +814,12 @@ export function CampaignWorkspace({
       email: values.email,
       company: values.company,
       linkedin_url: values.linkedin_url ?? "",
+      phone: values.phone ?? "",
       notes: values.notes ?? "",
       status: values.status ?? "new",
       sdr_voice_tone: values.sdr_voice_tone ?? "default",
+      custom_voice_id: values.custom_voice_id,
+      custom_voice_name: values.custom_voice_name,
     });
     setFeedback({
       type: "success",
@@ -780,6 +837,8 @@ export function CampaignWorkspace({
           linkedin_url: values.linkedin_url ?? "",
           status: values.status ?? "new",
           sdr_voice_tone: values.sdr_voice_tone ?? "default",
+          custom_voice_id: values.custom_voice_id,
+          custom_voice_name: values.custom_voice_name,
         });
         onRerunConsumed?.();
       }, 240);
@@ -793,7 +852,22 @@ export function CampaignWorkspace({
     runCampaignFromValues(values);
   }
 
-  const selectedVoice = form.watch("sdr_voice_tone") ?? "default";
+  const selectedTone = form.watch("sdr_voice_tone") ?? "default";
+  const customVoiceIdWatch = form.watch("custom_voice_id");
+  const customVoiceNameWatch = form.watch("custom_voice_name");
+  const activeCustomRow = customVoices.find((v) => v.id === customVoiceIdWatch);
+  const activeVoiceLabel =
+    customVoiceIdWatch && (activeCustomRow?.name || customVoiceNameWatch)
+      ? activeCustomRow?.name ?? customVoiceNameWatch ?? "Custom voice"
+      : sdrVoiceLabel(selectedTone);
+  const activeVoiceShort =
+    customVoiceIdWatch && activeCustomRow
+      ? activeCustomRow.description.length > 280
+        ? `${activeCustomRow.description.slice(0, 280)}…`
+        : activeCustomRow.description
+      : SDR_VOICE_OPTIONS.find((o) => o.value === selectedTone)?.short ??
+        "Balanced default pipeline output.";
+  const voicePreview = customVoiceIdWatch ? null : getVoiceSampleEmailPreview(selectedTone);
 
   const research = snapshot?.research_output;
   const outreach = snapshot?.outreach_output;
@@ -856,13 +930,32 @@ export function CampaignWorkspace({
     setCopyError(null);
     const ok = await copyTextToClipboard(outreach.linkedin_message);
     if (ok) {
-      setCopyTip("linkedin");
-      window.setTimeout(() => setCopyTip(null), 2500);
+      toast({
+        title: "Copied to clipboard – ready to paste on LinkedIn",
+      });
     } else {
       setCopyError("Could not copy LinkedIn message — try again.");
       window.setTimeout(() => setCopyError(null), 4000);
     }
   }
+
+  const openLinkedInCompose = useCallback(() => {
+    if (!outreach?.linkedin_message?.trim()) return;
+    const msg = outreach.linkedin_message.trim();
+    if (!msg) return;
+    const urlWithBody = `https://www.linkedin.com/messaging/compose/?body=${encodeURIComponent(msg)}`;
+    const url =
+      urlWithBody.length > 2000
+        ? "https://www.linkedin.com/messaging/"
+        : urlWithBody;
+    if (urlWithBody.length > 2000) {
+      toast({
+        title: "LinkedIn opened",
+        description: "Message is long — copy it first, then paste in LinkedIn.",
+      });
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [outreach]);
 
   function exportCampaignMarkdown() {
     if (!snapshot) return;
@@ -870,8 +963,9 @@ export function CampaignWorkspace({
     try {
       const b = loadPdfBranding();
       const md = campaignSnapshotToMarkdown(snapshot, {
-        orgName: b.orgName.trim() || undefined,
-        logoPublicUrl: b.logoPublicUrl.trim() || undefined,
+        orgName: whiteLabel?.appName?.trim() || b.orgName.trim() || undefined,
+        logoPublicUrl: whiteLabel?.logoUrl?.trim() || b.logoPublicUrl.trim() || undefined,
+        productName: whiteLabel?.appName?.trim() || snapshot.brand_display_name?.trim(),
       });
       const base = safeCampaignDownloadBasename(snapshot.lead.company, snapshot.thread_id);
       const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
@@ -900,10 +994,11 @@ export function CampaignWorkspace({
       const brand = loadPdfBranding();
       const withBranding = {
         export_branding: {
-          org_name: brand.orgName.trim() || null,
-          logo_public_url: brand.logoPublicUrl.trim() || null,
-          primary_hex: brand.primaryHex,
-          secondary_hex: brand.secondaryHex,
+          org_name: whiteLabel?.appName?.trim() || brand.orgName.trim() || null,
+          logo_public_url: whiteLabel?.logoUrl?.trim() || brand.logoPublicUrl.trim() || null,
+          primary_hex: whiteLabel?.primaryColor ?? brand.primaryHex,
+          secondary_hex: whiteLabel?.secondaryColor ?? brand.secondaryHex,
+          support_email: whiteLabel?.supportEmail?.trim() || null,
           pdf_dark: brand.pdfDark,
         },
         ...summary,
@@ -934,7 +1029,7 @@ export function CampaignWorkspace({
     setExportTip(null);
     try {
       const { downloadCampaignPdfSummary } = await import("@/lib/campaign-pdf");
-      const opts = await buildCampaignPdfExportOptions();
+      const opts = await buildCampaignPdfExportOptions(whiteLabel ?? undefined);
       await downloadCampaignPdfSummary(snapshot, opts);
       setExportTip("Premium PDF saved — executive one-pager + full dossier.");
       toast({
@@ -952,8 +1047,6 @@ export function CampaignWorkspace({
       window.setTimeout(() => setExportTip(null), 5500);
     }
   }
-
-  const voicePreview = getVoiceSampleEmailPreview(selectedVoice);
 
   return (
     <div
@@ -980,7 +1073,7 @@ export function CampaignWorkspace({
               </p>
               <p className="mt-2 inline-flex items-center gap-2 rounded-lg border border-violet-500/35 bg-violet-500/[0.1] px-3 py-1.5 text-sm font-semibold text-violet-950 dark:border-violet-400/35 dark:bg-violet-500/15 dark:text-violet-50">
                 <Mic className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
-                Voice: {sdrVoiceLabel(selectedVoice)}
+                Voice: {activeVoiceLabel}
               </p>
             </div>
           </div>
@@ -1018,18 +1111,16 @@ export function CampaignWorkspace({
                   Active campaign voice — all agents
                 </p>
                 <p className="mt-1.5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-                  {sdrVoiceLabel(selectedVoice)}
+                  {activeVoiceLabel}
                 </p>
                 <p className="mt-1 text-base font-medium leading-relaxed text-muted-foreground">
-                  {SDR_VOICE_OPTIONS.find((o) => o.value === selectedVoice)?.short ??
-                    "Balanced default pipeline output."}
+                  {activeVoiceShort}
                 </p>
                 <p className="mt-2.5 text-xs leading-relaxed text-foreground/90">
                   Injected ahead of <strong>research, outreach, qualification,</strong> and{" "}
-                  <strong>nurture</strong> system prompts — subjects, email, LinkedIn, pain points,
-                  objections, nurture value-adds, and next-best-action all follow this preset (
-                  <span className="font-medium">Warm</span> vs <span className="font-medium">Challenger</span>{" "}
-                  vs <span className="font-medium">Data-Driven</span> are intentionally obvious).
+                  <strong>nurture</strong> system prompts. <span className="font-medium">Presets</span> are
+                  tuned contrasts (warm vs challenger vs data); <span className="font-medium">custom voices</span>{" "}
+                  use your saved tone instructions and examples everywhere instead.
                 </p>
               </div>
             </div>
@@ -1103,70 +1194,154 @@ export function CampaignWorkspace({
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="sdr_voice_tone"
-                render={({ field }) => (
-                  <FormItem>
-                    <div className="flex items-center gap-2">
-                      <FormLabel className="m-0">SDR voice & tone</FormLabel>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                            aria-label="About SDR voices"
-                          >
-                            <HelpCircle className="h-3.5 w-3.5" aria-hidden />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="right" className="max-w-xs text-left leading-relaxed">
-                          Each preset prepends a system block to research, outreach, qualification,
-                          and nurture. Switching voice changes subjects, email rhythm, objections,
-                          and nurture — not just adjectives.
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <FormControl>
-                      <select
-                        disabled={isPending}
-                        className={cn(
-                          "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                          "disabled:cursor-not-allowed disabled:opacity-50",
-                        )}
-                        {...field}
-                      >
-                        {SDR_VOICE_OPTIONS.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    </FormControl>
-                    <p className="text-[11px] leading-relaxed text-muted-foreground">
-                      {SDR_VOICE_OPTIONS.find((o) => o.value === field.value)?.short}
-                    </p>
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      <Button
+              <div className="space-y-3 rounded-xl border border-border/65 bg-muted/15 px-4 py-4 dark:bg-muted/10">
+                <div className="flex items-center gap-2">
+                  <FormLabel className="m-0 text-base">Campaign voice</FormLabel>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
                         type="button"
-                        variant="outline"
-                        size="sm"
-                        className={cn(
-                          "h-8 gap-1.5 text-xs transition-all duration-200",
-                          dashboardOutlineActionClass,
-                        )}
-                        disabled={isPending}
-                        onClick={() => setVoicePreviewOpen(true)}
+                        className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        aria-label="About SDR voices"
                       >
-                        <Eye className="h-3.5 w-3.5 opacity-90" aria-hidden />
-                        Preview voice
-                      </Button>
-                    </div>
-                    <FormMessage />
-                  </FormItem>
+                        <HelpCircle className="h-3.5 w-3.5" aria-hidden />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="max-w-xs text-left leading-relaxed">
+                      Pick a built-in preset or a voice you created under the Custom voices tab. Custom
+                      voices replace preset system layers with your tone instructions and examples across
+                      the full pipeline.
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  Five presets (same as before) or your saved custom voices — both inject into research,
+                  outreach, qualification, and nurture.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={!customVoiceIdWatch ? "default" : "outline"}
+                    disabled={isPending}
+                    onClick={() => {
+                      form.setValue("custom_voice_id", undefined);
+                      form.setValue("custom_voice_name", undefined);
+                    }}
+                  >
+                    Preset voices
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={customVoiceIdWatch ? "default" : "outline"}
+                    disabled={isPending || customVoices.length === 0}
+                    title={
+                      customVoices.length === 0
+                        ? "Create a custom voice under the Custom voices tab first"
+                        : undefined
+                    }
+                    onClick={() => {
+                      const first = customVoices[0];
+                      if (!first) return;
+                      form.setValue("custom_voice_id", first.id);
+                      form.setValue("custom_voice_name", first.name);
+                      form.setValue("sdr_voice_tone", "default");
+                    }}
+                  >
+                    Custom voices
+                  </Button>
+                </div>
+                {!customVoiceIdWatch ? (
+                  <FormField
+                    control={form.control}
+                    name="sdr_voice_tone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Preset</FormLabel>
+                        <FormControl>
+                          <select
+                            disabled={isPending}
+                            className={cn(
+                              "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors",
+                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                              "disabled:cursor-not-allowed disabled:opacity-50",
+                            )}
+                            {...field}
+                          >
+                            {SDR_VOICE_OPTIONS.map((o) => (
+                              <option key={o.value} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                        </FormControl>
+                        <p className="text-[11px] leading-relaxed text-muted-foreground">
+                          {SDR_VOICE_OPTIONS.find((o) => o.value === field.value)?.short}
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ) : (
+                  <FormField
+                    control={form.control}
+                    name="custom_voice_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Your custom voice</FormLabel>
+                        <FormControl>
+                          <select
+                            disabled={isPending}
+                            className={cn(
+                              "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors",
+                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                              "disabled:cursor-not-allowed disabled:opacity-50",
+                            )}
+                            value={field.value ?? ""}
+                            onChange={(e) => {
+                              const id = e.target.value;
+                              field.onChange(id || undefined);
+                              const row = customVoices.find((v) => v.id === id);
+                              form.setValue("custom_voice_name", row?.name);
+                              form.setValue("sdr_voice_tone", "default");
+                            }}
+                          >
+                            {customVoices.map((v) => (
+                              <option key={v.id} value={v.id}>
+                                {v.name}
+                              </option>
+                            ))}
+                          </select>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 )}
-              />
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-8 gap-1.5 text-xs transition-all duration-200",
+                      dashboardOutlineActionClass,
+                    )}
+                    disabled={isPending || Boolean(customVoiceIdWatch)}
+                    onClick={() => setVoicePreviewOpen(true)}
+                  >
+                    <Eye className="h-3.5 w-3.5 opacity-90" aria-hidden />
+                    Preview preset sample
+                  </Button>
+                </div>
+                {customVoiceIdWatch ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Preset samples are hidden while a custom voice is selected — run the campaign to hear
+                    your tone in the outputs.
+                  </p>
+                ) : null}
+              </div>
               <FormField
                 control={form.control}
                 name="notes"
@@ -1199,10 +1374,10 @@ export function CampaignWorkspace({
                       Active SDR voice (this submit)
                     </p>
                     <p className="mt-1 text-lg font-bold tracking-tight text-foreground">
-                      {sdrVoiceLabel(selectedVoice)}
+                      {activeVoiceLabel}
                     </p>
                     <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                      {SDR_VOICE_OPTIONS.find((o) => o.value === selectedVoice)?.short}
+                      {activeVoiceShort}
                     </p>
                   </div>
                 </div>
@@ -1247,30 +1422,41 @@ export function CampaignWorkspace({
           <DialogHeader>
             <DialogTitle className="flex flex-wrap items-center gap-2 text-lg">
               <Mic className="h-5 w-5 text-violet-600 dark:text-violet-300" aria-hidden />
-              Voice preview — {sdrVoiceLabel(selectedVoice)}
+              Voice preview — {activeVoiceLabel}
             </DialogTitle>
             <DialogDescription className="text-left text-sm leading-relaxed">
-              {SDR_VOICE_OPTIONS.find((o) => o.value === selectedVoice)?.short}
+              {voicePreview
+                ? SDR_VOICE_OPTIONS.find((o) => o.value === selectedTone)?.short
+                : "Custom voice — no preset sample."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 text-sm">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                Sample subject
+            {voicePreview ? (
+              <>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Sample subject
+                  </p>
+                  <p className="mt-1 rounded-lg border border-border/70 bg-muted/25 px-3 py-2 font-medium leading-snug text-foreground">
+                    {voicePreview.subject}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Sample body
+                  </p>
+                  <pre className="mt-1 max-h-[280px] overflow-y-auto whitespace-pre-wrap rounded-lg border border-border/70 bg-card px-3 py-3 font-sans text-[13px] leading-relaxed text-foreground shadow-inner">
+                    {voicePreview.body}
+                  </pre>
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">{voicePreview.disclaimer}</p>
+              </>
+            ) : (
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Switch to <strong className="font-medium text-foreground">Preset voices</strong> to preview
+                built-in samples. Custom voices run only inside a live campaign.
               </p>
-              <p className="mt-1 rounded-lg border border-border/70 bg-muted/25 px-3 py-2 font-medium leading-snug text-foreground">
-                {voicePreview.subject}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                Sample body
-              </p>
-              <pre className="mt-1 max-h-[280px] overflow-y-auto whitespace-pre-wrap rounded-lg border border-border/70 bg-card px-3 py-3 font-sans text-[13px] leading-relaxed text-foreground shadow-inner">
-                {voicePreview.body}
-              </pre>
-            </div>
-            <p className="text-xs leading-relaxed text-muted-foreground">{voicePreview.disclaimer}</p>
+            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="secondary" onClick={() => setVoicePreviewOpen(false)}>
@@ -1319,7 +1505,7 @@ export function CampaignWorkspace({
                   variant="outline"
                   className="border-violet-500/45 bg-violet-500/[0.1] px-2.5 py-1 text-xs font-semibold tracking-tight text-violet-950 dark:border-violet-400/45 dark:bg-violet-500/15 dark:text-violet-50"
                 >
-                  Voice: {sdrVoiceLabel(snapshot.lead.sdr_voice_tone)}
+                  Voice: {voiceLabelForLead(snapshot.lead)}
                 </Badge>
               </div>
               {snapshot.campaign_completed_at ? (
@@ -1374,6 +1560,31 @@ export function CampaignWorkspace({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              {snapshot.final_status !== "failed" && snapshot.final_status !== "running" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "gap-2 border-orange-500/35 bg-orange-500/[0.06] dark:bg-orange-500/10",
+                    dashboardOutlineActionClass,
+                  )}
+                  disabled={!hubspotConnected || hubspotExportBusy}
+                  title={
+                    hubspotConnected
+                      ? "Create/update HubSpot contact & deal, notes, and PDF attachment"
+                      : "Connect HubSpot above (Private App token)"
+                  }
+                  onClick={() => void onExportToHubSpot()}
+                >
+                  {hubspotExportBusy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    <CloudUpload className="h-4 w-4" aria-hidden />
+                  )}
+                  Export to HubSpot
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="outline"
@@ -1671,6 +1882,14 @@ export function CampaignWorkspace({
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <StepBadge ok={outreachOk} label="Success" />
+                  {outreach?.linkedin_message?.trim() ? (
+                    <Badge
+                      variant="outline"
+                      className="border-emerald-500/40 bg-emerald-500/10 text-[11px] font-semibold uppercase tracking-wide text-emerald-900 dark:text-emerald-100"
+                    >
+                      LinkedIn Ready
+                    </Badge>
+                  ) : null}
                   {outreach ? (
                     isOutreachReadyToSend(outreach) ? (
                       <>
@@ -1744,26 +1963,40 @@ export function CampaignWorkspace({
                         <Mail className="h-3.5 w-3.5" />
                         Copy email
                       </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className={cn("gap-1.5", dashboardOutlineActionClass)}
-                        onClick={() => void copyLinkedInMessage()}
-                      >
-                        <MessageSquare className="h-3.5 w-3.5" />
-                        Copy LinkedIn
-                      </Button>
                       {copyTip === "email" ? (
                         <span className="self-center text-xs text-emerald-700 dark:text-emerald-400">
                           Email copied
                         </span>
                       ) : null}
-                      {copyTip === "linkedin" ? (
-                        <span className="self-center text-xs text-emerald-700 dark:text-emerald-400">
-                          LinkedIn copied
-                        </span>
-                      ) : null}
+                    </div>
+                    <div className="rounded-xl border border-emerald-500/35 bg-gradient-to-br from-emerald-500/[0.08] to-transparent p-4 ring-1 ring-emerald-500/15 dark:from-emerald-500/12">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900 dark:text-emerald-100">
+                        LinkedIn — safe handoff (copy only; no auto-post)
+                      </p>
+                      <p className="mt-1.5 text-xs text-muted-foreground">
+                        Copy the DM below, or open LinkedIn compose — we never post on your behalf.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="default"
+                          className="gap-2 px-5 sm:min-w-[220px]"
+                          onClick={() => void copyLinkedInMessage()}
+                        >
+                          <MessageSquare className="h-4 w-4" aria-hidden />
+                          Copy LinkedIn Message
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="default"
+                          className={cn("gap-2", dashboardOutlineActionClass)}
+                          onClick={() => openLinkedInCompose()}
+                        >
+                          <ExternalLink className="h-4 w-4" aria-hidden />
+                          Open LinkedIn compose
+                        </Button>
+                      </div>
                     </div>
                     {copyError ? (
                       <p className="text-xs text-destructive" role="status">

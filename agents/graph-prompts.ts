@@ -3,7 +3,9 @@
  * Use `build*SystemPrompt(sdrVoice)` from agents; legacy `*_SYSTEM_PROMPT` = default voice.
  * Preset-specific **system layers** prepend each body so warm / challenger / analyst diverge on every output surface.
  */
-import type { SdrVoiceTone } from "@/agents/types";
+import type { CustomVoiceProfile, SdrVoiceTone } from "@/agents/types";
+import { customVoiceSystemLayer } from "@/agents/custom-voice-system-layers";
+import { DEFAULT_BRAND_DISPLAY_NAME, substituteBrandInPrompt } from "@/lib/brand-prompt";
 import {
   sdrVoiceNurtureSystemLayer,
   sdrVoiceOutreachSystemLayer,
@@ -194,20 +196,48 @@ export const NURTURE_NODE_SYSTEM_PROMPT_BODY = `You are AgentForge Sales — **c
 
 **Prompt 69 — elite nurture cadence:** **sequence_summary** states the **strategic arc** (insight → proof → path or similar) for **this** account. Each step: **unique** value proposition, **named** asset, **causal** timing_rationale (why **this** spacing fits **this** buyer). Channels must feel **chosen**, not rotated by rote.`;
 
-export function buildResearchSystemPrompt(sdrVoice: SdrVoiceTone): string {
-  return sdrVoiceResearchSystemLayer(sdrVoice) + SEP + RESEARCH_NODE_SYSTEM_PROMPT_BODY;
+export function buildResearchSystemPrompt(
+  sdrVoice: SdrVoiceTone,
+  custom?: CustomVoiceProfile | null,
+  brandDisplayName: string = DEFAULT_BRAND_DISPLAY_NAME,
+): string {
+  const raw = custom
+    ? customVoiceSystemLayer("research", custom) + SEP + RESEARCH_NODE_SYSTEM_PROMPT_BODY
+    : sdrVoiceResearchSystemLayer(sdrVoice) + SEP + RESEARCH_NODE_SYSTEM_PROMPT_BODY;
+  return substituteBrandInPrompt(raw, brandDisplayName);
 }
 
-export function buildOutreachSystemPrompt(sdrVoice: SdrVoiceTone): string {
-  return sdrVoiceOutreachSystemLayer(sdrVoice) + SEP + OUTREACH_NODE_SYSTEM_PROMPT_BODY;
+export function buildOutreachSystemPrompt(
+  sdrVoice: SdrVoiceTone,
+  custom?: CustomVoiceProfile | null,
+  brandDisplayName: string = DEFAULT_BRAND_DISPLAY_NAME,
+): string {
+  const raw = custom
+    ? customVoiceSystemLayer("outreach", custom) + SEP + OUTREACH_NODE_SYSTEM_PROMPT_BODY
+    : sdrVoiceOutreachSystemLayer(sdrVoice) + SEP + OUTREACH_NODE_SYSTEM_PROMPT_BODY;
+  return substituteBrandInPrompt(raw, brandDisplayName);
 }
 
-export function buildQualificationSystemPrompt(sdrVoice: SdrVoiceTone): string {
-  return sdrVoiceQualificationSystemLayer(sdrVoice) + SEP + QUALIFICATION_NODE_SYSTEM_PROMPT_BODY;
+export function buildQualificationSystemPrompt(
+  sdrVoice: SdrVoiceTone,
+  custom?: CustomVoiceProfile | null,
+  brandDisplayName: string = DEFAULT_BRAND_DISPLAY_NAME,
+): string {
+  const raw = custom
+    ? customVoiceSystemLayer("qualification", custom) + SEP + QUALIFICATION_NODE_SYSTEM_PROMPT_BODY
+    : sdrVoiceQualificationSystemLayer(sdrVoice) + SEP + QUALIFICATION_NODE_SYSTEM_PROMPT_BODY;
+  return substituteBrandInPrompt(raw, brandDisplayName);
 }
 
-export function buildNurtureSystemPrompt(sdrVoice: SdrVoiceTone): string {
-  return sdrVoiceNurtureSystemLayer(sdrVoice) + SEP + NURTURE_NODE_SYSTEM_PROMPT_BODY;
+export function buildNurtureSystemPrompt(
+  sdrVoice: SdrVoiceTone,
+  custom?: CustomVoiceProfile | null,
+  brandDisplayName: string = DEFAULT_BRAND_DISPLAY_NAME,
+): string {
+  const raw = custom
+    ? customVoiceSystemLayer("nurture", custom) + SEP + NURTURE_NODE_SYSTEM_PROMPT_BODY
+    : sdrVoiceNurtureSystemLayer(sdrVoice) + SEP + NURTURE_NODE_SYSTEM_PROMPT_BODY;
+  return substituteBrandInPrompt(raw, brandDisplayName);
 }
 
 /** Back-compat: composed with default voice (small preamble + body). */

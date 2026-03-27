@@ -16,7 +16,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { dashboardOutlineActionClass } from "@/lib/dashboard-action-classes";
 import { cn } from "@/lib/utils";
 import { leadFormSchema, type LeadFormInput } from "@/agents/types";
-import type { BatchRunItem, PersistedCampaignRow } from "@/types";
+import type {
+  BatchRunItem,
+  CustomVoiceRow,
+  PersistedCampaignRow,
+  WhiteLabelClientSettingsDTO,
+} from "@/types";
 import { Layers, Loader2, Play } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
@@ -30,6 +35,12 @@ type Props = {
   recentCampaigns: PersistedCampaignRow[];
   /** Optional: surface per-lead progress in Active agents. */
   onBatchProgressChange?: (rows: BatchRunItem[] | null) => void;
+  /** HubSpot token saved (server-side). */
+  hubspotConnected?: boolean;
+  /** Prompt 78 — user custom voices for campaign form. */
+  customVoices?: CustomVoiceRow[];
+  /** Prompt 79 — PDF / Markdown / JSON branding. */
+  whiteLabel?: WhiteLabelClientSettingsDTO | null;
 };
 
 const batchJsonSchema = z.array(leadFormSchema);
@@ -40,6 +51,9 @@ const batchJsonSchema = z.array(leadFormSchema);
 export function DashboardCampaignRunner({
   recentCampaigns,
   onBatchProgressChange,
+  hubspotConnected = false,
+  customVoices = [],
+  whiteLabel = null,
 }: Props) {
   const router = useRouter();
   const [rerunRequest, setRerunRequest] = useState<CampaignRerunPayload | null>(null);
@@ -269,7 +283,13 @@ export function DashboardCampaignRunner({
         selectedIds={selectedCampaignIds}
         onToggleSelect={toggleSelect}
       />
-      <CampaignWorkspace rerunRequest={rerunRequest} onRerunConsumed={onRerunConsumed} />
+      <CampaignWorkspace
+        rerunRequest={rerunRequest}
+        onRerunConsumed={onRerunConsumed}
+        hubspotConnected={hubspotConnected}
+        customVoices={customVoices}
+        whiteLabel={whiteLabel}
+      />
     </div>
   );
 }

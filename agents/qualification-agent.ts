@@ -7,6 +7,7 @@ import {
   normalizeQualificationLlmToCanonical,
 } from "@/agents/qualification-normalize";
 import type {
+  CustomVoiceProfile,
   Lead,
   OutreachDraft,
   QualificationAgentResult,
@@ -17,6 +18,7 @@ import {
   invokeWithGroqRateLimitResilience,
   type GroqInvokeMeta,
 } from "@/lib/agent-model";
+import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import {
   getSdrVoiceQualificationHint,
   getSdrVoiceQualificationPlaybookInstructions,
@@ -35,6 +37,10 @@ export async function runQualificationAgent(
     icpFromResearch?: number;
     /** From graph — canonical campaign voice (Prompt 42). */
     sdrVoice?: SdrVoiceTone;
+    /** Prompt 78 — user-defined voice profile when selected. */
+    customVoice?: CustomVoiceProfile | null;
+    /** Prompt 79 — white-label name in system prompt. */
+    brandDisplayName?: string;
   },
 ): Promise<{
   result: QualificationAgentResult;
@@ -49,11 +55,16 @@ export async function runQualificationAgent(
     "(no ICP anchor — infer from lead + research JSON + outreach).";
 
   const voice = opts?.sdrVoice ?? resolveSdrVoiceTone(lead);
-  const voiceHint = getSdrVoiceQualificationHint(voice);
-  const playbookVoice = getSdrVoiceQualificationPlaybookInstructions(voice);
+  const custom = opts?.customVoice ?? undefined;
+  const brand = opts?.brandDisplayName?.trim() || DEFAULT_BRAND_DISPLAY_NAME;
+  const voiceHint = getSdrVoiceQualificationHint(voice, custom);
+  const playbookVoice = getSdrVoiceQualificationPlaybookInstructions(voice, custom);
+  const voiceLineLabel = custom?.name?.trim()
+    ? `${sdrVoiceLabel(voice)} / ${custom.name}`
+    : sdrVoiceLabel(voice);
 
   const human = `=== ACTIVE_CAMPAIGN_VOICE (graph → qualification_node) ===
-sdrVoice: ${voice} (${sdrVoiceLabel(voice)})
+sdrVoice: ${voice} (${voiceLineLabel})
 
 LEAD: ${JSON.stringify(lead)}
 ANCHOR: ${scoringAnchor}
@@ -76,7 +87,7 @@ Return JSON only (Prompt 38 + **48** + **57** + **58** + **67** + **69**). **Nua
 
 Score outreach against **ANCHOR + SDR_VOICE**: reward copy that **executes the selected preset** (data voice → metrics/ROI; consultative → strategic partnership; warm → empathy+rapport+consultative ease; challenger → professional tension). Penalize **preset mismatch**. top_objections: three **different** **psychological / political** mechanisms, not three flavors of "no budget". Prefer **odd** scores when ambiguous. Track research ICP unless outreach breaks fit.`;
 
-  const systemPrompt = buildQualificationSystemPrompt(voice);
+  const systemPrompt = buildQualificationSystemPrompt(voice, custom, brand);
   const prompt = `${systemPrompt}\n\n---\n${human}`;
   const icpHint = opts?.icpFromResearch;
 
