@@ -34,7 +34,6 @@ import { withTimeout } from "@/lib/async-timeout";
 import { hasLlmProviderConfigured } from "@/lib/env";
 import type { GroqInvokeMeta } from "@/lib/agent-model";
 import { saveCampaign } from "@/lib/save-campaign";
-import { buildDynamicFromEmail, sendTransactionalEmail } from "@/lib/resend";
 import { persistCampaignSignalsToSupabase } from "@/lib/campaign-signals-db";
 import { fetchLiveSignalsAfterResearch } from "@/lib/live-signals";
 
@@ -252,6 +251,7 @@ export function serializeCampaignStateForClient(
     results: state.results ?? {},
     campaign_completed_at: state.campaign_completed_at ?? null,
     live_signals: state.live_signals ?? null,
+    sender_signoff_name: state.sender_signoff_name ?? null,
   };
 }
 
@@ -459,29 +459,21 @@ async function outreachNode(
       console.error("[AgentForge] outreach_node:fallback", state.thread_id, message);
       draft = buildFallbackOutreachDraft(state.lead, message, state.sender_signoff_name);
     }
-    const send = await sendTransactionalEmail({
-      to: state.lead.email,
-      subject: draft.subject,
-      html: draft.email_body,
-      from: buildDynamicFromEmail(state.sender_signoff_name),
-    });
+    /** Prompt 73 — draft only; user sends from the dashboard (no auto-send). */
     const outreach_output: OutreachOutput = {
       ...draft,
-      email_sent: send.ok,
-      send_error: send.ok ? undefined : send.error,
+      email_sent: false,
+      send_error: undefined,
+      resend_status: "ready_to_send",
     };
 
-    const nextLead: Lead = send.ok
-      ? { ...state.lead, status: "contacted" }
-      : state.lead;
+    const nextLead: Lead = state.lead;
 
     const nodeResult = {
       ...draft,
-      email_sent: outreach_output.email_sent,
-      send_error: outreach_output.send_error,
-      resend_status: send.ok
-        ? "delivered"
-        : outreach_output.send_error ?? "not_sent",
+      email_sent: false,
+      send_error: undefined,
+      resend_status: "ready_to_send" as const,
       ...(outreachDegraded
         ? { degraded: true as const, error_note: outreachErrorNote }
         : {}),
@@ -508,15 +500,11 @@ async function outreachNode(
       lead: nextLead,
       current_agent: "outreach_node",
       outreach_output,
-      outreach_sent: send.ok,
+      outreach_sent: false,
       results: { outreach_node: nodeResult },
     });
 
-    console.log(
-      "[AgentForge] outreach_node:send",
-      state.thread_id,
-      send.ok ? "sent" : "not_sent",
-    );
+    console.log("[AgentForge] outreach_node:ready_to_send", state.thread_id);
 
     return {
       lead: nextLead,
@@ -527,9 +515,7 @@ async function outreachNode(
       messages: [
         {
           role: "ai",
-          content: send.ok
-            ? `outreach_node: email dispatched to ${state.lead.email}.`
-            : `outreach_node: ${outreach_output.send_error ?? "email not sent"}`,
+          content: `outreach_node: draft ready for ${state.lead.email} — send from the dashboard when ready.`,
         },
       ],
     };
@@ -541,6 +527,7 @@ async function outreachNode(
       ...fbDraft,
       email_sent: false,
       send_error: message,
+      resend_status: "failed",
     };
     const nodeResult = {
       ...fallback,

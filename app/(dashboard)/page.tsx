@@ -11,6 +11,11 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 /** Server actions / Supabase — not compatible with static generation at /. */
 export const dynamic = "force-dynamic";
 
+/**
+ * Prompt 73 — Manual outreach send (no auto-send): when a run finishes with
+ * `ready_to_send`, the Workspace tab’s Outreach card shows **Send Email**; Resend uses
+ * dynamic `From` + `Reply-To` the signed-in user’s Supabase auth email (`sendOutreachEmailAction`).
+ */
 export default async function DashboardPage() {
   const envWarnings = getDashboardEnvWarnings();
 

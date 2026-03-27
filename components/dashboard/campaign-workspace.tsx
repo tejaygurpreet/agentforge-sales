@@ -34,7 +34,7 @@ import type { ComponentType, ReactNode } from "react";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import type { CampaignRerunPayload } from "@/components/dashboard/campaign-rerun-types";
 import { useForm } from "react-hook-form";
-import { startCampaignAction } from "@/app/(dashboard)/actions";
+import { sendOutreachEmailAction, startCampaignAction } from "@/app/(dashboard)/actions";
 import { DashboardReplyStrip } from "@/components/dashboard/dashboard-reply-strip";
 import { useReplyIntel } from "@/components/dashboard/reply-intel-context";
 import { PdfBrandingPanel } from "@/components/dashboard/pdf-branding-panel";
@@ -450,13 +450,28 @@ function StepBadge({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
+function isOutreachReadyToSend(outreach: {
+  email_sent: boolean;
+  resend_status?: string;
+}): boolean {
+  return outreach.resend_status === "ready_to_send" && !outreach.email_sent;
+}
+
 function outreachNotice(outreach: {
   email_sent: boolean;
   send_error?: string;
   subject: string;
+  resend_status?: string;
 }): { friendly: string; detail?: string } {
   if (outreach.email_sent) {
     return { friendly: "" };
+  }
+  if (isOutreachReadyToSend(outreach)) {
+    return {
+      friendly:
+        "Draft generated — click Send Email above to deliver via Resend.",
+      detail: undefined,
+    };
   }
   if (outreach.send_error === RESEND_KEY_MISSING) {
     return { friendly: outreach.send_error, detail: undefined };
@@ -652,6 +667,7 @@ export function CampaignWorkspace({
   const [copyError, setCopyError] = useState<string | null>(null);
   const [exportTip, setExportTip] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [sendEmailPending, setSendEmailPending] = useState(false);
 
   useEffect(() => {
     if (!snapshot) {
@@ -714,6 +730,27 @@ export function CampaignWorkspace({
     },
     [router],
   );
+
+  const onSendOutreachEmail = useCallback(async () => {
+    if (!snapshot?.thread_id) return;
+    setSendEmailPending(true);
+    try {
+      const res = await sendOutreachEmailAction({ thread_id: snapshot.thread_id });
+      if (!res.ok) {
+        toast({
+          variant: "destructive",
+          title: "Could not send email",
+          description: res.error,
+        });
+        return;
+      }
+      setSnapshot(res.snapshot);
+      toast({ title: "Email sent successfully." });
+      router.refresh();
+    } finally {
+      setSendEmailPending(false);
+    }
+  }, [snapshot, router]);
 
   useEffect(() => {
     if (!rerunRequest) return;
@@ -1635,7 +1672,30 @@ export function CampaignWorkspace({
                 <div className="flex flex-wrap items-center gap-2">
                   <StepBadge ok={outreachOk} label="Success" />
                   {outreach ? (
-                    outreach.email_sent ? (
+                    isOutreachReadyToSend(outreach) ? (
+                      <>
+                        <Badge
+                          variant="outline"
+                          className="border-sky-500/35 text-sky-950 dark:text-sky-100"
+                        >
+                          Ready to send
+                        </Badge>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className={cn("gap-1.5", dashboardOutlineActionClass)}
+                          disabled={sendEmailPending}
+                          onClick={() => void onSendOutreachEmail()}
+                        >
+                          {sendEmailPending ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                          ) : (
+                            <Mail className="h-3.5 w-3.5" aria-hidden />
+                          )}
+                          Send Email
+                        </Button>
+                      </>
+                    ) : outreach.email_sent ? (
                       <Badge className="gap-1">
                         <CheckCircle2 className="h-3 w-3" />
                         Sent
@@ -1651,11 +1711,12 @@ export function CampaignWorkspace({
                   <>
                     {outreach.email_sent ? (
                       <p className="rounded-md border border-green-600/30 bg-green-500/10 px-3 py-2 text-sm text-green-800 dark:text-green-200">
-                        Email sent successfully — check the recipient inbox (and spam).
+                        Email sent successfully.
                       </p>
                     ) : (
                       (() => {
                         const { friendly, detail } = outreachNotice(outreach);
+                        if (!friendly) return null;
                         return (
                           <div className="space-y-2 rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm text-sky-950 dark:text-sky-100">
                             <p>{friendly}</p>

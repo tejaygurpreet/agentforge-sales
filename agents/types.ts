@@ -174,6 +174,10 @@ export type OutreachDraft = z.infer<typeof outreachDraftSchema>;
 export const outreachOutputSchema = outreachDraftSchema.extend({
   email_sent: z.boolean(),
   send_error: z.string().optional(),
+  /** Prompt 73 — `ready_to_send` until the user sends from the dashboard. */
+  resend_status: z
+    .enum(["ready_to_send", "delivered", "not_sent", "failed"])
+    .optional(),
 });
 
 export type OutreachOutput = z.infer<typeof outreachOutputSchema>;
@@ -275,4 +279,6 @@ export interface CampaignClientSnapshot {
   campaign_completed_at: string | null;
   /** Prompt 70 — funding / hiring / news lines captured after research. */
   live_signals?: CampaignLiveSignal[] | null;
+  /** Prompt 73 — for manual Resend send (`buildDynamicFromEmail`). */
+  sender_signoff_name?: string | null;
 }

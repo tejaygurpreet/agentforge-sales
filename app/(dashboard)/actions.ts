@@ -7,11 +7,12 @@ import {
   serializeCampaignStateForClient,
 } from "@/agents/graph";
 import { saveCampaign as persistCampaignToDatabase } from "@/lib/save-campaign";
-import { deleteThreadCheckpoint } from "@/agents/supabase-checkpointer";
+import { deleteThreadCheckpoint, mergeDashboardState } from "@/agents/supabase-checkpointer";
 import {
   type CampaignClientSnapshot,
   type Lead,
   type LeadFormInput,
+  type OutreachOutput,
   SDR_VOICE_TONE_VALUES,
   type SdrVoiceTone,
 } from "@/agents/types";
@@ -36,6 +37,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { withTimeout } from "@/lib/async-timeout";
 import { sdrVoiceLabel } from "@/lib/sdr-voice";
+import { buildDynamicFromEmail, sendTransactionalEmail } from "@/lib/resend";
 
 /** Prompt 18: hard cap so the dashboard never spins forever (must be ≥ `GRAPH_INVOKE_MAX_MS` in graph). */
 const START_CAMPAIGN_MAX_MS = 90_000;
@@ -673,6 +675,135 @@ export async function startCampaignAction(
   raw: z.input<typeof incomingLeadSchema>,
 ): Promise<StartCampaignResult> {
   return startCampaign(raw);
+}
+
+const sendOutreachEmailSchema = z.object({
+  thread_id: z.string().min(1).max(260),
+});
+
+export type SendOutreachEmailResult =
+  | { ok: true; snapshot: CampaignClientSnapshot }
+  | { ok: false; error: string };
+
+/**
+ * Prompt 73 — sends the stored outreach draft via Resend (manual button); updates campaign row + checkpoint.
+ */
+export async function sendOutreachEmailAction(
+  raw: z.input<typeof sendOutreachEmailSchema>,
+): Promise<SendOutreachEmailResult> {
+  const parsed = sendOutreachEmailSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid thread." };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+
+  const userSignupEmail =
+    typeof user.email === "string" && user.email.trim().length > 0
+      ? user.email.trim()
+      : null;
+  if (!userSignupEmail) {
+    return { ok: false, error: "Account email missing — cannot set Reply-To." };
+  }
+
+  const { data: row, error: rowError } = await supabase
+    .from("campaigns")
+    .select("results")
+    .eq("thread_id", parsed.data.thread_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (rowError || row?.results == null) {
+    return { ok: false, error: "Campaign not found." };
+  }
+
+  const snap = row.results as CampaignClientSnapshot;
+  const oo = snap.outreach_output;
+  if (!oo || oo.resend_status !== "ready_to_send" || oo.email_sent) {
+    return { ok: false, error: "Nothing to send or email already sent." };
+  }
+
+  let senderName = snap.sender_signoff_name?.trim() ?? "";
+  if (!senderName) {
+    if (typeof user.user_metadata?.full_name === "string") {
+      senderName = user.user_metadata.full_name.trim();
+    }
+    const { data: profileForSignoff } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (profileForSignoff?.full_name?.trim()) {
+      senderName = profileForSignoff.full_name.trim();
+    }
+  }
+
+  warnIfResendNotConfigured();
+  const send = await sendTransactionalEmail({
+    to: snap.lead.email,
+    subject: oo.subject,
+    html: oo.email_body,
+    from: buildDynamicFromEmail(senderName || null),
+    reply_to: userSignupEmail,
+  });
+
+  if (!send.ok) {
+    return { ok: false, error: send.error };
+  }
+
+  const updatedOutreach: OutreachOutput = {
+    ...oo,
+    email_sent: true,
+    send_error: undefined,
+    resend_status: "delivered",
+  };
+
+  const updatedLead: Lead = { ...snap.lead, status: "contacted" };
+
+  const oNodePrev = snap.results?.outreach_node;
+  const outreachNodeResult: Record<string, unknown> = {
+    ...(typeof oNodePrev === "object" && oNodePrev !== null && !Array.isArray(oNodePrev)
+      ? (oNodePrev as Record<string, unknown>)
+      : {}),
+    ...updatedOutreach,
+  };
+
+  const snap2: CampaignClientSnapshot = {
+    ...snap,
+    lead: updatedLead,
+    outreach_output: updatedOutreach,
+    sender_signoff_name: (senderName || snap.sender_signoff_name) ?? null,
+    results: {
+      ...snap.results,
+      outreach_node: outreachNodeResult,
+    },
+  };
+
+  await mergeDashboardState(parsed.data.thread_id, user.id, {
+    lead: updatedLead,
+    outreach_output: updatedOutreach,
+    outreach_sent: true,
+    results: { outreach_node: outreachNodeResult },
+  });
+
+  await persistCampaignToDatabase({
+    userId: user.id,
+    threadId: parsed.data.thread_id,
+    lead: updatedLead,
+    snapshot: snap2,
+  });
+
+  revalidatePath("/");
+  revalidatePath("/analytics");
+
+  return { ok: true, snapshot: snap2 };
 }
 
 const pasteReplySchema = z.object({

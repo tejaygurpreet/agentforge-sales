@@ -99,6 +99,8 @@ export async function sendTransactionalEmail(params: {
   html: string;
   /** Full `From` header. Prefer {@link buildDynamicFromEmail} for dashboard campaigns. */
   from?: string;
+  /** Logged-in user's real inbox — prospect replies route here (Prompt 73). */
+  reply_to?: string | string[];
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const client = getResendClient();
   const env = getServerEnv();
@@ -115,6 +117,9 @@ export async function sendTransactionalEmail(params: {
       to: params.to,
       subject: params.subject,
       html: params.html,
+      ...(params.reply_to != null && params.reply_to !== ""
+        ? { reply_to: params.reply_to }
+        : {}),
     });
     if (error) {
       return { ok: false, error: error.message };

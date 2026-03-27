@@ -17,8 +17,11 @@ import {
   type GroqInvokeMeta,
 } from "@/lib/agent-model";
 
-/** Outbound `From:` is set at send time in `lib/resend.ts` (`buildDynamicFromEmail`) using the same
- *  profile name as `opts.senderSignoffName` / body sign-off — not in the draft object. */
+/**
+ * Prompt 73 — this module only generates subject + HTML. The graph stores the draft and sets
+ * `resend_status: "ready_to_send"`; the user sends via the dashboard (`sendOutreachEmailAction`).
+ * `From` uses `buildDynamicFromEmail` at send time (same name as body sign-off).
+ */
 
 export type OutreachAgentResult = {
   draft: OutreachDraft;
