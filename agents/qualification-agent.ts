@@ -41,6 +41,8 @@ export async function runQualificationAgent(
     customVoice?: CustomVoiceProfile | null;
     /** Prompt 79 — white-label name in system prompt. */
     brandDisplayName?: string;
+    /** Prompt 83 — phrases from transcribed calls in this workspace. */
+    livingObjectionLibraryContext?: string;
   },
 ): Promise<{
   result: QualificationAgentResult;
@@ -63,12 +65,17 @@ export async function runQualificationAgent(
     ? `${sdrVoiceLabel(voice)} / ${custom.name}`
     : sdrVoiceLabel(voice);
 
+  const objectionLib =
+    opts?.livingObjectionLibraryContext?.trim() ||
+    "(no prior transcribed-call objections for this workspace yet.)";
+
   const human = `=== ACTIVE_CAMPAIGN_VOICE (graph → qualification_node) ===
 sdrVoice: ${voice} (${voiceLineLabel})
 
 LEAD: ${JSON.stringify(lead)}
 ANCHOR: ${scoringAnchor}
 RESEARCH_JSON: ${pipelineContext}
+${objectionLib}
 SDR_VOICE: ${voice} — ${voiceHint}
 
 PLAYBOOK_VOICE (apply to bant_summary + next_best_action only; objections stay buyer-voice):

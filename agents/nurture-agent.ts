@@ -34,7 +34,12 @@ export async function runNurtureAgent(
     outreach_output?: OutreachOutput;
   },
   sdrVoice: SdrVoiceTone,
-  opts?: { customVoice?: CustomVoiceProfile | null; brandDisplayName?: string },
+  opts?: {
+    customVoice?: CustomVoiceProfile | null;
+    brandDisplayName?: string;
+    /** Prompt 83 — real buyer phrases from transcribed calls in this workspace. */
+    livingObjectionLibraryContext?: string;
+  },
 ): Promise<NurtureAgentResult> {
   const qualBlob = ctx.qualification_detail
     ? JSON.stringify({
@@ -52,6 +57,9 @@ export async function runNurtureAgent(
   const voiceLine = custom?.name?.trim()
     ? `${sdrVoiceLabel(voice)} / ${custom.name}`
     : sdrVoiceLabel(voice);
+  const objectionLib =
+    opts?.livingObjectionLibraryContext?.trim() ||
+    "(no prior transcribed-call objections for this workspace yet.)";
   const human = `=== ACTIVE_CAMPAIGN_VOICE (graph → nurture_node) ===
 sdrVoice: ${voice} (${voiceLine})
 
@@ -60,6 +68,7 @@ QUAL_SCORE: ${ctx.qualification_score}
 QUAL: ${qualBlob}
 RESEARCH: ${JSON.stringify(ctx.research_output ?? {})}
 OUTREACH: ${JSON.stringify(ctx.outreach_output ?? {})}
+${objectionLib}
 SDR_VOICE_PRESET: ${voice}
 ${nurtureVoice}
 

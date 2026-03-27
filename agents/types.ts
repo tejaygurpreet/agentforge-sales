@@ -284,6 +284,18 @@ export interface CampaignLiveSignal {
   captured_at: string;
 }
 
+/** Prompt 82 — structured lead enrichment (Tavily / Browserless); optional and backward-compatible. */
+export interface LeadEnrichmentPayload {
+  enriched_at: string;
+  provider: string;
+  source_urls: string[];
+  company_snapshot: string;
+  funding_news: string;
+  hiring_signals: string;
+  tech_stack: string;
+  intent_signals: string;
+}
+
 export interface AgentContext {
   threadId: string;
   userId: string;
@@ -312,4 +324,6 @@ export interface CampaignClientSnapshot {
   sender_signoff_name?: string | null;
   /** Prompt 79 — display/sign-off brand line (falls back to AgentForge Sales when unset). */
   brand_display_name?: string | null;
+  /** Prompt 82 — pre-run enrichment preview (same payload persisted when `enriched_data` column exists). */
+  lead_enrichment_preview?: LeadEnrichmentPayload | null;
 }

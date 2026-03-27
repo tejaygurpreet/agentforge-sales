@@ -1,11 +1,18 @@
-import Link from "next/link";
-import { redirect } from "next/navigation";
+import type { DashboardNavLink } from "@/components/dashboard/dashboard-shell";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { fetchWhiteLabelSettings } from "@/lib/white-label";
+import { redirect } from "next/navigation";
 
 /** Auth + Supabase use cookies — must not be statically generated (Vercel / Next.js). */
 export const dynamic = "force-dynamic";
+
+const DASHBOARD_NAV: DashboardNavLink[] = [
+  { href: "/", label: "Dashboard" },
+  { href: "/agents", label: "Agents" },
+  { href: "/replies", label: "Replies" },
+  { href: "/analytics", label: "Analytics" },
+];
 
 export default async function DashboardLayout({
   children,
@@ -48,34 +55,7 @@ export default async function DashboardLayout({
         logoUrl: wl.logoUrl,
         primaryColor: wl.primaryColor,
       }}
-      nav={
-        <nav className="flex flex-wrap items-center gap-1 text-sm font-medium sm:gap-2">
-          <Link
-            href="/"
-            className="rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors duration-200 hover:bg-accent/60 hover:text-foreground"
-          >
-            Dashboard
-          </Link>
-          <Link
-            href="/agents"
-            className="rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors duration-200 hover:bg-accent/60 hover:text-foreground"
-          >
-            Agents
-          </Link>
-          <Link
-            href="/replies"
-            className="rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors duration-200 hover:bg-accent/60 hover:text-foreground"
-          >
-            Replies
-          </Link>
-          <Link
-            href="/analytics"
-            className="rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors duration-200 hover:bg-accent/60 hover:text-foreground"
-          >
-            Analytics
-          </Link>
-        </nav>
-      }
+      navLinks={DASHBOARD_NAV}
     >
       {children}
     </DashboardShell>

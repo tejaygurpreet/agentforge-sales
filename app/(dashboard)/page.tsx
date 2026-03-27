@@ -5,6 +5,7 @@ import {
   listCampaignThreads,
   listCustomVoicesAction,
   listRecentCampaigns,
+  loadObjectionLibraryForDashboard,
 } from "@/app/(dashboard)/actions";
 import { DashboardHomeClient } from "@/components/dashboard/dashboard-home-client";
 import { getDashboardEnvWarnings } from "@/lib/env";
@@ -27,6 +28,17 @@ export const dynamic = "force-dynamic";
  *
  * Prompt 80 — Deliverability tab: warm-up logs, spam check, aggregates from `getDashboardAnalytics`.
  * Prompt 81 — Team tab/section and workspace-scoped data reads.
+ *
+ * Prompt 82 — Built-in lead enrichment + intelligent sourcing: Tavily / Browserless / Serper
+ * (`lib/agents/research_node.ts` + `lead_enrichment_node` before `research_node`). Dashboard
+ * preview: **Fetch lead intel** in `CampaignWorkspace` (Workspace tab) before **Start campaign**.
+ * Optional `public.campaigns.enriched_data` jsonb — see `supabase/lead_enrichment_p82.sql`.
+ *
+ * Prompt 83 — Objection Library: transcribed Twilio calls + living objections (`call_transcripts`,
+ * `objection_library`); see `supabase/call_transcripts_objection_library_p83.sql`.
+ *
+ * Prompt 84 — PWA (`app/manifest.ts`, `public/sw.js`), mobile nav in `DashboardShell`, push via
+ * `lib/push.ts` + `supabase/push_subscriptions_p84.sql`, `PwaBanner` for permission + service worker.
  */
 export default async function DashboardPage() {
   const envWarnings = getDashboardEnvWarnings();
@@ -92,13 +104,15 @@ export default async function DashboardPage() {
     };
   }
 
-  const [campaigns, recentCampaigns, analytics, deliverabilitySuite, workspaceData] = await Promise.all([
-    listCampaignThreads(),
-    listRecentCampaigns(),
-    getDashboardAnalytics(),
-    getDeliverabilitySuiteAction(),
-    getWorkspaceMembersAction(),
-  ]);
+  const [campaigns, recentCampaigns, analytics, deliverabilitySuite, workspaceData, objectionLibrary] =
+    await Promise.all([
+      listCampaignThreads(),
+      listRecentCampaigns(),
+      getDashboardAnalytics(),
+      getDeliverabilitySuiteAction(),
+      getWorkspaceMembersAction(),
+      loadObjectionLibraryForDashboard(),
+    ]);
 
   return (
     <DashboardHomeClient
@@ -113,6 +127,8 @@ export default async function DashboardPage() {
       deliverabilitySuite={deliverabilitySuite}
       workspaceMembers={workspaceData?.members ?? []}
       workspaceRole={workspaceData?.workspaceRole ?? "admin"}
+      objectionLibraryTranscripts={objectionLibrary.transcripts}
+      objectionLibraryEntries={objectionLibrary.objections}
     />
   );
 }

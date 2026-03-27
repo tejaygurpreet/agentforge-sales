@@ -1,4 +1,4 @@
-import type { LeadFormInput } from "@/agents/types";
+import type { LeadEnrichmentPayload, LeadFormInput } from "@/agents/types";
 
 export type {
   AgentMessage,
@@ -72,6 +72,8 @@ export interface PersistedCampaignRow {
   spam_score?: number | null;
   /** Prompt 80 — excellent | good | fair | poor */
   deliverability_status?: string | null;
+  /** Prompt 82 — from persisted snapshot (`results.lead_enrichment_preview`). */
+  enriched_data?: LeadEnrichmentPayload | null;
 }
 
 /** JSON stored in `reply_analyses.analysis` (matches ReplyAnalysisWithLabels). */
@@ -100,6 +102,29 @@ export interface PersistedReplyAnalysisRow {
   reply_full: string | null;
   analysis: ProspectReplyAnalysisPayload;
 }
+
+/** Prompt 83 — `call_transcripts` for Objection Library (workspace-scoped). */
+export type CallTranscriptRow = {
+  id: string;
+  created_at: string;
+  thread_id: string;
+  twilio_call_sid: string;
+  transcript: string;
+  sentiment: string | null;
+  summary: string | null;
+  objections: unknown;
+  insights: unknown;
+  recording_duration_sec: number | null;
+};
+
+/** Prompt 83 — aggregated objections from transcribed calls. */
+export type ObjectionLibraryEntryRow = {
+  id: string;
+  objection_text: string;
+  use_count: number;
+  last_seen_at: string;
+  normalized_key: string;
+};
 
 export type DashboardStrengthBucket = {
   label: string;

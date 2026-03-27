@@ -1,6 +1,7 @@
 import "server-only";
 
-import type { CampaignClientSnapshot, Lead } from "@/agents/types";
+import type { CampaignClientSnapshot, Lead, LeadEnrichmentPayload } from "@/agents/types";
+import { notifyCampaignCompletedPush } from "@/lib/push";
 import { getServiceRoleSupabaseOrNull } from "@/lib/supabase-server";
 
 export interface SaveCampaignParams {
@@ -37,6 +38,10 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
     return;
   }
 
+  const enriched =
+    (snapshot.lead_enrichment_preview as LeadEnrichmentPayload | null | undefined) ??
+    null;
+
   const row = {
     user_id: userId,
     thread_id: threadId,
@@ -52,11 +57,31 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
           deliverability_status: deliverability.deliverability_status.slice(0, 32),
         }
       : {}),
+    ...(enriched
+      ? {
+          enriched_data: enriched as unknown as Record<string, unknown>,
+        }
+      : {}),
   };
 
-  const { error } = await sb.from("campaigns").upsert(row, {
+  let { error } = await sb.from("campaigns").upsert(row, {
     onConflict: "thread_id",
   });
+
+  if (
+    error &&
+    enriched &&
+    /enriched_data|column|schema/i.test(
+      `${error.message} ${error.details ?? ""} ${error.hint ?? ""}`,
+    )
+  ) {
+    const { enriched_data: _e, ...rowLegacy } = row as typeof row & {
+      enriched_data?: unknown;
+    };
+    ({ error } = await sb.from("campaigns").upsert(rowLegacy, {
+      onConflict: "thread_id",
+    }));
+  }
 
   if (error) {
     console.error(
@@ -65,5 +90,11 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
       error.code,
       error.details,
     );
+    return;
+  }
+
+  const fin = snapshot.final_status;
+  if (fin === "completed" || fin === "completed_with_errors") {
+    void notifyCampaignCompletedPush(userId, lead.name, threadId).catch(() => {});
   }
 }

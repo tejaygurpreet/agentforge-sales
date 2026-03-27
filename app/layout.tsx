@@ -4,6 +4,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
+export { viewport } from "./viewport";
+
 const fontSans = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
@@ -17,6 +19,15 @@ const fontMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "AgentForge Sales",
   description: "Autonomous multi-agent B2B Sales Operating System",
+  applicationName: "AgentForge Sales",
+  appleWebApp: {
+    capable: true,
+    title: "AgentForge Sales",
+    statusBarStyle: "black-translucent",
+  },
+  formatDetection: {
+    telephone: false,
+  },
 };
 
 export default function RootLayout({

@@ -12,11 +12,13 @@ import {
   type CampaignClientSnapshot,
   type CustomVoiceProfile,
   type Lead,
+  type LeadEnrichmentPayload,
   type LeadFormInput,
   type OutreachOutput,
   SDR_VOICE_TONE_VALUES,
   type SdrVoiceTone,
 } from "@/agents/types";
+import { runLeadEnrichmentStep } from "@/lib/agents/research_node";
 import { getServiceRoleSupabaseOrNull } from "@/lib/supabase-server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { hasLlmProviderConfigured, warnIfResendNotConfigured } from "@/lib/env";
@@ -60,6 +62,11 @@ import {
   resolveWorkspaceContext,
   type WorkspaceRole,
 } from "@/lib/workspace";
+import {
+  notifyBatchFinishedPush,
+  notifyNewReplySavedPush,
+} from "@/lib/push";
+import type { CallTranscriptRow, ObjectionLibraryEntryRow } from "@/types";
 
 /** Prompt 18: hard cap so the dashboard never spins forever (must be ≥ `GRAPH_INVOKE_MAX_MS` in graph). */
 const START_CAMPAIGN_MAX_MS = 90_000;
@@ -780,6 +787,7 @@ export async function startCampaign(
         lead,
         thread_id,
         user_id: user.id,
+        workspace_id: ws.workspaceId,
         sender_signoff_name: senderSignoffName || undefined,
         custom_voice_profile,
         brand_display_name: wl.brandSignoff,
@@ -806,6 +814,160 @@ export async function startCampaign(
           ? e
           : "Campaign failed";
     console.error("[AgentForge] startCampaign", e);
+    return { ok: false, error: humanizeServerFailureMessage(message) };
+  }
+}
+
+/**
+ * Prompt 83 — transcribed calls + living objections for the active workspace (RLS-scoped).
+ */
+const batchNotifySchema = z.object({
+  total: z.number().int().min(1).max(24),
+  done: z.number().int().min(0),
+  errors: z.number().int().min(0),
+});
+
+/**
+ * Prompt 84 — fire-and-forget push when a parallel batch run completes (client calls after chunk loop).
+ */
+export async function notifyBatchRunFinishedAction(
+  raw: z.input<typeof batchNotifySchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = batchNotifySchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid batch summary." };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  await notifyBatchFinishedPush(
+    user.id,
+    parsed.data.total,
+    parsed.data.done,
+    parsed.data.errors,
+  );
+  return { ok: true };
+}
+
+export async function loadObjectionLibraryForDashboard(): Promise<{
+  transcripts: CallTranscriptRow[];
+  objections: ObjectionLibraryEntryRow[];
+}> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { transcripts: [], objections: [] };
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  const workspaceId = ws.workspaceId;
+
+  try {
+    const [tRes, oRes] = await Promise.all([
+      supabase
+        .from("call_transcripts")
+        .select(
+          "id, created_at, thread_id, twilio_call_sid, transcript, sentiment, summary, objections, insights, recording_duration_sec",
+        )
+        .eq("workspace_id", workspaceId)
+        .order("created_at", { ascending: false })
+        .limit(25),
+      supabase
+        .from("objection_library")
+        .select("id, objection_text, use_count, last_seen_at, normalized_key")
+        .eq("workspace_id", workspaceId)
+        .order("last_seen_at", { ascending: false })
+        .limit(60),
+    ]);
+
+    if (tRes.error) {
+      console.warn("[AgentForge] call_transcripts:list", tRes.error.message);
+    }
+    if (oRes.error) {
+      console.warn("[AgentForge] objection_library:list", oRes.error.message);
+    }
+
+    return {
+      transcripts: (tRes.data ?? []) as CallTranscriptRow[],
+      objections: (oRes.data ?? []) as ObjectionLibraryEntryRow[],
+    };
+  } catch (e) {
+    console.warn("[AgentForge] loadObjectionLibraryForDashboard", e);
+    return { transcripts: [], objections: [] };
+  }
+}
+
+export type PreviewLeadEnrichmentResult =
+  | { ok: true; enrichment: LeadEnrichmentPayload }
+  | { ok: false; error: string };
+
+/**
+ * Prompt 82 — preview Tavily/Browserless enrichment before Start Campaign (no graph run).
+ */
+export async function previewLeadEnrichmentAction(
+  raw: z.input<typeof incomingLeadSchema>,
+): Promise<PreviewLeadEnrichmentResult> {
+  const parsed = incomingLeadSchema.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: Object.values(parsed.error.flatten().fieldErrors)
+        .flat()
+        .filter(Boolean)
+        .join(", "),
+    };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+
+  let lead: Lead = {
+    id: parsed.data.id ?? randomUUID(),
+    name: parsed.data.name,
+    email: parsed.data.email,
+    company: parsed.data.company,
+    linkedin_url: parsed.data.linkedin_url,
+    phone: parsed.data.phone,
+    notes: parsed.data.notes,
+    status: parsed.data.status,
+    sdr_voice_tone: parsed.data.sdr_voice_tone,
+    custom_voice_id: parsed.data.custom_voice_id,
+    custom_voice_name: parsed.data.custom_voice_name,
+  };
+
+  if (lead.custom_voice_id) {
+    const profile = await fetchCustomVoiceProfileForUser(user.id, lead.custom_voice_id);
+    if (profile) {
+      lead = { ...lead, custom_voice_name: profile.name };
+    } else {
+      lead = { ...lead, custom_voice_id: undefined, custom_voice_name: undefined };
+    }
+  }
+
+  try {
+    const { enrichment } = await runLeadEnrichmentStep(lead);
+    return { ok: true, enrichment };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[AgentForge] previewLeadEnrichmentAction", message);
     return { ok: false, error: humanizeServerFailureMessage(message) };
   }
 }
@@ -869,6 +1031,12 @@ export async function listRecentCampaigns(): Promise<PersistedCampaignRow[]> {
       spam_score?: unknown;
       deliverability_status?: unknown;
     };
+    const snap = results as Record<string, unknown> | undefined;
+    const enrichmentFromSnapshot =
+      snap?.lead_enrichment_preview &&
+      typeof snap.lead_enrichment_preview === "object"
+        ? (snap.lead_enrichment_preview as LeadEnrichmentPayload)
+        : null;
     return {
       id: String(row.id),
       thread_id: String(row.thread_id),
@@ -883,6 +1051,7 @@ export async function listRecentCampaigns(): Promise<PersistedCampaignRow[]> {
       spam_score: typeof r.spam_score === "number" ? r.spam_score : null,
       deliverability_status:
         typeof r.deliverability_status === "string" ? r.deliverability_status : null,
+      enriched_data: enrichmentFromSnapshot,
     };
   });
 }
@@ -1486,6 +1655,7 @@ export async function analyzeProspectReplyAction(
     };
     const inserted = await insertReplyAnalysisRow(supabase, fullRow, minimalRow);
     if (inserted.ok) {
+      void notifyNewReplySavedPush(user.id, preview || fullText.slice(0, 200)).catch(() => {});
       revalidatePath("/");
       revalidatePath("/replies");
       revalidatePath("/analytics");

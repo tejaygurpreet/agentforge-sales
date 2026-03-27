@@ -3,6 +3,12 @@ import "server-only";
 import twilioSdk from "twilio";
 import type { SdrVoiceTone } from "@/agents/types";
 import { getClientEnv } from "@/lib/env";
+import {
+  runCallTranscriptionPipeline,
+  type TwilioCallCompletedPayload,
+} from "@/lib/call-transcription";
+
+export type { TwilioCallCompletedPayload };
 
 export type TwilioCredentials = {
   accountSid: string;
@@ -50,4 +56,27 @@ export function normalizePhoneE164(raw: string): string | null {
   if (t.startsWith("+") && /^\+[1-9]\d{6,14}$/.test(t)) return t;
   if (/^\d{10,15}$/.test(t)) return `+${t}`;
   return null;
+}
+
+/**
+ * Prompt 83 — POST target for Twilio Voice status callbacks (`CallStatus=completed`).
+ * Append `?workspace_id=` when provisioning the callback so transcripts map to the active team workspace.
+ */
+export function twilioVoiceStatusCallbackUrl(opts?: { workspaceId?: string }): string {
+  const base = getTwilioWebhookBaseUrl().replace(/\/$/, "");
+  const u = new URL(`${base}/api/twilio/voice/status`);
+  if (opts?.workspaceId?.trim()) {
+    u.searchParams.set("workspace_id", opts.workspaceId.trim());
+  }
+  return u.toString();
+}
+
+/**
+ * Prompt 83 — after a voice call ends, transcribe via Groq Whisper + structured LLM extract, then Supabase.
+ * Idempotent on `CallSid` (`call_transcripts.twilio_call_sid` unique).
+ */
+export async function afterTwilioVoiceCallCompleted(
+  payload: TwilioCallCompletedPayload,
+): Promise<void> {
+  return runCallTranscriptionPipeline(payload);
 }

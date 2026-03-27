@@ -28,12 +28,19 @@ const serverSchema = z.object({
   BROWSERLESS_BASE_URL: optionalNonEmpty,
   /** Browserless token (query param). */
   BROWSERLESS_TOKEN: optionalNonEmpty,
+  /** Prompt 84 — Web Push (server); pair with NEXT_PUBLIC_VAPID_PUBLIC_KEY. */
+  VAPID_PUBLIC_KEY: optionalNonEmpty,
+  VAPID_PRIVATE_KEY: optionalNonEmpty,
+  /** e.g. mailto:you@domain.com */
+  VAPID_SUBJECT: optionalNonEmpty,
 });
 
 const clientSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
+  /** Prompt 84 — must match VAPID_PUBLIC_KEY on the server. */
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY: optionalNonEmpty,
 });
 
 export type ServerEnv = z.infer<typeof serverSchema>;
@@ -52,6 +59,9 @@ function parseServerEnv(): ServerEnv {
     SERPER_API_KEY: process.env.SERPER_API_KEY,
     BROWSERLESS_BASE_URL: process.env.BROWSERLESS_BASE_URL,
     BROWSERLESS_TOKEN: process.env.BROWSERLESS_TOKEN,
+    VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
+    VAPID_SUBJECT: process.env.VAPID_SUBJECT,
   });
 }
 
@@ -60,6 +70,7 @@ function parseClientEnv(): ClientEnv {
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    NEXT_PUBLIC_VAPID_PUBLIC_KEY: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
   });
 }
 
@@ -121,6 +132,12 @@ export function getDashboardEnvWarnings(): string[] {
   ) {
     out.push(
       "Optional: TAVILY_API_KEY, SERPER_API_KEY, or Browserless (BROWSERLESS_BASE_URL + BROWSERLESS_TOKEN) for live web research — see .env.example.",
+    );
+  }
+  const pubClient = getClientEnv().NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim();
+  if (!e.VAPID_PUBLIC_KEY?.trim() || !e.VAPID_PRIVATE_KEY?.trim() || !pubClient) {
+    out.push(
+      "Optional (Prompt 84): VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, and NEXT_PUBLIC_VAPID_PUBLIC_KEY for PWA push notifications.",
     );
   }
   return out;

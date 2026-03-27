@@ -6,6 +6,7 @@ import type {
   CampaignLiveSignal,
   CustomVoiceProfile,
   Lead,
+  LeadEnrichmentPayload,
   NurtureOutput,
   OutreachDraft,
   OutreachOutput,
@@ -13,6 +14,8 @@ import type {
   ResearchOutput,
   SdrVoiceTone,
 } from "@/agents/types";
+import { runLeadEnrichmentStep } from "@/lib/agents/research_node";
+import type { WebResearchDigest } from "@/lib/web-research";
 import {
   getSdrVoiceQualificationScoringSupplement,
   resolveSdrVoiceTone,
@@ -38,10 +41,12 @@ import type { GroqInvokeMeta } from "@/lib/agent-model";
 import { saveCampaign } from "@/lib/save-campaign";
 import { persistCampaignSignalsToSupabase } from "@/lib/campaign-signals-db";
 import { fetchLiveSignalsAfterResearch } from "@/lib/live-signals";
+import { loadLivingObjectionContextForWorkspace } from "@/lib/agents/qualification_node";
 
 /** Just under `START_CAMPAIGN_MAX_MS` (90s) in actions.ts. */
 const GRAPH_INVOKE_MAX_MS = 89_000;
 /** Per-node ceilings; sums must stay within GRAPH_INVOKE for sequential runs (Prompt 18 + 90s UI cap). */
+const LEAD_ENRICHMENT_MAX_MS = 22_000;
 const RESEARCH_AGENT_MAX_MS = 42_000;
 const OUTREACH_AGENT_MAX_MS = 14_000;
 const QUALIFICATION_AGENT_MAX_MS = 14_000;
@@ -241,6 +246,21 @@ const GraphState = Annotation.Root({
     reducer: (_c, n) => n,
     default: () => DEFAULT_BRAND_DISPLAY_NAME,
   }),
+  /** Prompt 82 — structured enrichment for dashboard + `enriched_data` column. */
+  lead_enrichment_preview: Annotation<LeadEnrichmentPayload | undefined>({
+    reducer: (_c, n) => n,
+    default: () => undefined,
+  }),
+  /** Prompt 82 — avoids duplicate web fetch in research when set by lead_enrichment_node. */
+  prefetched_web_digest: Annotation<WebResearchDigest | undefined>({
+    reducer: (_c, n) => n,
+    default: () => undefined,
+  }),
+  /** Prompt 83 — workspace for living objection library (defaults to user_id / personal workspace). */
+  workspace_id: Annotation<string>({
+    reducer: (_c, n) => n,
+    default: () => "",
+  }),
 });
 
 export type SalesGraphState = typeof GraphState.State;
@@ -266,16 +286,19 @@ export function serializeCampaignStateForClient(
     live_signals: state.live_signals ?? null,
     sender_signoff_name: state.sender_signoff_name ?? null,
     brand_display_name: state.brand_display_name ?? null,
+    lead_enrichment_preview: state.lead_enrichment_preview ?? null,
   };
 }
 
 function buildSalesGraph() {
   return new StateGraph(GraphState)
+    .addNode("lead_enrichment_node", leadEnrichmentNode)
     .addNode("research_node", researchNode)
     .addNode("outreach_node", outreachNode)
     .addNode("qualification_node", qualificationNode)
     .addNode("nurture_node", nurtureNode)
-    .addEdge(START, "research_node")
+    .addEdge(START, "lead_enrichment_node")
+    .addEdge("lead_enrichment_node", "research_node")
     .addEdge("research_node", "outreach_node")
     .addEdge("outreach_node", "qualification_node")
     .addEdge("qualification_node", "nurture_node")
@@ -302,6 +325,67 @@ async function attachLiveSignalsToResearchState(
   }
 }
 
+/** Prompt 82 — Tavily/Browserless enrichment before main research LLM; non-fatal on failure. */
+async function leadEnrichmentNode(
+  state: SalesGraphState,
+): Promise<Partial<SalesGraphState>> {
+  try {
+    const { enrichment, web } = await withTimeout(
+      runLeadEnrichmentStep(state.lead),
+      LEAD_ENRICHMENT_MAX_MS,
+      "lead_enrichment_step",
+    );
+    const nodeSummary = {
+      provider: web.provider,
+      enriched_at: enrichment.enriched_at,
+      source_count: web.sources.length,
+    };
+    await mergeDashboardState(state.thread_id, state.user_id, {
+      current_agent: "lead_enrichment_node",
+      lead_enrichment_preview: enrichment,
+      prefetched_web_digest: web,
+      results: { enrichment_node: { ...nodeSummary, ...enrichment } },
+    });
+    console.log(
+      "[AgentForge] lead_enrichment_node:ok",
+      state.thread_id,
+      web.provider,
+    );
+    return {
+      lead_enrichment_preview: enrichment,
+      prefetched_web_digest: web,
+      current_agent: "lead_enrichment_node",
+      results: { enrichment_node: { ...nodeSummary, ...enrichment } },
+      messages: [
+        {
+          role: "ai",
+          content: `lead_enrichment_node: ${enrichment.company_snapshot.slice(0, 360)}`,
+        },
+      ],
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.warn("[AgentForge] lead_enrichment_node:skipped", state.thread_id, message);
+    await mergeDashboardState(state.thread_id, state.user_id, {
+      current_agent: "lead_enrichment_node",
+      results: {
+        enrichment_node: {
+          skipped: true,
+          error: message.slice(0, 200),
+        },
+      },
+    });
+    return {
+      lead_enrichment_preview: undefined,
+      prefetched_web_digest: undefined,
+      current_agent: "lead_enrichment_node",
+      results: {
+        enrichment_node: { skipped: true, error: message.slice(0, 200) },
+      },
+    };
+  }
+}
+
 async function researchNode(
   state: SalesGraphState,
 ): Promise<Partial<SalesGraphState>> {
@@ -320,6 +404,7 @@ async function researchNode(
         runResearchAgent(state.lead, sdrVoice, {
           customVoice: state.custom_voice_profile,
           brandDisplayName: state.brand_display_name,
+          webDigest: state.prefetched_web_digest,
         }),
         RESEARCH_AGENT_MAX_MS,
         "research_agent",
@@ -633,6 +718,15 @@ async function qualificationNode(
       state.custom_voice_profile,
     );
 
+    let livingObjectionLibraryContext: string | undefined;
+    try {
+      const ws = state.workspace_id?.trim() || state.user_id;
+      livingObjectionLibraryContext = await loadLivingObjectionContextForWorkspace(ws);
+    } catch (e) {
+      console.warn("[AgentForge] qualification_node:objection_library_skipped", e);
+      livingObjectionLibraryContext = undefined;
+    }
+
     let pack: {
       result: QualificationAgentResult;
       degraded: boolean;
@@ -647,6 +741,7 @@ async function qualificationNode(
           sdrVoice,
           customVoice: state.custom_voice_profile,
           brandDisplayName: state.brand_display_name,
+          livingObjectionLibraryContext,
         }),
         QUALIFICATION_AGENT_MAX_MS,
         "qualification_agent",
@@ -768,6 +863,15 @@ async function nurtureNode(
   let nurtureNote: string | undefined;
   let nurtureGroqMeta: GroqInvokeMeta | undefined;
 
+  let livingObjectionLibraryContext: string | undefined;
+  try {
+    const ws = state.workspace_id?.trim() || state.user_id;
+    livingObjectionLibraryContext = await loadLivingObjectionContextForWorkspace(ws);
+  } catch (e) {
+    console.warn("[AgentForge] nurture_node:objection_library_skipped", e);
+    livingObjectionLibraryContext = undefined;
+  }
+
   try {
     const n = await withTimeout(
       runNurtureAgent(
@@ -782,6 +886,7 @@ async function nurtureNode(
         {
           customVoice: state.custom_voice_profile,
           brandDisplayName: state.brand_display_name,
+          livingObjectionLibraryContext,
         },
       ),
       NURTURE_AGENT_MAX_MS,
@@ -886,6 +991,8 @@ export interface RunCampaignInput {
   lead: Lead;
   thread_id: string;
   user_id: string;
+  /** Prompt 83 — active workspace for living objection library; defaults to `user_id` (personal workspace). */
+  workspace_id?: string;
   /** Prompt 68 — profile / signup full name for outreach sign-off (optional). */
   sender_signoff_name?: string;
   /** Prompt 78 — loaded server-side when `lead.custom_voice_id` is set. */
@@ -898,7 +1005,7 @@ function initialCampaignGraphState(input: RunCampaignInput): SalesGraphState {
   return {
     lead: input.lead,
     messages: [],
-    current_agent: "research_node",
+    current_agent: "lead_enrichment_node",
     thread_id: input.thread_id,
     user_id: input.user_id,
     research_output: undefined,
@@ -914,6 +1021,9 @@ function initialCampaignGraphState(input: RunCampaignInput): SalesGraphState {
     live_signals: undefined,
     custom_voice_profile: input.custom_voice_profile,
     brand_display_name: input.brand_display_name?.trim() || DEFAULT_BRAND_DISPLAY_NAME,
+    lead_enrichment_preview: undefined,
+    prefetched_web_digest: undefined,
+    workspace_id: input.workspace_id?.trim() || input.user_id,
   };
 }
 
@@ -952,6 +1062,9 @@ export async function runCampaignGraph(
       live_signals: undefined,
       custom_voice_profile: input.custom_voice_profile,
       brand_display_name: input.brand_display_name?.trim() || DEFAULT_BRAND_DISPLAY_NAME,
+      lead_enrichment_preview: undefined,
+      prefetched_web_digest: undefined,
+      workspace_id: input.workspace_id?.trim() || input.user_id,
     };
     await mergeDashboardState(input.thread_id, input.user_id, {
       current_agent: "research_node",
@@ -1118,6 +1231,7 @@ export const runSalesGraph = async (input: {
   lead: Lead;
   senderSignoffName?: string;
   brand_display_name?: string;
+  workspace_id?: string;
 }) =>
   runCampaignGraph({
     lead: input.lead,
@@ -1125,4 +1239,5 @@ export const runSalesGraph = async (input: {
     user_id: input.userId,
     sender_signoff_name: input.senderSignoffName,
     brand_display_name: input.brand_display_name,
+    workspace_id: input.workspace_id,
   });

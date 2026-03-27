@@ -1,6 +1,6 @@
 "use client";
 
-import { startCampaignAction } from "@/app/(dashboard)/actions";
+import { notifyBatchRunFinishedAction, startCampaignAction } from "@/app/(dashboard)/actions";
 import { CampaignWorkspace } from "@/components/dashboard/campaign-workspace";
 import type { CampaignRerunPayload } from "@/components/dashboard/campaign-rerun-types";
 import { RecentCampaigns } from "@/components/dashboard/recent-campaigns";
@@ -147,6 +147,13 @@ export function DashboardCampaignRunner({
           }),
         );
       }
+      const done = rows.filter((r) => r.status === "done").length;
+      const errored = rows.filter((r) => r.status === "error").length;
+      void notifyBatchRunFinishedAction({
+        total: leads.length,
+        done,
+        errors: errored,
+      }).catch(() => {});
       setBatchBusy(false);
       router.refresh();
     },

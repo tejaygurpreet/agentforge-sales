@@ -38,6 +38,7 @@ import type { CampaignRerunPayload } from "@/components/dashboard/campaign-rerun
 import { useForm } from "react-hook-form";
 import {
   exportCampaignToHubSpotAction,
+  previewLeadEnrichmentAction,
   sendOutreachEmailAction,
   startCampaignAction,
 } from "@/app/(dashboard)/actions";
@@ -56,6 +57,7 @@ import { emailPlainTextFromHtml } from "@/lib/email-plain";
 import {
   leadFormSchema,
   type CampaignClientSnapshot,
+  type LeadEnrichmentPayload,
   type LeadFormInput,
 } from "@/agents/types";
 import { toast } from "@/hooks/use-toast";
@@ -652,6 +654,34 @@ function outreachEmailHtml(o: Record<string, unknown>): string {
   return "";
 }
 
+function EnrichmentPreviewBody({ data }: { data: LeadEnrichmentPayload }) {
+  const block = (label: string, text: string) =>
+    text.trim() ? (
+      <details
+        key={label}
+        className="group rounded-lg border border-border/60 bg-background/80 px-3 py-2"
+      >
+        <summary className="cursor-pointer text-xs font-semibold text-foreground">{label}</summary>
+        <p className="mt-2 max-h-[220px] overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+          {text.length > 8000 ? `${text.slice(0, 8000)}…` : text}
+        </p>
+      </details>
+    ) : null;
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] text-muted-foreground">
+        Source: <span className="font-medium text-foreground">{data.provider}</span> ·{" "}
+        {data.source_urls.length} reference URLs
+      </p>
+      {block("Company snapshot", data.company_snapshot)}
+      {block("Funding & news", data.funding_news)}
+      {block("Hiring signals", data.hiring_signals)}
+      {block("Tech & product", data.tech_stack)}
+      {block("Intent signals", data.intent_signals)}
+    </div>
+  );
+}
+
 type CampaignWorkspaceProps = {
   rerunRequest?: CampaignRerunPayload | null;
   onRerunConsumed?: () => void;
@@ -684,6 +714,9 @@ export function CampaignWorkspace({
   const [isPending, startTransition] = useTransition();
   const [sendEmailPending, setSendEmailPending] = useState(false);
   const [hubspotExportBusy, setHubspotExportBusy] = useState(false);
+  const [enrichmentPreview, setEnrichmentPreview] = useState<LeadEnrichmentPayload | null>(null);
+  const [enrichmentBusy, setEnrichmentBusy] = useState(false);
+  const [enrichmentError, setEnrichmentError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!snapshot) {
@@ -714,10 +747,30 @@ export function CampaignWorkspace({
     },
   });
 
+  const onPreviewEnrichment = useCallback(async () => {
+    setEnrichmentError(null);
+    const valid = await form.trigger();
+    if (!valid) return;
+    const values = form.getValues();
+    setEnrichmentBusy(true);
+    try {
+      const res = await previewLeadEnrichmentAction(values);
+      if (!res.ok) {
+        setEnrichmentError(res.error);
+        setEnrichmentPreview(null);
+        return;
+      }
+      setEnrichmentPreview(res.enrichment);
+    } finally {
+      setEnrichmentBusy(false);
+    }
+  }, [form]);
+
   const runCampaignFromValues = useCallback(
     (values: LeadFormInput) => {
       setFeedback(null);
       setSnapshot(null);
+      setEnrichmentPreview(null);
       startTransition(async () => {
         const res = await startCampaignAction({
           ...values,
@@ -1069,7 +1122,7 @@ export function CampaignWorkspace({
             <div className="text-center">
               <p className="font-semibold">Running campaign</p>
               <p className="max-w-xs text-sm text-muted-foreground">
-                Research → outreach → qualification → nurture. Usually under a minute.
+                Lead intel → research → outreach → qualification → nurture. Usually under a minute.
               </p>
               <p className="mt-2 inline-flex items-center gap-2 rounded-lg border border-violet-500/35 bg-violet-500/[0.1] px-3 py-1.5 text-sm font-semibold text-violet-950 dark:border-violet-400/35 dark:bg-violet-500/15 dark:text-violet-50">
                 <Mic className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
@@ -1386,6 +1439,45 @@ export function CampaignWorkspace({
                   consistent.
                 </p>
               </div>
+              <div
+                className="space-y-3 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.06] px-4 py-4 dark:border-emerald-400/25 dark:bg-emerald-500/[0.09]"
+                role="region"
+                aria-label="Lead enrichment preview"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Radar className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
+                    <p className="text-sm font-semibold">Lead intel preview</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    disabled={isPending || enrichmentBusy}
+                    onClick={() => void onPreviewEnrichment()}
+                  >
+                    {enrichmentBusy ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                    ) : (
+                      <Radar className="mr-2 h-4 w-4 opacity-90" aria-hidden />
+                    )}
+                    Fetch lead intel
+                  </Button>
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Preview company context, funding, hiring, tech, and intent signals (Tavily / Browserless)
+                  before you start. The same enrichment runs automatically when you click Start campaign.
+                </p>
+                {enrichmentError ? (
+                  <p className="rounded-md border border-destructive/35 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {enrichmentError}
+                  </p>
+                ) : null}
+                {enrichmentPreview ? (
+                  <EnrichmentPreviewBody data={enrichmentPreview} />
+                ) : null}
+              </div>
               <Button type="submit" disabled={isPending} className="w-full sm:w-auto">
                 {isPending ? (
                   <>
@@ -1468,6 +1560,23 @@ export function CampaignWorkspace({
 
       {snapshot ? (
         <div className="space-y-6">
+          {snapshot.lead_enrichment_preview ? (
+            <Card className="rounded-2xl border-emerald-500/35 bg-emerald-500/[0.05] dark:border-emerald-400/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Radar className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-hidden />
+                  Saved lead intel (this run)
+                </CardTitle>
+                <CardDescription>
+                  Enrichment from Tavily / Browserless — also stored on the campaign record when
+                  configured.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <EnrichmentPreviewBody data={snapshot.lead_enrichment_preview} />
+              </CardContent>
+            </Card>
+          ) : null}
           <OverallCampaignStrength snapshot={snapshot} />
           <p className="text-xs leading-relaxed text-muted-foreground">
             <span className="font-medium text-foreground">Prospect reply analyzer</span> (above) auto-links to

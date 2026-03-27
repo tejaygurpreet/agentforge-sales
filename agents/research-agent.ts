@@ -20,7 +20,10 @@ import {
   getSdrVoiceResearchInstructions,
   sdrVoiceLabel,
 } from "@/lib/sdr-voice";
-import { gatherWebResearchDigest } from "@/lib/web-research";
+import {
+  gatherWebResearchDigest,
+  type WebResearchDigest,
+} from "@/lib/web-research";
 
 export interface ResearchPhaseResult {
   lead: Lead;
@@ -34,7 +37,12 @@ export interface ResearchPhaseResult {
 export async function runResearchAgent(
   lead: Lead,
   sdrVoice: SdrVoiceTone,
-  opts?: { customVoice?: CustomVoiceProfile | null; brandDisplayName?: string },
+  opts?: {
+    customVoice?: CustomVoiceProfile | null;
+    brandDisplayName?: string;
+    /** Prompt 82 — skip duplicate Tavily/Browserless fetch when lead_enrichment_node already ran. */
+    webDigest?: WebResearchDigest;
+  },
 ): Promise<ResearchPhaseResult> {
   const voice = sdrVoice;
   const custom = opts?.customVoice ?? undefined;
@@ -42,7 +50,8 @@ export async function runResearchAgent(
   const voiceLabel = custom?.name?.trim() || sdrVoiceLabel(voice);
   const researchVoice = getSdrVoiceResearchInstructions(voice, custom);
 
-  const web = await gatherWebResearchDigest(lead);
+  const web =
+    opts?.webDigest ?? (await gatherWebResearchDigest(lead));
   if (web.provider !== "none") {
     console.log(
       "[AgentForge] research web_intel",
