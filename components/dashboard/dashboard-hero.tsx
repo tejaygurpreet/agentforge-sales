@@ -9,7 +9,12 @@ import {
 import { cn } from "@/lib/utils";
 import { FileText, Info, Layers, Radio, Sparkles } from "lucide-react";
 
-export function DashboardHero() {
+type HeroProps = {
+  /** Same `From` header as `sendTransactionalEmail` for this user (see `buildDynamicFromEmail`). */
+  outboundFromPreview: string;
+};
+
+export function DashboardHero({ outboundFromPreview }: HeroProps) {
   return (
     <header
       className={cn(
@@ -109,6 +114,13 @@ export function DashboardHero() {
               </TooltipContent>
             </Tooltip>
           </div>
+
+          <p className="max-w-2xl text-pretty text-[11px] leading-relaxed text-muted-foreground/95 sm:text-xs">
+            <span className="font-semibold text-muted-foreground">From:</span>{" "}
+            <span className="break-all font-mono text-[10px] text-foreground/85">
+              {outboundFromPreview}
+            </span>
+          </p>
 
           <p className="max-w-2xl text-pretty text-sm leading-relaxed text-muted-foreground sm:text-[15px]">
             Command center for production-style campaigns — tier-scored fit, playbook-ready exports,

@@ -34,7 +34,7 @@ import { withTimeout } from "@/lib/async-timeout";
 import { hasLlmProviderConfigured } from "@/lib/env";
 import type { GroqInvokeMeta } from "@/lib/agent-model";
 import { saveCampaign } from "@/lib/save-campaign";
-import { sendTransactionalEmail } from "@/lib/resend";
+import { buildDynamicFromEmail, sendTransactionalEmail } from "@/lib/resend";
 import { persistCampaignSignalsToSupabase } from "@/lib/campaign-signals-db";
 import { fetchLiveSignalsAfterResearch } from "@/lib/live-signals";
 
@@ -463,6 +463,7 @@ async function outreachNode(
       to: state.lead.email,
       subject: draft.subject,
       html: draft.email_body,
+      from: buildDynamicFromEmail(state.sender_signoff_name),
     });
     const outreach_output: OutreachOutput = {
       ...draft,

@@ -21,6 +21,8 @@ type Props = {
   campaigns: CampaignThreadRow[];
   recentCampaigns: PersistedCampaignRow[];
   analytics: DashboardAnalyticsSummary;
+  /** Resolved Resend `From` for the signed-in user (same as campaign sends). */
+  outboundFromPreview: string;
 };
 
 /**
@@ -31,12 +33,13 @@ export function DashboardHomeClient({
   campaigns,
   recentCampaigns,
   analytics,
+  outboundFromPreview,
 }: Props) {
   const [batchProgress, setBatchProgress] = useState<BatchRunItem[] | null>(null);
 
   return (
     <div className="mx-auto max-w-6xl animate-in fade-in slide-in-from-bottom-2 space-y-10 px-4 py-6 duration-700 sm:space-y-12 sm:px-6 sm:py-8 lg:px-8">
-      <DashboardHero />
+      <DashboardHero outboundFromPreview={outboundFromPreview} />
 
       <CompetitiveEdgePanel />
 
