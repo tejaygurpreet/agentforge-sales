@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  AbTestExperimentRow,
   BatchRunItem,
   CallTranscriptRow,
   CalendarConnectionStatusDTO,
@@ -15,6 +16,8 @@ import type {
 } from "@/types";
 import { ActiveAgents } from "@/components/dashboard/active-agents";
 import { AnalyticsDashboard } from "@/components/dashboard/analytics-dashboard";
+import { LeadPrioritySection } from "@/components/dashboard/lead-priority-section";
+import { QualificationObjectionPanel } from "@/components/dashboard/qualification-objection-panel";
 import { CampaignList } from "@/components/dashboard/campaign-list";
 import { BetaProgramSignupCard } from "@/components/dashboard/beta-program-signup-card";
 import type { CampaignRerunPayload } from "@/components/dashboard/campaign-rerun-types";
@@ -26,6 +29,7 @@ import { CompetitiveEdgePanel } from "@/components/dashboard/competitive-edge-pa
 import { DashboardHero } from "@/components/dashboard/dashboard-hero";
 import { ProductRoadmapSection } from "@/components/dashboard/product-roadmap-section";
 import { ReportsSection } from "@/components/dashboard/reports-section";
+import { AbTestingSection } from "@/components/dashboard/ab-testing-section";
 import { SequencesSection } from "@/components/dashboard/sequences-section";
 import { WorkspaceMembersCard } from "@/components/dashboard/workspace-members-card";
 import { DeliverabilityPanel } from "@/components/dashboard/deliverability-panel";
@@ -63,6 +67,8 @@ type Props = {
   campaignTemplates: CampaignTemplateRow[];
   /** Prompt 88 — saved multi-channel sequences. */
   campaignSequences: CampaignSequenceRow[];
+  /** Prompt 90 — `ab_tests` registry rows for the workspace. */
+  abTestExperiments: AbTestExperimentRow[];
   /** Prompt 86 — scheduled report rows + recipient default. */
   scheduledReports: ScheduledReportRow[];
   reportRecipientEmail: string;
@@ -92,6 +98,7 @@ export function DashboardHomeClient({
   objectionLibraryEntries,
   campaignTemplates,
   campaignSequences,
+  abTestExperiments,
   scheduledReports,
   reportRecipientEmail,
   calendarStatus,
@@ -204,6 +211,14 @@ export function DashboardHomeClient({
           </TabsTrigger>
         </TabsList>
         <TabsContent value="workspace" className="space-y-10 sm:space-y-12">
+          <LeadPrioritySection
+            rows={analytics.leadPriorityLeaderboard}
+            summary={analytics.leadPrioritySummary}
+          />
+          <QualificationObjectionPanel
+            qualificationRows={analytics.qualificationInsights}
+            objectionCards={analytics.replyObjectionCards}
+          />
           <CampaignList campaigns={campaigns} />
           <DashboardCampaignRunner
             recentCampaigns={recentCampaigns}
@@ -232,6 +247,11 @@ export function DashboardHomeClient({
           />
         </TabsContent>
         <TabsContent value="sequences" className="space-y-8 pt-2">
+          <AbTestingSection
+            campaignSequences={campaignSequences}
+            campaignTemplates={campaignTemplates}
+            initialExperiments={abTestExperiments}
+          />
           <SequencesSection
             sequences={campaignSequences}
             onSequencesChange={() => router.refresh()}

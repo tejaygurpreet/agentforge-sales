@@ -12,8 +12,10 @@ import type {
   OutreachDraft,
   OutreachOutput,
   QualificationAgentResult,
+  ReplyFollowUpIntel,
   ResearchOutput,
   SdrVoiceTone,
+  SmartFollowUpEngineState,
 } from "@/agents/types";
 import { computeSequenceRunProgress } from "@/lib/sequences";
 import { runLeadEnrichmentStep } from "@/lib/agents/research_node";
@@ -44,7 +46,10 @@ import { saveCampaign } from "@/lib/save-campaign";
 import { persistCampaignSignalsToSupabase } from "@/lib/campaign-signals-db";
 import { fetchLiveSignalsAfterResearch } from "@/lib/live-signals";
 import { loadLivingObjectionContextForWorkspace } from "@/lib/agents/qualification_node";
-import { mergeQualMeetingIntoNurtureOutput } from "@/lib/agents/nurture_node";
+import {
+  buildSmartFollowUpEngineState,
+  mergeQualMeetingIntoNurtureOutput,
+} from "@/lib/agents/nurture_node";
 
 /** Just under `START_CAMPAIGN_MAX_MS` (90s) in actions.ts. */
 const GRAPH_INVOKE_MAX_MS = 89_000;
@@ -269,6 +274,14 @@ const GraphState = Annotation.Root({
     reducer: (c, n) => (n !== undefined ? n : c),
     default: () => undefined,
   }),
+  reply_follow_up_intel: Annotation<ReplyFollowUpIntel | undefined>({
+    reducer: (c, n) => (n !== undefined ? n : c),
+    default: () => undefined,
+  }),
+  smart_follow_up_engine: Annotation<SmartFollowUpEngineState | undefined>({
+    reducer: (c, n) => (n !== undefined ? n : c),
+    default: () => undefined,
+  }),
 });
 
 export type SalesGraphState = typeof GraphState.State;
@@ -295,6 +308,7 @@ export function serializeCampaignStateForClient(
     sender_signoff_name: state.sender_signoff_name ?? null,
     brand_display_name: state.brand_display_name ?? null,
     lead_enrichment_preview: state.lead_enrichment_preview ?? null,
+    smart_follow_up_engine: state.smart_follow_up_engine ?? null,
   };
   if (state.sequence_plan) {
     snap.sequence_plan = state.sequence_plan;
@@ -902,6 +916,7 @@ async function nurtureNode(
           customVoice: state.custom_voice_profile,
           brandDisplayName: state.brand_display_name,
           livingObjectionLibraryContext,
+          replyFollowUpIntel: state.reply_follow_up_intel,
         },
       ),
       NURTURE_AGENT_MAX_MS,
@@ -916,6 +931,14 @@ async function nurtureNode(
     console.error("[AgentForge] nurture_node:fallback", state.thread_id, message);
     nurture_output = buildFallbackNurtureOutput(state.lead, message);
   }
+
+  const anchorDate = new Date();
+  const smart_follow_up_engine = buildSmartFollowUpEngineState(nurture_output, {
+    qualificationScore: score,
+    qualificationDetail: state.qualification_detail,
+    replyIntel: state.reply_follow_up_intel ?? null,
+    anchorDate,
+  });
 
   try {
     const nextLead: Lead = { ...state.lead, status: "nurtured" };
@@ -947,6 +970,7 @@ async function nurtureNode(
       lead: nextLead,
       current_agent: "nurture_node",
       nurture_output,
+      smart_follow_up_engine,
       final_status,
       results: { nurture_node: nodeResult },
     });
@@ -959,6 +983,7 @@ async function nurtureNode(
 
     return {
       nurture_output,
+      smart_follow_up_engine,
       lead: nextLead,
       current_agent: "nurture_node",
       final_status,
@@ -974,6 +999,12 @@ async function nurtureNode(
     const message = e instanceof Error ? e.message : "Nurture failed";
     console.error("[AgentForge] nurture_node:unexpected", state.thread_id, message);
     const fb = buildFallbackNurtureOutput(state.lead, message);
+    const fbEngine = buildSmartFollowUpEngineState(fb, {
+      qualificationScore: score,
+      qualificationDetail: state.qualification_detail,
+      replyIntel: state.reply_follow_up_intel ?? null,
+      anchorDate: new Date(),
+    });
     const nextLead: Lead = { ...state.lead, status: "nurtured" };
     const nodeResult = {
       sequence_summary: fb.sequence_summary,
@@ -988,11 +1019,13 @@ async function nurtureNode(
       lead: nextLead,
       current_agent: "nurture_node",
       nurture_output: fb,
+      smart_follow_up_engine: fbEngine,
       final_status: fatalStatus,
       results: { nurture_node: nodeResult },
     });
     return {
       nurture_output: fb,
+      smart_follow_up_engine: fbEngine,
       lead: nextLead,
       current_agent: "nurture_node",
       final_status: fatalStatus,
@@ -1022,6 +1055,8 @@ export interface RunCampaignInput {
   template_voice_note?: string | null;
   /** Prompt 88 — saved sequence playbook for this run (optional). */
   sequence_plan?: CampaignSequencePlan | null;
+  /** Prompt 91 — latest reply analysis for this lead email (optional). */
+  reply_follow_up_intel?: ReplyFollowUpIntel | null;
 }
 
 function buildLeadWithTemplateAbNote(input: RunCampaignInput): Lead {
@@ -1059,6 +1094,8 @@ function initialCampaignGraphState(input: RunCampaignInput): SalesGraphState {
     prefetched_web_digest: undefined,
     workspace_id: input.workspace_id?.trim() || input.user_id,
     sequence_plan: input.sequence_plan ?? undefined,
+    reply_follow_up_intel: input.reply_follow_up_intel ?? undefined,
+    smart_follow_up_engine: undefined,
   };
 }
 
@@ -1101,6 +1138,8 @@ export async function runCampaignGraph(
       prefetched_web_digest: undefined,
       workspace_id: input.workspace_id?.trim() || input.user_id,
       sequence_plan: input.sequence_plan ?? undefined,
+      reply_follow_up_intel: input.reply_follow_up_intel ?? undefined,
+      smart_follow_up_engine: undefined,
     };
     await mergeDashboardState(input.thread_id, input.user_id, {
       current_agent: "research_node",
@@ -1289,6 +1328,7 @@ export const runSalesGraph = async (input: {
   template_id?: string | null;
   template_voice_note?: string | null;
   sequence_plan?: CampaignSequencePlan | null;
+  reply_follow_up_intel?: ReplyFollowUpIntel | null;
 }) =>
   runCampaignGraph({
     lead: input.lead,
@@ -1302,4 +1342,5 @@ export const runSalesGraph = async (input: {
     template_id: input.template_id,
     template_voice_note: input.template_voice_note,
     sequence_plan: input.sequence_plan,
+    reply_follow_up_intel: input.reply_follow_up_intel ?? null,
   });

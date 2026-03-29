@@ -29,6 +29,7 @@ import {
   ScrollText,
   Sparkles,
   Target,
+  Timer,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -43,6 +44,7 @@ import {
   sendOutreachEmailAction,
   startCampaignAction,
   startCampaignWithOptionsAction,
+  updateSmartFollowUpStepAction,
 } from "@/app/(dashboard)/actions";
 import { DashboardReplyStrip } from "@/components/dashboard/dashboard-reply-strip";
 import { useReplyIntel } from "@/components/dashboard/reply-intel-context";
@@ -62,6 +64,7 @@ import {
   type CampaignClientSnapshot,
   type LeadEnrichmentPayload,
   type LeadFormInput,
+  type SmartFollowUpStepPlan,
 } from "@/agents/types";
 import { toast } from "@/hooks/use-toast";
 import { buildCampaignPdfExportOptions, loadPdfBranding } from "@/lib/pdf-branding";
@@ -758,6 +761,7 @@ export function CampaignWorkspace({
   const [enrichmentPreview, setEnrichmentPreview] = useState<LeadEnrichmentPayload | null>(null);
   const [enrichmentBusy, setEnrichmentBusy] = useState(false);
   const [enrichmentError, setEnrichmentError] = useState<string | null>(null);
+  const [followUpStepBusy, setFollowUpStepBusy] = useState<number | null>(null);
   /** Prompt 85 — next Start campaign passes `template_id` when prefill came from the template library. */
   const pendingTemplateIdRef = useRef<string | null>(null);
   const [selectedSequenceId, setSelectedSequenceId] = useState<string>("");
@@ -916,6 +920,41 @@ export function CampaignWorkspace({
     }
   }, [snapshot]);
 
+  const onFollowUpApproval = useCallback(
+    async (stepIndex: number, approval_status: SmartFollowUpStepPlan["approval_status"]) => {
+      if (!snapshot?.thread_id) return;
+      setFollowUpStepBusy(stepIndex);
+      try {
+        const res = await updateSmartFollowUpStepAction({
+          thread_id: snapshot.thread_id,
+          step_index: stepIndex,
+          approval_status,
+        });
+        if (!res.ok) {
+          toast({
+            variant: "destructive",
+            title: "Could not update follow-up",
+            description: res.error,
+          });
+          return;
+        }
+        setSnapshot(res.snapshot);
+        toast({
+          title: "Follow-up plan updated",
+          description:
+            approval_status === "approved"
+              ? "Step marked approved for your send queue."
+              : approval_status === "skipped"
+                ? "Step skipped."
+                : "Step reset to pending review.",
+        });
+      } finally {
+        setFollowUpStepBusy(null);
+      }
+    },
+    [snapshot?.thread_id],
+  );
+
   useEffect(() => {
     if (!sequencePrefillRequest) return;
     setSelectedSequenceId(sequencePrefillRequest.id);
@@ -992,6 +1031,7 @@ export function CampaignWorkspace({
   const research = snapshot?.research_output;
   const outreach = snapshot?.outreach_output;
   const nurture = snapshot?.nurture_output;
+  const smartFollowUp = snapshot?.smart_follow_up_engine ?? null;
   const score = snapshot?.qualification_score;
   const rNode = isRecord(snapshot?.results?.research_node)
     ? snapshot!.results.research_node
@@ -2550,6 +2590,128 @@ export function CampaignWorkspace({
                 )}
               </CardContent>
             </Card>
+
+            {smartFollowUp && smartFollowUp.steps?.length ? (
+              <Card className={cn(resultCardClass, "overflow-hidden")}>
+                <CardHeader
+                  className={cn(
+                    resultsCardHeaderClass,
+                    "flex flex-row flex-wrap items-start justify-between gap-3",
+                  )}
+                >
+                  <div className="min-w-0">
+                    <CardTitle className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+                      <Timer className="h-5 w-5 text-primary" aria-hidden />
+                      Smart follow-up engine
+                    </CardTitle>
+                    <CardDescription className="mt-1.5">
+                      AI-timed touches with channel hints — approve or skip each step before you send
+                      (nothing auto-sends from here).
+                    </CardDescription>
+                  </div>
+                </CardHeader>
+                <CardContent className={cn(resultsCardContentClass, "space-y-4")}>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {smartFollowUp.overall_rationale}
+                  </p>
+                  <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground">Signals: </span>
+                    Qual {smartFollowUp.qualification_score ?? "—"}
+                    {smartFollowUp.interest_signal_0_to_10 != null
+                      ? ` · Reply interest ${smartFollowUp.interest_signal_0_to_10}/10`
+                      : ""}
+                    <span className="mt-1 block">{smartFollowUp.reply_signals_summary}</span>
+                  </div>
+                  <ol className="space-y-4">
+                    {smartFollowUp.steps.map((step, i) => (
+                      <li
+                        key={`fu-${step.step_index}-${step.suggested_send_at}`}
+                        className="rounded-lg border border-border/80 bg-muted/15 p-4"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline" className="gap-1 font-mono text-[10px]">
+                            Step {i + 1}
+                          </Badge>
+                          <Badge variant="secondary">{step.engine_recommended_channel}</Badge>
+                          {step.engine_recommended_channel !== step.model_channel ? (
+                            <Badge variant="outline" className="text-[10px]">
+                              model: {step.model_channel}
+                            </Badge>
+                          ) : null}
+                          <Badge
+                            variant={
+                              step.approval_status === "approved"
+                                ? "default"
+                                : step.approval_status === "skipped"
+                                  ? "secondary"
+                                  : "outline"
+                            }
+                            className="text-[10px] uppercase"
+                          >
+                            {step.approval_status.replace(/_/g, " ")}
+                          </Badge>
+                          <span className="text-[11px] text-muted-foreground">
+                            confidence {(step.timing_confidence * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          Suggested send:{" "}
+                          <time dateTime={step.suggested_send_at} className="font-medium text-foreground">
+                            {new Date(step.suggested_send_at).toLocaleString()}
+                          </time>
+                          {step.delay_hours_from_previous != null ? (
+                            <span> · Δ {step.delay_hours_from_previous}h from prior</span>
+                          ) : null}
+                          <span>
+                            {" "}
+                            · day offset {step.original_day_offset} → adjusted {step.adjusted_day_offset}
+                          </span>
+                        </p>
+                        <p className="mt-2 text-sm font-medium leading-relaxed">{step.summary}</p>
+                        <p className="mt-2 text-xs italic text-muted-foreground">
+                          {step.timing_rationale.replace(/\*\*(.*?)\*\*/g, "$1")}
+                        </p>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="default"
+                            disabled={followUpStepBusy !== null}
+                            className="h-8 gap-1.5"
+                            onClick={() => void onFollowUpApproval(i, "approved")}
+                          >
+                            {followUpStepBusy === i ? (
+                              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+                            ) : null}
+                            Approve
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={followUpStepBusy !== null}
+                            className={cn("h-8", dashboardOutlineActionClass)}
+                            onClick={() => void onFollowUpApproval(i, "skipped")}
+                          >
+                            Skip
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={followUpStepBusy !== null}
+                            className="h-8"
+                            onClick={() => void onFollowUpApproval(i, "pending_review")}
+                          >
+                            Reset
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </CardContent>
+              </Card>
+            ) : null}
           </div>
         </div>
       ) : null}

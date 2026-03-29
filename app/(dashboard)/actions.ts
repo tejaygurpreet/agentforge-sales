@@ -17,7 +17,9 @@ import {
   type LeadFormInput,
   type OutreachOutput,
   SDR_VOICE_TONE_VALUES,
+  type ReplyFollowUpIntel,
   type SdrVoiceTone,
+  type SmartFollowUpEngineState,
 } from "@/agents/types";
 import { runLeadEnrichmentStep } from "@/lib/agents/research_node";
 import { getServiceRoleSupabaseOrNull } from "@/lib/supabase-server";
@@ -28,8 +30,31 @@ import {
   replyAnalysisWithLabels,
   type ReplyAnalysisWithLabels,
 } from "@/lib/reply-analyzer";
+import {
+  aggregateBatchAbOptimization,
+  autoOptimizationRecommendation,
+  computeAutoOptimizationScore,
+  meetingSchedulingSignal,
+  pickAbWinner,
+  snapshotFromCampaignResults,
+} from "@/lib/ab-testing";
+import {
+  deriveFollowUpApprovalStatus,
+  nextFollowUpSendIso,
+} from "@/lib/agents/nurture_node";
+import {
+  buildReplyObjectionCardFromRow,
+  computeDisplayQualificationScore,
+} from "@/lib/agents/qualification_node";
+import {
+  buildLeadPriorityQueueSummary,
+  priorityTierLabel,
+  resolveReplyInterestForLead,
+  scoreLeadForPriority,
+} from "@/lib/scoring";
 import type {
   AbTestComparisonRow,
+  AbTestExperimentRow,
   CalendarConnectionStatusDTO,
   CampaignSequenceRow,
   CampaignTemplateRow,
@@ -38,10 +63,13 @@ import type {
   DashboardAnalyticsSummary,
   DeliverabilitySuitePayload,
   ForecastTrendPoint,
+  LeadPriorityLeaderboardRow,
   LiveSignalFeedItem,
   PersistedCampaignRow,
   PersistedReplyAnalysisRow,
   ProspectReplyAnalysisPayload,
+  QualificationInsightRow,
+  ReplyObjectionCardRow,
   ReportFiltersPayload,
   ScheduledReportRow,
   WorkspaceMemberDTO,
@@ -467,6 +495,36 @@ async function queryReplyRowsForAnalytics(
   return [];
 }
 
+async function queryReplyObjectionRowsForAnalytics(
+  supabase: SupabaseClient,
+  userIds: string[],
+): Promise<Record<string, unknown>[]> {
+  const full = await supabase
+    .from("reply_analyses")
+    .select("id, thread_id, lead_name, company, reply_preview, analysis, created_at")
+    .in("user_id", userIds)
+    .order("created_at", { ascending: false })
+    .limit(45);
+  if (!full.error) {
+    return (full.data ?? []) as Record<string, unknown>[];
+  }
+  if (isMissingColumnOrSchemaError(full.error.message)) {
+    const fb = await supabase
+      .from("reply_analyses")
+      .select("id, thread_id, lead_name, company, analysis, created_at")
+      .in("user_id", userIds)
+      .order("created_at", { ascending: false })
+      .limit(45);
+    if (!fb.error) {
+      return (fb.data ?? []).map((row) => ({
+        ...row,
+        reply_preview: "",
+      })) as Record<string, unknown>[];
+    }
+  }
+  return [];
+}
+
 function buildReplyInterestByThreadMap(rows: Record<string, unknown>[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const row of rows) {
@@ -480,6 +538,24 @@ function buildReplyInterestByThreadMap(rows: Record<string, unknown>[]): Map<str
     }
     const prev = map.get(tid);
     if (prev == null || interest > prev) map.set(tid, interest);
+  }
+  return map;
+}
+
+function buildReplyInterestByEmailMap(rows: Record<string, unknown>[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const row of rows) {
+    const emRaw = row.prospect_email;
+    const em = typeof emRaw === "string" ? emRaw.trim().toLowerCase() : "";
+    if (!em) continue;
+    const fromCol = coerceInterestScoreColumn(row.interest_score, NaN);
+    let interest = Number.isNaN(fromCol) ? 5 : fromCol;
+    const a = row.analysis;
+    if (isRecord(a) && typeof a.interest_level_0_to_10 === "number") {
+      interest = Math.min(10, Math.max(0, Math.round(a.interest_level_0_to_10)));
+    }
+    const prev = map.get(em);
+    if (prev == null || interest > prev) map.set(em, interest);
   }
   return map;
 }
@@ -569,6 +645,18 @@ const abVoicePairSchema = z.object({
   voice_a: z.enum(SDR_VOICE_TONE_VALUES),
   voice_b: z.enum(SDR_VOICE_TONE_VALUES),
   voice_b_note: z.string().max(1200).optional(),
+});
+
+/** Prompt 90 — multi-lead A/B with optional templates + shared sequence. */
+const advancedAbBatchSchema = z.object({
+  name: z.string().max(160).optional(),
+  leads: z.array(incomingLeadSchema).min(1).max(6),
+  voice_a: z.enum(SDR_VOICE_TONE_VALUES),
+  voice_b: z.enum(SDR_VOICE_TONE_VALUES),
+  voice_b_note: z.string().max(1200).optional(),
+  sequence_id: z.string().uuid().optional(),
+  template_id_a: z.string().uuid().optional(),
+  template_id_b: z.string().uuid().optional(),
 });
 
 export type StartCampaignResult =
@@ -909,6 +997,52 @@ async function runSingleCampaignPipeline(
         options?.sequence_id,
       )) ?? undefined;
     await deleteThreadCheckpoint(thread_id);
+
+    let reply_follow_up_intel: ReplyFollowUpIntel | undefined;
+    try {
+      const em = lead.email.trim();
+      if (em) {
+        const { data: rep } = await supabase
+          .from("reply_analyses")
+          .select("interest_score, analysis")
+          .eq("user_id", user.id)
+          .eq("prospect_email", em)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (rep) {
+          const row = rep as {
+            interest_score?: unknown;
+            analysis?: unknown;
+          };
+          const a = row.analysis;
+          const analysisRec =
+            a && typeof a === "object" && !Array.isArray(a)
+              ? (a as Record<string, unknown>)
+              : null;
+          let interest: number | null = null;
+          if (typeof row.interest_score === "number" && Number.isFinite(row.interest_score)) {
+            interest = Math.min(10, Math.max(0, Math.round(row.interest_score)));
+          } else if (
+            typeof analysisRec?.interest_level_0_to_10 === "number" &&
+            Number.isFinite(analysisRec.interest_level_0_to_10)
+          ) {
+            interest = Math.min(
+              10,
+              Math.max(0, Math.round(analysisRec.interest_level_0_to_10)),
+            );
+          }
+          const summary =
+            typeof analysisRec?.rationale === "string" && analysisRec.rationale.trim()
+              ? analysisRec.rationale.trim().slice(0, 600)
+              : "Prior prospect reply on file — tune follow-up spacing and proof density.";
+          reply_follow_up_intel = { interest_0_to_10: interest, summary };
+        }
+      }
+    } catch {
+      reply_follow_up_intel = undefined;
+    }
+
     const finalState = await withTimeout(
       runCampaignGraph({
         lead,
@@ -923,6 +1057,7 @@ async function runSingleCampaignPipeline(
         template_id: options?.template_id,
         template_voice_note: options?.template_voice_note,
         sequence_plan,
+        reply_follow_up_intel: reply_follow_up_intel ?? null,
       }),
       START_CAMPAIGN_MAX_MS,
       "startCampaign.runCampaignGraph",
@@ -1099,6 +1234,282 @@ export async function startAbVoicePairAction(
     thread_id_b: resB.thread_id,
     message: "A/B voice test completed — both variants saved. Compare in Analytics.",
   };
+}
+
+async function tryInsertAbTestRow(
+  supabase: SupabaseClient,
+  payload: {
+    id: string;
+    workspace_id: string;
+    user_id: string;
+    name: string;
+    experiment_type: string;
+    config: Record<string, unknown>;
+  },
+): Promise<void> {
+  const { error } = await supabase.from("ab_tests").insert({
+    id: payload.id,
+    workspace_id: payload.workspace_id,
+    user_id: payload.user_id,
+    name: payload.name,
+    experiment_type: payload.experiment_type,
+    status: "running",
+    config: payload.config,
+  });
+  if (error && !isMissingColumnOrSchemaError(error.message)) {
+    console.warn("[AgentForge] ab_tests insert", error.message);
+  }
+}
+
+async function markAbTestFailed(supabase: SupabaseClient, id: string): Promise<void> {
+  const { error } = await supabase
+    .from("ab_tests")
+    .update({ status: "failed", updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error && !isMissingColumnOrSchemaError(error.message)) {
+    console.warn("[AgentForge] ab_tests failed status", error.message);
+  }
+}
+
+async function finalizeAbTestFromCampaigns(
+  supabase: SupabaseClient,
+  campaignsReader: SupabaseClient,
+  ab_test_id: string,
+  memberIds: string[],
+): Promise<void> {
+  const { data, error } = await campaignsReader
+    .from("campaigns")
+    .select("ab_variant, thread_id, results, user_id")
+    .eq("ab_test_id", ab_test_id)
+    .in("user_id", memberIds);
+  if (error) {
+    if (!isMissingColumnOrSchemaError(error.message)) {
+      console.warn("[AgentForge] finalizeAbTestFromCampaigns campaigns", error.message);
+    }
+    return;
+  }
+  if (!data?.length) {
+    const { error: upErr } = await supabase
+      .from("ab_tests")
+      .update({
+        status: "completed",
+        winner_variant: "tie",
+        winner_reason: "No linked campaign rows yet for this experiment id.",
+        metrics_summary: { count_a: 0, count_b: 0 },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", ab_test_id);
+    if (upErr && !isMissingColumnOrSchemaError(upErr.message)) {
+      console.warn("[AgentForge] ab_tests finalize empty", upErr.message);
+    }
+    return;
+  }
+  const threadIds = [
+    ...new Set(
+      data
+        .map((r) => String((r as { thread_id?: string }).thread_id ?? ""))
+        .filter(Boolean),
+    ),
+  ];
+  const { data: rep } = await campaignsReader
+    .from("reply_analyses")
+    .select("thread_id, interest_score, analysis")
+    .in("thread_id", threadIds)
+    .in("user_id", memberIds);
+  const interestMap = buildReplyInterestByThreadMap((rep ?? []) as Record<string, unknown>[]);
+  const rows = (data ?? []).map((r) => ({
+    ab_variant: String((r as { ab_variant?: string }).ab_variant ?? ""),
+    thread_id: String((r as { thread_id?: string }).thread_id ?? ""),
+    results: (r as { results?: unknown }).results,
+  }));
+  const agg = aggregateBatchAbOptimization(rows, interestMap);
+  const { error: upErr } = await supabase
+    .from("ab_tests")
+    .update({
+      status: "completed",
+      winner_variant: agg.winner,
+      winner_reason: agg.reason,
+      metrics_summary: {
+        mean_optimization_a: agg.meanA,
+        mean_optimization_b: agg.meanB,
+        count_a: agg.countA,
+        count_b: agg.countB,
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", ab_test_id);
+  if (upErr && !isMissingColumnOrSchemaError(upErr.message)) {
+    console.warn("[AgentForge] ab_tests finalize", upErr.message);
+  }
+}
+
+/**
+ * Prompt 90 — run A vs B across multiple leads (optional templates per variant + shared sequence).
+ */
+export async function startAdvancedAbBatchExperimentAction(
+  raw: z.input<typeof advancedAbBatchSchema>,
+): Promise<
+  | { ok: true; ab_test_id: string; runs_completed: number; message: string }
+  | { ok: false; error: string }
+> {
+  const parsed = advancedAbBatchSchema.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error:
+        Object.values(parsed.error.flatten().fieldErrors)
+          .flat()
+          .filter(Boolean)
+          .join(", ") || "Invalid batch A/B payload.",
+    };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  const campaignsReader = getServiceRoleSupabaseOrNull() ?? supabase;
+
+  const ab_test_id = randomUUID();
+  const name =
+    parsed.data.name?.trim() ||
+    `Batch A/B · ${parsed.data.leads.length} leads · ${new Date().toLocaleDateString()}`;
+  const experiment_type =
+    parsed.data.template_id_a || parsed.data.template_id_b
+      ? "batch_mixed"
+      : parsed.data.sequence_id
+        ? "batch_mixed"
+        : "batch_voice";
+
+  await tryInsertAbTestRow(supabase, {
+    id: ab_test_id,
+    workspace_id: ws.workspaceId,
+    user_id: user.id,
+    name,
+    experiment_type,
+    config: {
+      leadCount: parsed.data.leads.length,
+      voice_a: parsed.data.voice_a,
+      voice_b: parsed.data.voice_b,
+      sequence_id: parsed.data.sequence_id ?? null,
+      template_id_a: parsed.data.template_id_a ?? null,
+      template_id_b: parsed.data.template_id_b ?? null,
+    },
+  });
+
+  let runs = 0;
+  const seq = parsed.data.sequence_id?.trim();
+  const noteB = parsed.data.voice_b_note?.trim();
+  for (const leadRow of parsed.data.leads) {
+    const leadA: z.infer<typeof incomingLeadSchema> = {
+      ...leadRow,
+      sdr_voice_tone: parsed.data.voice_a,
+      custom_voice_id: undefined,
+      custom_voice_name: undefined,
+    };
+    const resA = await runSingleCampaignPipeline(supabase, user, ws, leadA, {
+      ab_test_id,
+      ab_variant: "A",
+      template_id: parsed.data.template_id_a,
+      sequence_id: seq || undefined,
+    });
+    if (!resA.ok) {
+      await markAbTestFailed(supabase, ab_test_id);
+      return {
+        ok: false,
+        error: `Variant A failed for ${leadRow.email}: ${resA.error}`,
+      };
+    }
+    runs += 1;
+
+    const leadB: z.infer<typeof incomingLeadSchema> = {
+      ...leadRow,
+      sdr_voice_tone: parsed.data.voice_b,
+      custom_voice_id: undefined,
+      custom_voice_name: undefined,
+    };
+    const resB = await runSingleCampaignPipeline(supabase, user, ws, leadB, {
+      ab_test_id,
+      ab_variant: "B",
+      template_id: parsed.data.template_id_b,
+      template_voice_note: noteB || undefined,
+      sequence_id: seq || undefined,
+    });
+    if (!resB.ok) {
+      await markAbTestFailed(supabase, ab_test_id);
+      return {
+        ok: false,
+        error: `Variant B failed for ${leadRow.email}: ${resB.error}`,
+      };
+    }
+    runs += 1;
+  }
+
+  await finalizeAbTestFromCampaigns(supabase, campaignsReader, ab_test_id, ws.memberUserIds);
+  revalidatePath("/");
+  revalidatePath("/analytics");
+  return {
+    ok: true,
+    ab_test_id,
+    runs_completed: runs,
+    message: `Completed ${runs} pipeline runs. See Sequences for the experiment registry and Analytics for scores.`,
+  };
+}
+
+/** Prompt 90 — list advanced A/B experiments for the active workspace. */
+export async function listAbTestsAction(): Promise<AbTestExperimentRow[]> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return [];
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  const { data, error } = await supabase
+    .from("ab_tests")
+    .select(
+      "id, name, status, experiment_type, winner_variant, winner_reason, metrics_summary, created_at",
+    )
+    .eq("workspace_id", ws.workspaceId)
+    .order("created_at", { ascending: false })
+    .limit(40);
+  if (error) {
+    if (!isMissingColumnOrSchemaError(error.message)) {
+      console.warn("[AgentForge] listAbTestsAction", error.message);
+    }
+    return [];
+  }
+  return (data ?? []).map((rawRow) => {
+    const r = rawRow as Record<string, unknown>;
+    const ms = r.metrics_summary;
+    return {
+      id: String(r.id ?? ""),
+      name: String(r.name ?? ""),
+      status: String(r.status ?? ""),
+      experiment_type: String(r.experiment_type ?? ""),
+      winner_variant: r.winner_variant != null ? String(r.winner_variant) : null,
+      winner_reason: r.winner_reason != null ? String(r.winner_reason) : null,
+      metrics_summary:
+        ms && typeof ms === "object" && !Array.isArray(ms)
+          ? (ms as Record<string, unknown>)
+          : null,
+      created_at: String(r.created_at ?? ""),
+    };
+  });
 }
 
 const saveTemplateSchema = z.object({
@@ -1734,21 +2145,44 @@ export async function listRecentCampaigns(): Promise<PersistedCampaignRow[]> {
   const memberIds = ctx.memberUserIds;
   const sr = getServiceRoleSupabaseOrNull();
 
-  const query = sr
-    ? sr
-        .from("campaigns")
-        .select(
-          "id, thread_id, lead_name, company, email, status, created_at, completed_at, results, spam_score, deliverability_status",
-        )
-        .in("user_id", memberIds)
-    : supabase
-        .from("campaigns")
-        .select(
-          "id, thread_id, lead_name, company, email, status, created_at, completed_at, results, spam_score, deliverability_status",
-        )
-        .eq("user_id", user.id);
+  const selectFull =
+    "id, thread_id, lead_name, company, email, status, created_at, completed_at, results, spam_score, deliverability_status, ab_test_id, ab_variant";
+  const selectWithScore = `${selectFull}, lead_score, priority_reason`;
+  const selectWithQual = `${selectWithScore}, qualification_score, detected_objections`;
+  const selectMin =
+    "id, thread_id, lead_name, company, email, status, created_at, completed_at, results, spam_score, deliverability_status";
 
-  const { data, error } = await query.order("created_at", { ascending: false }).limit(25);
+  let data: Record<string, unknown>[] | null = null;
+  let error: { message: string; code?: string; details?: string } | null = null;
+
+  const runSelect = async (cols: string) => {
+    const q = sr
+      ? sr.from("campaigns").select(cols).in("user_id", memberIds)
+      : supabase.from("campaigns").select(cols).eq("user_id", user.id);
+    return q.order("created_at", { ascending: false }).limit(25);
+  };
+
+  const zeroth = await runSelect(selectWithQual);
+  if (zeroth.error && isMissingColumnOrSchemaError(zeroth.error.message)) {
+    const first = await runSelect(selectWithScore);
+    if (first.error && isMissingColumnOrSchemaError(first.error.message)) {
+      const second = await runSelect(selectFull);
+      if (second.error && isMissingColumnOrSchemaError(second.error.message)) {
+        const third = await runSelect(selectMin);
+        data = (third.data ?? null) as Record<string, unknown>[] | null;
+        error = third.error;
+      } else {
+        data = (second.data ?? null) as Record<string, unknown>[] | null;
+        error = second.error;
+      }
+    } else {
+      data = (first.data ?? null) as Record<string, unknown>[] | null;
+      error = first.error;
+    }
+  } else {
+    data = (zeroth.data ?? null) as Record<string, unknown>[] | null;
+    error = zeroth.error;
+  }
 
   if (error) {
     console.error(
@@ -1769,6 +2203,12 @@ export async function listRecentCampaigns(): Promise<PersistedCampaignRow[]> {
     const r = row as {
       spam_score?: unknown;
       deliverability_status?: unknown;
+      ab_test_id?: unknown;
+      ab_variant?: unknown;
+      lead_score?: unknown;
+      priority_reason?: unknown;
+      qualification_score?: unknown;
+      detected_objections?: unknown;
     };
     const snap = results as Record<string, unknown> | undefined;
     const enrichmentFromSnapshot =
@@ -1791,6 +2231,24 @@ export async function listRecentCampaigns(): Promise<PersistedCampaignRow[]> {
       deliverability_status:
         typeof r.deliverability_status === "string" ? r.deliverability_status : null,
       enriched_data: enrichmentFromSnapshot,
+      ab_test_id:
+        typeof r.ab_test_id === "string" && r.ab_test_id.trim() ? r.ab_test_id.trim() : null,
+      ab_variant:
+        r.ab_variant === "A" || r.ab_variant === "B" ? r.ab_variant : null,
+      lead_score:
+        r.lead_score && typeof r.lead_score === "object" && !Array.isArray(r.lead_score)
+          ? (r.lead_score as Record<string, unknown>)
+          : null,
+      priority_reason:
+        typeof r.priority_reason === "string" && r.priority_reason.trim()
+          ? r.priority_reason.trim()
+          : null,
+      qualification_score:
+        typeof r.qualification_score === "number" && Number.isFinite(r.qualification_score)
+          ? Math.round(r.qualification_score)
+          : null,
+      detected_objections:
+        r.detected_objections != null ? r.detected_objections : undefined,
     };
   });
 }
@@ -1870,6 +2328,115 @@ export async function startCampaignAction(
   raw: z.input<typeof incomingLeadSchema>,
 ): Promise<StartCampaignResult> {
   return startCampaign(raw);
+}
+
+const updateSmartFollowUpStepSchema = z.object({
+  thread_id: z.string().min(1).max(280),
+  step_index: z.number().int().min(0).max(5),
+  approval_status: z.enum(["approved", "skipped", "pending_review"]),
+});
+
+export type UpdateSmartFollowUpStepResult =
+  | { ok: true; snapshot: CampaignClientSnapshot }
+  | { ok: false; error: string };
+
+/**
+ * Prompt 91 — persist per-step approval for the smart follow-up engine (service role update).
+ */
+export async function updateSmartFollowUpStepAction(
+  raw: z.input<typeof updateSmartFollowUpStepSchema>,
+): Promise<UpdateSmartFollowUpStepResult> {
+  const parsed = updateSmartFollowUpStepSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid follow-up update." };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+
+  const sr = getServiceRoleSupabaseOrNull();
+  if (!sr) {
+    return { ok: false, error: "Campaign update unavailable (service role)." };
+  }
+
+  const { data: row, error: fetchErr } = await sr
+    .from("campaigns")
+    .select("results, user_id")
+    .eq("thread_id", parsed.data.thread_id)
+    .maybeSingle();
+  if (fetchErr || !row) {
+    return { ok: false, error: "Campaign not found." };
+  }
+  if (String((row as { user_id?: unknown }).user_id) !== user.id) {
+    return { ok: false, error: "Not your campaign." };
+  }
+
+  const resultsRaw = (row as { results?: unknown }).results;
+  if (!resultsRaw || typeof resultsRaw !== "object" || Array.isArray(resultsRaw)) {
+    return { ok: false, error: "No campaign snapshot." };
+  }
+  const results = { ...(resultsRaw as Record<string, unknown>) };
+  const engine = results.smart_follow_up_engine as SmartFollowUpEngineState | undefined;
+  if (!engine?.steps?.length) {
+    return { ok: false, error: "No follow-up engine on this run." };
+  }
+  const idx = parsed.data.step_index;
+  if (idx < 0 || idx >= engine.steps.length) {
+    return { ok: false, error: "Invalid step." };
+  }
+
+  const steps = engine.steps.map((s, i) =>
+    i === idx ? { ...s, approval_status: parsed.data.approval_status } : s,
+  );
+  const nextEngine: SmartFollowUpEngineState = { ...engine, steps };
+  results["smart_follow_up_engine"] = structuredClone(nextEngine) as unknown;
+
+  const approval = deriveFollowUpApprovalStatus(steps);
+  const nextAt = nextFollowUpSendIso(steps);
+
+  const patch: Record<string, unknown> = {
+    results,
+    follow_up_engine_snapshot: nextEngine as unknown as Record<string, unknown>,
+    follow_up_approval_status: approval,
+    follow_up_next_send_at: nextAt,
+  };
+
+  let { error: upErr } = await sr
+    .from("campaigns")
+    .update(patch)
+    .eq("thread_id", parsed.data.thread_id)
+    .eq("user_id", user.id);
+
+  if (
+    upErr &&
+    /follow_up_engine_snapshot|follow_up_approval_status|follow_up_next_send_at|column|schema/i.test(
+      `${upErr.message} ${upErr.details ?? ""}`,
+    )
+  ) {
+    ({ error: upErr } = await sr
+      .from("campaigns")
+      .update({ results })
+      .eq("thread_id", parsed.data.thread_id)
+      .eq("user_id", user.id));
+  }
+
+  if (upErr) {
+    console.warn("[AgentForge] updateSmartFollowUpStepAction", upErr.message);
+    return { ok: false, error: "Could not save approval." };
+  }
+
+  const snap = snapshotFromPersistedResults(results);
+  if (!snap) {
+    return { ok: false, error: "Could not read snapshot." };
+  }
+
+  revalidatePath("/");
+  return { ok: true, snapshot: snap };
 }
 
 const sendOutreachEmailSchema = z.object({
@@ -2461,44 +3028,125 @@ export async function listProspectReplies(): Promise<PersistedReplyAnalysisRow[]
 
 function buildAbTestComparisonsFromRows(
   rows: Record<string, unknown>[] | null | undefined,
+  interestByThread: Map<string, number>,
 ): AbTestComparisonRow[] {
   if (!rows?.length) return [];
-  const map = new Map<string, { A?: Record<string, unknown>; B?: Record<string, unknown> }>();
+  const groups = new Map<string, Record<string, unknown>[]>();
   for (const r of rows) {
     const id = typeof r.ab_test_id === "string" ? r.ab_test_id : "";
+    if (!id) continue;
     const v = String(r.ab_variant || "").toUpperCase();
-    if (!id || (v !== "A" && v !== "B")) continue;
-    const cur = map.get(id) ?? {};
-    if (v === "A") cur.A = r;
-    else cur.B = r;
-    map.set(id, cur);
+    if (v !== "A" && v !== "B") continue;
+    const list = groups.get(id) ?? [];
+    list.push(r);
+    groups.set(id, list);
   }
   const out: AbTestComparisonRow[] = [];
-  for (const [abId, pair] of map) {
-    if (!pair.A || !pair.B) continue;
-    const snapA = snapshotFromPersistedResults(pair.A.results);
-    const snapB = snapshotFromPersistedResults(pair.B.results);
+  for (const [abId, list] of groups) {
+    const as = list.filter((r) => String(r.ab_variant || "").toUpperCase() === "A");
+    const bs = list.filter((r) => String(r.ab_variant || "").toUpperCase() === "B");
+    if (as.length === 0 || bs.length === 0) continue;
+
+    if (as.length === 1 && bs.length === 1) {
+      const pairA = as[0]!;
+      const pairB = bs[0]!;
+      const snapA = snapshotFromCampaignResults(pairA.results);
+      const snapB = snapshotFromCampaignResults(pairB.results);
+      if (!snapA || !snapB) continue;
+      const ca = computeCampaignStrength(snapA);
+      const cb = computeCampaignStrength(snapB);
+      const tidA = String(pairA.thread_id ?? "");
+      const tidB = String(pairB.thread_id ?? "");
+      const ia = interestByThread.get(tidA) ?? null;
+      const ib = interestByThread.get(tidB) ?? null;
+      const oa = computeAutoOptimizationScore({ snapshot: snapA, replyInterest0to10: ia });
+      const ob = computeAutoOptimizationScore({ snapshot: snapB, replyInterest0to10: ib });
+      const winner = pickAbWinner(oa, ob);
+      const rec = autoOptimizationRecommendation(
+        winner,
+        oa,
+        ob,
+        snapA.lead ? voiceLabelForLead(snapA.lead) : "Variant A",
+        snapB.lead ? voiceLabelForLead(snapB.lead) : "Variant B",
+      );
+      out.push({
+        ab_test_id: abId,
+        lead_name: String(pairA.lead_name ?? pairB.lead_name ?? "Lead"),
+        completed_at: String(pairB.completed_at ?? pairA.completed_at ?? ""),
+        variantA: {
+          thread_id: tidA,
+          composite: ca.composite,
+          qual: ca.qual,
+          icp: ca.icp,
+          voice_label: snapA.lead ? voiceLabelForLead(snapA.lead) : "—",
+        },
+        variantB: {
+          thread_id: tidB,
+          composite: cb.composite,
+          qual: cb.qual,
+          icp: cb.icp,
+          voice_label: snapB.lead ? voiceLabelForLead(snapB.lead) : "—",
+        },
+        optimization_score_a: oa,
+        optimization_score_b: ob,
+        winner_variant: winner,
+        winner_recommendation: rec,
+        reply_interest_a: ia,
+        reply_interest_b: ib,
+        meeting_signal_a: meetingSchedulingSignal(snapA),
+        meeting_signal_b: meetingSchedulingSignal(snapB),
+      });
+      continue;
+    }
+
+    const campaignRows = list.map((r) => ({
+      ab_variant: String(r.ab_variant ?? ""),
+      thread_id: String(r.thread_id ?? ""),
+      results: r.results,
+    }));
+    const agg = aggregateBatchAbOptimization(campaignRows, interestByThread);
+    const firstA = as[0]!;
+    const firstB = bs[0]!;
+    const snapA = snapshotFromCampaignResults(firstA.results);
+    const snapB = snapshotFromCampaignResults(firstB.results);
     if (!snapA || !snapB) continue;
-    const ca = computeCampaignStrength(snapA);
-    const cb = computeCampaignStrength(snapB);
+    const rec = autoOptimizationRecommendation(
+      agg.winner,
+      agg.meanA,
+      agg.meanB,
+      `Variant A (${as.length} runs)`,
+      `Variant B (${bs.length} runs)`,
+    );
     out.push({
       ab_test_id: abId,
-      lead_name: String(pair.A.lead_name ?? pair.B.lead_name ?? "Lead"),
-      completed_at: String(pair.B.completed_at ?? pair.A.completed_at ?? ""),
+      lead_name: `A/B batch · ${as.length}×A / ${bs.length}×B`,
+      completed_at: String(
+        bs[bs.length - 1]!.completed_at ?? as[as.length - 1]!.completed_at ?? "",
+      ),
+      is_batch: true,
+      batch_pair_count: Math.min(as.length, bs.length),
       variantA: {
-        thread_id: String(pair.A.thread_id ?? ""),
-        composite: ca.composite,
-        qual: ca.qual,
-        icp: ca.icp,
-        voice_label: snapA.lead ? voiceLabelForLead(snapA.lead) : "—",
+        thread_id: `(batch ${as.length})`,
+        composite: Math.round(agg.meanA),
+        qual: null,
+        icp: null,
+        voice_label: `A · ${as.length} runs`,
       },
       variantB: {
-        thread_id: String(pair.B.thread_id ?? ""),
-        composite: cb.composite,
-        qual: cb.qual,
-        icp: cb.icp,
-        voice_label: snapB.lead ? voiceLabelForLead(snapB.lead) : "—",
+        thread_id: `(batch ${bs.length})`,
+        composite: Math.round(agg.meanB),
+        qual: null,
+        icp: null,
+        voice_label: `B · ${bs.length} runs`,
       },
+      optimization_score_a: agg.meanA,
+      optimization_score_b: agg.meanB,
+      winner_variant: agg.winner,
+      winner_recommendation: rec,
+      reply_interest_a: null,
+      reply_interest_b: null,
+      meeting_signal_a: meetingSchedulingSignal(snapA),
+      meeting_signal_b: meetingSchedulingSignal(snapB),
     });
   }
   out.sort((a, b) => b.completed_at.localeCompare(a.completed_at));
@@ -2530,6 +3178,10 @@ const EMPTY_ANALYTICS: DashboardAnalyticsSummary = {
   forecastAvgWinProbability: null,
   forecastDealCount: 0,
   forecastTrend: [],
+  leadPriorityLeaderboard: [],
+  leadPrioritySummary: null,
+  qualificationInsights: [],
+  replyObjectionCards: [],
 };
 
 /**
@@ -2559,28 +3211,50 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
   const isoSeven = sevenAgo.toISOString().slice(0, 10);
   const isoToday = today.toISOString().slice(0, 10);
 
+  const campSelectFull =
+    "results, thread_id, completed_at, predicted_revenue, win_probability, lead_name, company, email, qualification_score";
+  const campSelectMid =
+    "results, thread_id, completed_at, predicted_revenue, win_probability, lead_name, company, email";
+  const campSelectNarrow =
+    "results, thread_id, completed_at, predicted_revenue, win_probability";
+  const campSelectMin = "results, thread_id, completed_at";
+
   let campRes = await campaignsReader
     .from("campaigns")
-    .select("results, thread_id, completed_at, predicted_revenue, win_probability")
+    .select(campSelectFull)
     .in("user_id", memberIds)
     .limit(500);
   if (campRes.error && isMissingColumnOrSchemaError(campRes.error.message)) {
     campRes = (await campaignsReader
       .from("campaigns")
-      .select("results, thread_id, completed_at")
+      .select(campSelectMid)
+      .in("user_id", memberIds)
+      .limit(500)) as typeof campRes;
+  }
+  if (campRes.error && isMissingColumnOrSchemaError(campRes.error.message)) {
+    campRes = (await campaignsReader
+      .from("campaigns")
+      .select(campSelectNarrow)
+      .in("user_id", memberIds)
+      .limit(500)) as typeof campRes;
+  }
+  if (campRes.error && isMissingColumnOrSchemaError(campRes.error.message)) {
+    campRes = (await campaignsReader
+      .from("campaigns")
+      .select(campSelectMin)
       .in("user_id", memberIds)
       .limit(500)) as typeof campRes;
   }
 
-  const [replyRows, replyThreadRes, liveSignalsFeed, spamRowsRes, prefsRes, warmup7Res, abTestRes] =
+  const [replyRows, replyThreadRes, replyObjectionRows, liveSignalsFeed, spamRowsRes, prefsRes, warmup7Res, abTestRes] =
     await Promise.all([
       queryReplyRowsForAnalytics(campaignsReader, memberIds),
       campaignsReader
         .from("reply_analyses")
-        .select("thread_id, interest_score, analysis")
+        .select("thread_id, prospect_email, interest_score, analysis")
         .in("user_id", memberIds)
-        .not("thread_id", "is", null)
         .limit(3000),
+      queryReplyObjectionRowsForAnalytics(campaignsReader, memberIds),
       queryCampaignSignalsFeed(campaignsReader, memberIds),
       campaignsReader
         .from("campaigns")
@@ -2604,7 +3278,7 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
         .in("user_id", memberIds)
         .not("ab_test_id", "is", null)
         .order("completed_at", { ascending: false })
-        .limit(120),
+        .limit(400),
     ]);
 
   if (campRes.error) {
@@ -2626,13 +3300,18 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
     console.warn("[AgentForge] getDashboardAnalytics reply thread map", replyThreadRes.error.message);
   }
 
+  const replyRowsForInterest = replyThreadRes.error
+    ? []
+    : ((replyThreadRes.data ?? []) as Record<string, unknown>[]);
+  const interestByThread = buildReplyInterestByThreadMap(replyRowsForInterest);
+  const interestByEmail = buildReplyInterestByEmailMap(replyRowsForInterest);
+
   const abTestComparisons = abTestRes.error
     ? []
-    : buildAbTestComparisonsFromRows((abTestRes.data ?? []) as Record<string, unknown>[]);
-
-  const interestByThread = buildReplyInterestByThreadMap(
-    replyThreadRes.error ? [] : ((replyThreadRes.data ?? []) as Record<string, unknown>[]),
-  );
+    : buildAbTestComparisonsFromRows(
+        (abTestRes.data ?? []) as Record<string, unknown>[],
+        interestByThread,
+      );
 
   const spamScores: number[] = [];
   for (const row of spamRowsRes.data ?? []) {
@@ -2725,6 +3404,130 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
     }
   }
 
+  const leadPriorityList: LeadPriorityLeaderboardRow[] = [];
+  for (const row of campRes.data ?? []) {
+    const snap = snapshotFromPersistedResults((row as { results?: unknown }).results);
+    if (!snap || snap.final_status === "failed") continue;
+    const r = row as {
+      thread_id?: unknown;
+      completed_at?: unknown;
+      lead_name?: unknown;
+      company?: unknown;
+      email?: unknown;
+    };
+    const tid = String(r.thread_id ?? snap.thread_id ?? "");
+    if (!tid) continue;
+    const email = String(r.email ?? snap.lead?.email ?? "");
+    const leadName = String(r.lead_name ?? snap.lead?.name ?? "Lead");
+    const company = String(r.company ?? snap.lead?.company ?? "");
+    const completed =
+      r.completed_at != null ? String(r.completed_at) : snap.campaign_completed_at ?? null;
+    const replyI = resolveReplyInterestForLead(tid, email, interestByThread, interestByEmail);
+    const scored = scoreLeadForPriority(snap, {
+      replyInterest0to10: replyI,
+      leadDisplayName: leadName,
+    });
+    leadPriorityList.push({
+      thread_id: tid,
+      lead_name: leadName,
+      company,
+      email,
+      completed_at: completed,
+      composite_score: scored.composite,
+      priority_tier: scored.tier,
+      tier_label: priorityTierLabel(scored.tier),
+      dimensions: scored.dimensions,
+      ai_recommendation: scored.priority_reason,
+    });
+  }
+  leadPriorityList.sort((a, b) => b.composite_score - a.composite_score);
+  const leadPriorityLeaderboard = leadPriorityList.slice(0, 35);
+  const leadPrioritySummary = buildLeadPriorityQueueSummary(
+    leadPriorityLeaderboard.slice(0, 3).map((row) => ({
+      lead_name: row.lead_name,
+      composite_score: row.composite_score,
+      tier: row.priority_tier,
+    })),
+  );
+
+  const qualificationInsightsRaw: QualificationInsightRow[] = [];
+  for (const row of campRes.data ?? []) {
+    const snap = snapshotFromPersistedResults((row as { results?: unknown }).results);
+    if (!snap || snap.final_status === "failed") continue;
+    const r = row as {
+      thread_id?: unknown;
+      completed_at?: unknown;
+      lead_name?: unknown;
+      company?: unknown;
+      email?: unknown;
+      qualification_score?: unknown;
+    };
+    const tid = String(r.thread_id ?? snap.thread_id ?? "");
+    if (!tid) continue;
+    const email = String(r.email ?? snap.lead?.email ?? "");
+    const leadName = String(r.lead_name ?? snap.lead?.name ?? "Lead");
+    const company = String(r.company ?? snap.lead?.company ?? "");
+    const completed =
+      r.completed_at != null ? String(r.completed_at) : snap.campaign_completed_at ?? null;
+    const replyI = resolveReplyInterestForLead(tid, email, interestByThread, interestByEmail);
+    const disp = computeDisplayQualificationScore(snap, replyI);
+    const colScore =
+      typeof r.qualification_score === "number" && Number.isFinite(r.qualification_score)
+        ? Math.round(r.qualification_score)
+        : null;
+    if (
+      disp.base == null &&
+      disp.refined == null &&
+      disp.next_best_action == null &&
+      colScore == null &&
+      snap.qualification_detail == null
+    ) {
+      continue;
+    }
+    const base = disp.base ?? colScore;
+    const refined = disp.refined ?? disp.base ?? colScore;
+    qualificationInsightsRaw.push({
+      thread_id: tid,
+      lead_name: leadName,
+      company,
+      qualification_base: base,
+      qualification_refined: refined,
+      next_best_action: disp.next_best_action,
+      completed_at: completed,
+    });
+  }
+  qualificationInsightsRaw.sort((a, b) => {
+    const ar = a.qualification_refined ?? -1;
+    const br = b.qualification_refined ?? -1;
+    return br - ar;
+  });
+  const qualificationInsights = qualificationInsightsRaw.slice(0, 28);
+
+  const replyObjectionCards: ReplyObjectionCardRow[] = [];
+  for (const raw of replyObjectionRows) {
+    const r = raw as Record<string, unknown>;
+    const id = typeof r.id === "string" ? r.id : String(r.id ?? "");
+    if (!id) continue;
+    const card = buildReplyObjectionCardFromRow({
+      id,
+      thread_id: typeof r.thread_id === "string" ? r.thread_id : null,
+      lead_name: typeof r.lead_name === "string" ? r.lead_name : null,
+      company: typeof r.company === "string" ? r.company : null,
+      reply_preview: typeof r.reply_preview === "string" ? r.reply_preview : "",
+      analysis: r.analysis,
+      created_at: String(r.created_at ?? ""),
+    });
+    if (
+      card.detected_patterns.length === 0 &&
+      card.analyzer_objections.length === 0 &&
+      card.reply_preview.trim().length < 8
+    ) {
+      continue;
+    }
+    replyObjectionCards.push(card);
+  }
+  const replyObjectionCardsTrimmed = replyObjectionCards.slice(0, 22);
+
   const forecastAvgWinProbability =
     forecastDealCount > 0 ? Math.round(forecastWinSum / forecastDealCount) : null;
 
@@ -2801,6 +3604,10 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
     forecastAvgWinProbability,
     forecastDealCount,
     forecastTrend,
+    leadPriorityLeaderboard,
+    leadPrioritySummary,
+    qualificationInsights,
+    replyObjectionCards: replyObjectionCardsTrimmed,
   };
 }
 

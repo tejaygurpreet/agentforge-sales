@@ -39,6 +39,9 @@ export interface CampaignThreadRow {
   outreach_sent?: boolean;
   /** From checkpoint `state.lead.sdr_voice_tone` when present (Prompt 43). */
   sdr_voice_label?: string | null;
+  /** Prompt 91b — when thread matches a scored persisted campaign. */
+  lead_priority_tier?: LeadPriorityTier | null;
+  lead_priority_score?: number | null;
 }
 
 /** Row from `public.campaigns` (persisted campaign runs). */
@@ -74,6 +77,17 @@ export interface PersistedCampaignRow {
   deliverability_status?: string | null;
   /** Prompt 82 — from persisted snapshot (`results.lead_enrichment_preview`). */
   enriched_data?: LeadEnrichmentPayload | null;
+  /** Prompt 90 — experiment grouping when row is part of an A/B run. */
+  ab_test_id?: string | null;
+  ab_variant?: "A" | "B" | null;
+  /** Prompt 91b — cached json `{ icp_fit, intent_signals, reply_probability, deal_value_potential, composite, tier }`. */
+  lead_score?: Record<string, unknown> | null;
+  /** Prompt 91b — short priority rationale. */
+  priority_reason?: string | null;
+  /** Prompt 92 — cached pipeline qualification 0–100 (optional column). */
+  qualification_score?: number | null;
+  /** Prompt 92 — jsonb array of `{ source, text, patterns, coach_headline? }` from qualification. */
+  detected_objections?: unknown;
 }
 
 /** JSON stored in `reply_analyses.analysis` (matches ReplyAnalysisWithLabels). */
@@ -133,6 +147,52 @@ export type DashboardStrengthBucket = {
   pct: number;
 };
 
+/** Prompt 91b — smart lead priority (workspace leaderboard). */
+export type LeadPriorityTier = "critical" | "high" | "medium" | "low";
+
+export type LeadPriorityLeaderboardRow = {
+  thread_id: string;
+  lead_name: string;
+  company: string;
+  email: string;
+  completed_at: string | null;
+  composite_score: number;
+  priority_tier: LeadPriorityTier;
+  tier_label: string;
+  dimensions: {
+    icp_fit: number;
+    intent_signals: number;
+    reply_probability: number;
+    deal_value_potential: number;
+  };
+  /** Template “AI-style” queue rationale (deterministic from signals). */
+  ai_recommendation: string;
+};
+
+/** Prompt 92 — per-lead qualification display (snapshot + live reply interest). */
+export type QualificationInsightRow = {
+  thread_id: string;
+  lead_name: string;
+  company: string;
+  qualification_base: number | null;
+  qualification_refined: number | null;
+  next_best_action: string | null;
+  completed_at: string | null;
+};
+
+/** Prompt 92 — recent reply with heuristic objection patterns + suggested copy. */
+export type ReplyObjectionCardRow = {
+  id: string;
+  thread_id: string | null;
+  lead_name: string | null;
+  company: string | null;
+  reply_preview: string;
+  analyzer_objections: string[];
+  detected_patterns: string[];
+  suggested_responses: { pattern: string; headline: string; body: string }[];
+  created_at: string;
+};
+
 /** Prompt 70 — one lead in a dashboard batch run. */
 export type BatchRunItem = {
   id: string;
@@ -153,11 +213,14 @@ export type LiveSignalFeedItem = {
 };
 
 /** Aggregates for `/analytics` + main dashboard Analytics tab (Prompt 50 + 70). */
-/** Prompt 85 — one A/B pair (variant A vs B) for analytics. */
+/** Prompt 85 — one A/B pair (variant A vs B) for analytics. Prompt 90 — batch + auto-winner. */
 export type AbTestComparisonRow = {
   ab_test_id: string;
   lead_name: string;
   completed_at: string;
+  /** Prompt 90 — multiple lead pairs under one experiment id. */
+  is_batch?: boolean;
+  batch_pair_count?: number;
   variantA: {
     thread_id: string;
     composite: number;
@@ -172,6 +235,27 @@ export type AbTestComparisonRow = {
     icp: number | null;
     voice_label: string;
   };
+  /** Prompt 90 — auto-optimization layer */
+  optimization_score_a?: number;
+  optimization_score_b?: number;
+  winner_variant?: "A" | "B" | "tie" | null;
+  winner_recommendation?: string;
+  reply_interest_a?: number | null;
+  reply_interest_b?: number | null;
+  meeting_signal_a?: number;
+  meeting_signal_b?: number;
+};
+
+/** Prompt 90 — row from `ab_tests` registry. */
+export type AbTestExperimentRow = {
+  id: string;
+  name: string;
+  status: string;
+  experiment_type: string;
+  winner_variant: string | null;
+  winner_reason: string | null;
+  metrics_summary: Record<string, unknown> | null;
+  created_at: string;
 };
 
 /** Prompt 87 — weekly bucket for weighted pipeline trend chart. */
@@ -212,6 +296,14 @@ export type DashboardAnalyticsSummary = {
   forecastDealCount: number;
   /** Prompt 87 — last weeks weighted pipeline. */
   forecastTrend: ForecastTrendPoint[];
+  /** Prompt 91b — scored leads for prioritization (from saved campaigns + replies). */
+  leadPriorityLeaderboard: LeadPriorityLeaderboardRow[];
+  /** Prompt 91b — one-line “contact first” hint from top ranks. */
+  leadPrioritySummary: string | null;
+  /** Prompt 92 — qualification score + next action per saved campaign (reply-aware). */
+  qualificationInsights: QualificationInsightRow[];
+  /** Prompt 92 — recent analyzed replies with objection coach snippets. */
+  replyObjectionCards: ReplyObjectionCardRow[];
 };
 
 /** Prompt 85 — workspace template library row. */

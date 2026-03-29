@@ -1,7 +1,16 @@
 import "server-only";
 
 import type { CampaignClientSnapshot, Lead, LeadEnrichmentPayload } from "@/agents/types";
+import {
+  aggregateObjectionsForPersistence,
+  computeDisplayQualificationScore,
+} from "@/lib/agents/qualification_node";
+import {
+  deriveFollowUpApprovalStatus,
+  nextFollowUpSendIso,
+} from "@/lib/agents/nurture_node";
 import { computeForecastFromSnapshot } from "@/lib/forecast";
+import { scoreLeadForPriority } from "@/lib/scoring";
 import { notifyCampaignCompletedPush } from "@/lib/push";
 import { getServiceRoleSupabaseOrNull } from "@/lib/supabase-server";
 
@@ -53,6 +62,52 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
     null;
 
   const fc = computeForecastFromSnapshot(snapshot);
+  const fu = snapshot.smart_follow_up_engine;
+  const followUpSnapshot =
+    fu != null
+      ? (JSON.parse(JSON.stringify(fu)) as Record<string, unknown>)
+      : null;
+  const followUpApproval =
+    fu != null ? deriveFollowUpApprovalStatus(fu.steps) : null;
+  const followUpNextAt = fu != null ? nextFollowUpSendIso(fu.steps) : null;
+
+  const leadScoringRow =
+    snapshot.final_status !== "failed"
+      ? (() => {
+          const sc = scoreLeadForPriority(snapshot, { replyInterest0to10: null });
+          return {
+            lead_score: {
+              icp_fit: sc.dimensions.icp_fit,
+              intent_signals: sc.dimensions.intent_signals,
+              reply_probability: sc.dimensions.reply_probability,
+              deal_value_potential: sc.dimensions.deal_value_potential,
+              composite: sc.composite,
+              tier: sc.tier,
+            },
+            priority_reason: sc.priority_reason.slice(0, 2400),
+          };
+        })()
+      : null;
+
+  const qualDisplay = computeDisplayQualificationScore(snapshot, null);
+  const objectionRows = aggregateObjectionsForPersistence(snapshot);
+  const qualScoreToStore =
+    qualDisplay.refined ??
+    qualDisplay.base ??
+    (typeof snapshot.qualification_score === "number" ? snapshot.qualification_score : null) ??
+    snapshot.qualification_detail?.score ??
+    null;
+  const qualificationPatch: Record<string, unknown> = {};
+  if (snapshot.final_status !== "failed") {
+    if (qualScoreToStore != null) {
+      qualificationPatch.qualification_score = Math.round(
+        Math.min(100, Math.max(0, qualScoreToStore)),
+      );
+    }
+    if (objectionRows.length > 0) {
+      qualificationPatch.detected_objections = objectionRows;
+    }
+  }
 
   const row = {
     user_id: userId,
@@ -84,6 +139,15 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
     ...(templateId ? { template_id: templateId } : {}),
     predicted_revenue: fc.predictedRevenueUsd,
     win_probability: fc.winProbability,
+    ...(followUpSnapshot
+      ? {
+          follow_up_engine_snapshot: followUpSnapshot,
+          follow_up_approval_status: followUpApproval,
+          follow_up_next_send_at: followUpNextAt,
+        }
+      : {}),
+    ...(leadScoringRow ?? {}),
+    ...(Object.keys(qualificationPatch).length > 0 ? qualificationPatch : {}),
   };
 
   let { error } = await sb.from("campaigns").upsert(row, {
@@ -140,6 +204,62 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
       ...rowNoForecast
     } = row as typeof row & { predicted_revenue?: unknown; win_probability?: unknown };
     ({ error } = await sb.from("campaigns").upsert(rowNoForecast, {
+      onConflict: "thread_id",
+    }));
+  }
+
+  if (
+    error &&
+    /follow_up_engine_snapshot|follow_up_approval_status|follow_up_next_send_at|column|schema/i.test(
+      `${error.message} ${error.details ?? ""} ${error.hint ?? ""}`,
+    )
+  ) {
+    const {
+      follow_up_engine_snapshot: _fs,
+      follow_up_approval_status: _fa,
+      follow_up_next_send_at: _fn,
+      ...rowNoFollowUp
+    } = row as typeof row & {
+      follow_up_engine_snapshot?: unknown;
+      follow_up_approval_status?: unknown;
+      follow_up_next_send_at?: unknown;
+    };
+    ({ error } = await sb.from("campaigns").upsert(rowNoFollowUp, {
+      onConflict: "thread_id",
+    }));
+  }
+
+  if (
+    error &&
+    /lead_score|priority_reason|column|schema/i.test(
+      `${error.message} ${error.details ?? ""} ${error.hint ?? ""}`,
+    )
+  ) {
+    const {
+      lead_score: _ls,
+      priority_reason: _pr,
+      ...rowNoLeadScore
+    } = row as typeof row & { lead_score?: unknown; priority_reason?: unknown };
+    ({ error } = await sb.from("campaigns").upsert(rowNoLeadScore, {
+      onConflict: "thread_id",
+    }));
+  }
+
+  if (
+    error &&
+    /qualification_score|detected_objections|column|schema/i.test(
+      `${error.message} ${error.details ?? ""} ${error.hint ?? ""}`,
+    )
+  ) {
+    const {
+      qualification_score: _qs,
+      detected_objections: _do,
+      ...rowNoQualCols
+    } = row as typeof row & {
+      qualification_score?: unknown;
+      detected_objections?: unknown;
+    };
+    ({ error } = await sb.from("campaigns").upsert(rowNoQualCols, {
       onConflict: "thread_id",
     }));
   }

@@ -7,7 +7,21 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import type { CampaignThreadRow } from "@/types";
+import type { CampaignThreadRow, LeadPriorityTier } from "@/types";
+
+function tierOutlineClass(tier: LeadPriorityTier | null | undefined): string | undefined {
+  if (!tier) return undefined;
+  switch (tier) {
+    case "critical":
+      return "border-rose-500/45 bg-rose-500/[0.1] text-rose-950 dark:border-rose-400/40 dark:bg-rose-500/15 dark:text-rose-50";
+    case "high":
+      return "border-amber-500/45 bg-amber-500/[0.1] text-amber-950 dark:border-amber-400/40 dark:bg-amber-500/15 dark:text-amber-50";
+    case "medium":
+      return "border-sky-500/40 bg-sky-500/[0.1] text-sky-950 dark:border-sky-400/40 dark:bg-sky-500/14 dark:text-sky-50";
+    default:
+      return "border-muted-foreground/30 bg-muted/30 text-muted-foreground";
+  }
+}
 
 interface CampaignListProps {
   campaigns: CampaignThreadRow[];
@@ -20,7 +34,9 @@ export function CampaignList({ campaigns }: CampaignListProps) {
         <CardTitle>Active campaigns</CardTitle>
         <CardDescription>
           Recent threads from <code className="text-xs">agent_graph_checkpoints</code>{" "}
-          (one row per <span className="font-mono text-xs">user_id + lead id</span>).
+          (one row per <span className="font-mono text-xs">user_id + lead id</span>). When a thread
+          matches a scored run in <code className="text-xs">campaigns</code>, priority badges show
+          suggested contact order.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -51,6 +67,18 @@ export function CampaignList({ campaigns }: CampaignListProps) {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  {c.lead_priority_score != null && c.lead_priority_tier ? (
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                        tierOutlineClass(c.lead_priority_tier),
+                      )}
+                      title="Smart lead priority (workspace leaderboard)"
+                    >
+                      Prio {c.lead_priority_score}
+                    </Badge>
+                  ) : null}
                   {c.sdr_voice_label ? (
                     <Badge
                       variant="outline"

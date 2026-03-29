@@ -302,6 +302,44 @@ export const nurtureOutputSchema = z.object({
 
 export type NurtureOutput = z.infer<typeof nurtureOutputSchema>;
 
+/** Prompt 91 — optional prior reply / interest context for nurture + timing engine. */
+export type ReplyFollowUpIntel = {
+  interest_0_to_10: number | null;
+  summary: string;
+};
+
+/** Prompt 91 — one scheduled follow-up touch with smart timing + human approval. */
+export type SmartFollowUpStepPlan = {
+  step_index: number;
+  /** Channel produced by the nurture model. */
+  model_channel: "email" | "linkedin" | "call";
+  /** Channel after light heuristics (e.g. break email fatigue when interest is cold). */
+  engine_recommended_channel: "email" | "linkedin" | "call";
+  original_day_offset: number;
+  adjusted_day_offset: number;
+  /** ISO 8601 UTC suggested send instant. */
+  suggested_send_at: string;
+  delay_hours_from_previous: number | null;
+  timing_rationale: string;
+  /** 0–1 heuristic confidence for the suggested instant. */
+  timing_confidence: number;
+  summary: string;
+  value_add_idea: string;
+  content_asset_suggestion: string;
+  approval_status: "pending_review" | "approved" | "skipped";
+};
+
+/** Prompt 91 — intelligent follow-up plan attached to the campaign snapshot. */
+export type SmartFollowUpEngineState = {
+  engine_version: "p91-v1";
+  generated_at: string;
+  interest_signal_0_to_10: number | null;
+  qualification_score: number | null;
+  reply_signals_summary: string;
+  overall_rationale: string;
+  steps: SmartFollowUpStepPlan[];
+};
+
 /** Prompt 70 — post-research live signals (Tavily / heuristic fallback). */
 export type CampaignLiveSignalType =
   | "funding"
@@ -371,6 +409,8 @@ export interface CampaignClientSnapshot {
   qualification_score: number | null;
   qualification_detail: QualificationAgentResult | null;
   nurture_output: NurtureOutput | null;
+  /** Prompt 91 — smart timing + approval workflow for nurture follow-ups. */
+  smart_follow_up_engine?: SmartFollowUpEngineState | null;
   final_status: CampaignFinalStatus;
   pipeline_error: string | null;
   results: Record<string, unknown>;

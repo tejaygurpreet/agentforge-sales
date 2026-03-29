@@ -14,7 +14,10 @@ import type {
   ResearchOutput,
   SdrVoiceTone,
 } from "@/agents/types";
-import { buildMeetingSchedulingPromptBlock } from "@/lib/agents/qualification_node";
+import {
+  buildMeetingSchedulingPromptBlock,
+  buildObjectionCoachAppendixForPrompt,
+} from "@/lib/agents/qualification_node";
 import { qualificationAgentLlmSchema } from "@/agents/types";
 import {
   invokeWithGroqRateLimitResilience,
@@ -89,6 +92,7 @@ ANCHOR: ${scoringAnchor}
 RESEARCH_JSON: ${pipelineContext}
 ${objectionLib}
 ${meetingBlock}
+${buildObjectionCoachAppendixForPrompt()}
 
 SDR_VOICE: ${voice} — ${voiceHint}
 

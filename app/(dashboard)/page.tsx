@@ -7,6 +7,7 @@ import {
   listCampaignTemplatesAction,
   listCampaignThreads,
   listCustomVoicesAction,
+  listAbTestsAction,
   listRecentCampaigns,
   listScheduledReportsAction,
   loadObjectionLibraryForDashboard,
@@ -18,6 +19,7 @@ import { createServerSupabaseClient, getServiceRoleSupabaseOrNull } from "@/lib/
 import { ensurePersonalWorkspaceMembership, resolveWorkspaceContext } from "@/lib/workspace";
 import { fetchWhiteLabelSettings } from "@/lib/white-label";
 import type {
+  AbTestExperimentRow,
   CampaignSequenceRow,
   CampaignTemplateRow,
   CustomVoiceRow,
@@ -61,6 +63,27 @@ export const dynamic = "force-dynamic";
  *
  * Prompt 89 — Calendar OAuth + meeting proposals (`getCalendarConnectionStatusAction`); SQL:
  * `supabase/user_calendar_connections_p89.sql`.
+ *
+ * Prompt 90 — Advanced A/B batch experiments + auto-optimization (`lib/ab-testing.ts`,
+ * `startAdvancedAbBatchExperimentAction`, `listAbTestsAction`); SQL: `supabase/ab_tests_p90.sql`.
+ * UI: Sequences tab (`AbTestingSection`) + Analytics A/B cards; `campaigns.ab_test_id` / `ab_variant`
+ * surfaced in recent campaign history when columns exist.
+ *
+ * Prompt 91 — Intelligent automated follow-up engine (`lib/agents/nurture_node.ts` smart timing +
+ * `nurture-agent` reply intel); Workspace **`CampaignWorkspace`** card to review/approve steps;
+ * `updateSmartFollowUpStepAction`; optional `campaigns.follow_up_*` columns — see
+ * `supabase/follow_up_engine_p91.sql`. Prior `reply_analyses` for the same prospect email inform
+ * cadence when present (no auto-send — manual outreach flows unchanged).
+ *
+ * Smart lead scoring — `lib/scoring.ts`, leaderboard via `getDashboardAnalytics` (`LeadPrioritySection`
+ * on Workspace + Analytics); optional `campaigns.lead_score` / `priority_reason` —
+ * `supabase/lead_priority_scoring.sql`. `page.tsx` merges priority into active thread list by
+ * `thread_id`.
+ *
+ * Prompt 92 — Intelligent lead qualification scoring + objection coach: `lib/agents/qualification_node.ts`
+ * (pattern detection, suggested replies, display score refinement with reply interest),
+ * `QualificationObjectionPanel` on Workspace + Analytics, optional `campaigns.qualification_score` /
+ * `detected_objections` — `supabase/qualification_objections_p92.sql`.
  */
 export default async function DashboardPage() {
   const envWarnings = getDashboardEnvWarnings();
@@ -126,7 +149,7 @@ export default async function DashboardPage() {
     };
   }
 
-  const [campaigns, recentCampaigns, analytics, deliverabilitySuite, workspaceData, objectionLibrary] =
+  const [campaignsRaw, recentCampaigns, analytics, deliverabilitySuite, workspaceData, objectionLibrary] =
     await Promise.all([
       listCampaignThreads(),
       listRecentCampaigns(),
@@ -136,11 +159,25 @@ export default async function DashboardPage() {
       loadObjectionLibraryForDashboard(),
     ]);
 
+  const priorityByThread = new Map(
+    analytics.leadPriorityLeaderboard.map((r) => [r.thread_id, r]),
+  );
+  const campaigns = campaignsRaw.map((c) => {
+    const p = priorityByThread.get(c.thread_id);
+    return {
+      ...c,
+      lead_priority_tier: p?.priority_tier ?? null,
+      lead_priority_score: p?.composite_score ?? null,
+    };
+  });
+
   let campaignTemplates: CampaignTemplateRow[] = [];
   let campaignSequences: CampaignSequenceRow[] = [];
+  let abTestExperiments: AbTestExperimentRow[] = [];
   if (user) {
     campaignTemplates = await listCampaignTemplatesAction();
     campaignSequences = await listCampaignSequencesAction();
+    abTestExperiments = await listAbTestsAction();
   }
 
   const scheduledReports = user ? await listScheduledReportsAction() : [];
@@ -164,6 +201,7 @@ export default async function DashboardPage() {
       objectionLibraryEntries={objectionLibrary.objections}
       campaignTemplates={campaignTemplates}
       campaignSequences={campaignSequences}
+      abTestExperiments={abTestExperiments}
       scheduledReports={scheduledReports}
       reportRecipientEmail={reportRecipientEmail}
       calendarStatus={calendarStatus}

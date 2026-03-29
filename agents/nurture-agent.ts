@@ -9,6 +9,7 @@ import type {
   NurtureOutput,
   OutreachOutput,
   QualificationAgentResult,
+  ReplyFollowUpIntel,
   ResearchOutput,
   SdrVoiceTone,
 } from "@/agents/types";
@@ -39,6 +40,8 @@ export async function runNurtureAgent(
     brandDisplayName?: string;
     /** Prompt 83 — real buyer phrases from transcribed calls in this workspace. */
     livingObjectionLibraryContext?: string;
+    /** Prompt 91 — prior reply interest + summary for smarter follow-up plan. */
+    replyFollowUpIntel?: ReplyFollowUpIntel | null;
   },
 ): Promise<NurtureAgentResult> {
   const qualBlob = ctx.qualification_detail
@@ -62,6 +65,14 @@ export async function runNurtureAgent(
   const objectionLib =
     opts?.livingObjectionLibraryContext?.trim() ||
     "(no prior transcribed-call objections for this workspace yet.)";
+  const intel = opts?.replyFollowUpIntel;
+  const replyBlock =
+    intel && (intel.summary.trim() || intel.interest_0_to_10 != null)
+      ? `=== PRIOR_REPLY_INTEL (Prompt 91 — smart follow-up) ===
+interest_0_to_10: ${intel.interest_0_to_10 ?? "unknown"}
+summary: ${intel.summary.trim() || "(none)"}
+Use this to weight **timing_rationale** and channel mix: higher interest → slightly tighter, respectful spacing; lower interest → more air + proof-led value; never contradict qualification facts.`
+      : "=== PRIOR_REPLY_INTEL ===\n(no stored reply analysis for this lead email — infer cadence from qual + outreach only.)";
   const human = `=== ACTIVE_CAMPAIGN_VOICE (graph → nurture_node) ===
 sdrVoice: ${voice} (${voiceLine})
 
@@ -71,10 +82,11 @@ QUAL: ${qualBlob}
 RESEARCH: ${JSON.stringify(ctx.research_output ?? {})}
 OUTREACH: ${JSON.stringify(ctx.outreach_output ?? {})}
 ${objectionLib}
+${replyBlock}
 SDR_VOICE_PRESET: ${voice}
 ${nurtureVoice}
 
-Prompt 38 + **49** + **57** + **58** + **69** + **89**: 3 steps — **value-driven + creative**; at least one **pure generosity** touch; **different opening word** each step; varied channel; realistic spacing; tie to objections; **zero** filler recycled from qual/research; **zero** system/LLM/API leakage. **Prompt 49:** no **5+ word copy** from research exec/ICP/news, qual **bant_summary**, or **messaging_angles** — paraphrase into **fresh cadence**. **Prompt 57:** **warm_relationship_builder** → nurture must **build relationship** — helpful, **unscripted** rhythm; **never** "Day N: pitch" cadence. **Prompt 58:** each **content_asset_suggestion** = **named, specific artifact** for **this** account’s motion — no generic "case study" / "resource" alone. **Prompt 69:** **Elite cadence** — **strategic arc** in sequence_summary; each step **bespoke** (named assets, **causal** timing); must feel **designed for this account**, not a rotated template. **Prompt 89:** optional **meeting_scheduling_hint** and **meeting_time_suggestions** only when a meeting follow-up fits the arc; may refine qual slots without copying **next_best_action** verbatim.
+Prompt 38 + **49** + **57** + **58** + **69** + **89** + **91**: 3 steps — **value-driven + creative**; at least one **pure generosity** touch; **different opening word** each step; varied channel; realistic spacing; tie to objections; **zero** filler recycled from qual/research; **zero** system/LLM/API leakage. **Prompt 49:** no **5+ word copy** from research exec/ICP/news, qual **bant_summary**, or **messaging_angles** — paraphrase into **fresh cadence**. **Prompt 57:** **warm_relationship_builder** → nurture must **build relationship** — helpful, **unscripted** rhythm; **never** "Day N: pitch" cadence. **Prompt 58:** each **content_asset_suggestion** = **named, specific artifact** for **this** account’s motion — no generic "case study" / "resource" alone. **Prompt 69:** **Elite cadence** — **strategic arc** in sequence_summary; each step **bespoke** (named assets, **causal** timing); must feel **designed for this account**, not a rotated template. **Prompt 89:** optional **meeting_scheduling_hint** and **meeting_time_suggestions** only when a meeting follow-up fits the arc; may refine qual slots without copying **next_best_action** verbatim. **Prompt 91:** each **day_offset** must read as a deliberate calendar distance from “now” given PRIOR_REPLY_INTEL + qual; **timing_rationale** must name **why** that gap fits this buyer (politely, no stalker vibe).
 
 **MANDATORY:** sequence_summary + every step's summary, value_add_idea, content_asset_suggestion, and timing_rationale must **sound unmistakably like SDR_VOICE_PRESET** above. If preset is data_driven_analyst, include **concrete metric/benchmark/ROI hooks** where honest. If warm_relationship_builder, **empathetic conversational** cadence — **consultative friend**, not drip automation. If bold_challenger, **professional tension**. If consultative_enterprise, **strategic long-horizon** advisor tone. Default: effortless human Slack-to-colleague clarity.`;
 

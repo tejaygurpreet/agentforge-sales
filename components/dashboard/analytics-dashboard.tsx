@@ -1,5 +1,7 @@
 "use client";
 
+import { LeadPrioritySection } from "@/components/dashboard/lead-priority-section";
+import { QualificationObjectionPanel } from "@/components/dashboard/qualification-objection-panel";
 import type { DashboardAnalyticsSummary } from "@/types";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +36,7 @@ import {
   ShieldCheck,
   Sparkles,
   TrendingUp,
+  Trophy,
   Wallet,
 } from "lucide-react";
 import Link from "next/link";
@@ -94,6 +97,10 @@ export function AnalyticsDashboard({ data, variant = "page" }: Props) {
     forecastAvgWinProbability,
     forecastDealCount,
     forecastTrend,
+    leadPriorityLeaderboard,
+    leadPrioritySummary,
+    qualificationInsights,
+    replyObjectionCards,
   } = data;
 
   const chartData = strengthBuckets.map((b, i) => ({
@@ -153,6 +160,13 @@ export function AnalyticsDashboard({ data, variant = "page" }: Props) {
           icon={TrendingUp}
         />
       </div>
+
+      <LeadPrioritySection rows={leadPriorityLeaderboard} summary={leadPrioritySummary} />
+
+      <QualificationObjectionPanel
+        qualificationRows={qualificationInsights}
+        objectionCards={replyObjectionCards}
+      />
 
       <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-md dark:bg-card/90">
         <CardHeader>
@@ -313,11 +327,11 @@ export function AnalyticsDashboard({ data, variant = "page" }: Props) {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <GitCompare className="h-5 w-5 text-primary" aria-hidden />
-              A/B voice tests
+              A/B tests & auto-optimization
             </CardTitle>
             <CardDescription>
-              Side-by-side composite, qualification, and ICP scores for the same lead pair (two SDR
-              voices or variant B notes).
+              Pair and batch experiments: composite scores, reply interest, meeting signals, and a
+              recommended winner when the auto-score spread is decisive.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -327,18 +341,55 @@ export function AnalyticsDashboard({ data, variant = "page" }: Props) {
                 className="rounded-xl border border-border/60 bg-muted/10 p-4 dark:bg-muted/5"
               >
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <p className="font-medium text-foreground">{row.lead_name}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-medium text-foreground">{row.lead_name}</p>
+                    {row.is_batch ? (
+                      <Badge variant="secondary" className="text-[10px] uppercase">
+                        Batch · {row.batch_pair_count ?? "—"} pairs
+                      </Badge>
+                    ) : null}
+                    {row.winner_variant && row.winner_variant !== "tie" ? (
+                      <Badge className="gap-1 border-amber-500/40 bg-amber-500/15 text-amber-950 dark:text-amber-50">
+                        <Trophy className="h-3 w-3" aria-hidden />
+                        Winner {row.winner_variant}
+                      </Badge>
+                    ) : row.winner_variant === "tie" ? (
+                      <Badge variant="outline" className="text-[10px]">
+                        Tie / inconclusive
+                      </Badge>
+                    ) : null}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {new Date(row.completed_at).toLocaleString()}
                   </p>
                 </div>
+                {row.winner_recommendation ? (
+                  <p className="mt-3 text-sm leading-relaxed text-foreground/90">
+                    {row.winner_recommendation.replace(/\*\*(.*?)\*\*/g, "$1")}
+                  </p>
+                ) : null}
+                {row.optimization_score_a != null && row.optimization_score_b != null ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Auto-optimization score · A: {row.optimization_score_a.toFixed(1)} · B:{" "}
+                    {row.optimization_score_b.toFixed(1)}
+                    {row.reply_interest_a != null || row.reply_interest_b != null ? (
+                      <>
+                        {" "}
+                        · Reply interest (0–10): A {row.reply_interest_a ?? "—"} / B{" "}
+                        {row.reply_interest_b ?? "—"}
+                      </>
+                    ) : null}
+                  </p>
+                ) : null}
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <div className="rounded-lg border border-border/50 bg-background/80 px-3 py-3">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                       Variant A ({row.variantA.voice_label})
                     </p>
                     <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-                      {row.variantA.thread_id.slice(0, 14)}…
+                      {row.variantA.thread_id.length > 18 && !row.variantA.thread_id.startsWith("(")
+                        ? `${row.variantA.thread_id.slice(0, 14)}…`
+                        : row.variantA.thread_id}
                     </p>
                     <dl className="mt-3 space-y-1 text-sm">
                       <div className="flex justify-between gap-4">
@@ -364,7 +415,9 @@ export function AnalyticsDashboard({ data, variant = "page" }: Props) {
                       Variant B ({row.variantB.voice_label})
                     </p>
                     <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-                      {row.variantB.thread_id.slice(0, 14)}…
+                      {row.variantB.thread_id.length > 18 && !row.variantB.thread_id.startsWith("(")
+                        ? `${row.variantB.thread_id.slice(0, 14)}…`
+                        : row.variantB.thread_id}
                     </p>
                     <dl className="mt-3 space-y-1 text-sm">
                       <div className="flex justify-between gap-4">

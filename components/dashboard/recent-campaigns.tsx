@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, Inbox, Mail, RefreshCw, Shield, User } from "lucide-react";
+import { Calendar, GitCompare, Inbox, Mail, RefreshCw, Shield, User } from "lucide-react";
 import type { LeadFormInput } from "@/agents/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card";
 import { dashboardOutlineActionClass } from "@/lib/dashboard-action-classes";
 import { cn } from "@/lib/utils";
-import type { PersistedCampaignRow } from "@/types";
+import type { LeadPriorityTier, PersistedCampaignRow } from "@/types";
 
 function formatWhen(iso: string): string {
   try {
@@ -28,6 +28,23 @@ function formatWhen(iso: string): string {
 
 function statusLabel(status: string): string {
   return status.replace(/_/g, " ");
+}
+
+function priorityBadgeClass(tier: LeadPriorityTier | null): string {
+  switch (tier) {
+    case "critical":
+      return "border-rose-500/45 bg-rose-500/[0.12] text-rose-950 dark:border-rose-400/40 dark:bg-rose-500/16 dark:text-rose-50";
+    case "high":
+      return "border-amber-500/45 bg-amber-500/[0.12] text-amber-950 dark:border-amber-400/40 dark:bg-amber-500/15 dark:text-amber-50";
+    case "medium":
+      return "border-sky-500/40 bg-sky-500/[0.1] text-sky-950 dark:border-sky-400/40 dark:bg-sky-500/14 dark:text-sky-50";
+    default:
+      return "border-emerald-500/35 bg-emerald-500/[0.08] text-emerald-950 dark:border-emerald-400/35 dark:bg-emerald-500/12 dark:text-emerald-50";
+  }
+}
+
+function parseTier(v: unknown): LeadPriorityTier | null {
+  return v === "critical" || v === "high" || v === "medium" || v === "low" ? v : null;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -140,6 +157,34 @@ export function RecentCampaigns({
                     ) : null}
                     <span className="truncate font-medium text-foreground">{c.lead_name}</span>
                     <StatusBadge status={c.status} />
+                    {c.ab_variant && c.ab_test_id ? (
+                      <Badge
+                        variant="outline"
+                        className="gap-1 border-teal-500/45 bg-teal-500/[0.12] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-950 dark:border-teal-400/45 dark:bg-teal-500/16 dark:text-teal-50"
+                        title={`A/B experiment ${c.ab_test_id}`}
+                      >
+                        <GitCompare className="h-3 w-3" aria-hidden />
+                        A/B {c.ab_variant}
+                      </Badge>
+                    ) : null}
+                    {(() => {
+                      const compRaw = c.lead_score?.composite;
+                      const comp =
+                        typeof compRaw === "number" && Number.isFinite(compRaw) ? compRaw : null;
+                      if (comp == null) return null;
+                      return (
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                            priorityBadgeClass(parseTier(c.lead_score?.tier)),
+                          )}
+                          title={c.priority_reason ?? "Smart lead priority (cached on save)"}
+                        >
+                          Score {Math.round(comp)}
+                        </Badge>
+                      );
+                    })()}
                     {c.sdr_voice_label ? (
                       <Badge
                         variant="outline"
