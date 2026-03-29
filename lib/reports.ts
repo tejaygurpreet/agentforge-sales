@@ -119,7 +119,7 @@ export function computeNextRunUtc(
   now: Date = new Date(),
 ): Date {
   const h = Math.min(23, Math.max(0, Math.floor(hourUtc)));
-  let t = new Date(
+  const t = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), h, 0, 0, 0),
   );
   if (cadence === "weekly") {
@@ -159,7 +159,7 @@ export async function fetchReportBundle(
   filters: ReportFiltersPayload,
 ): Promise<ReportBundle> {
   const d = filters;
-  let userIds =
+  const userIds =
     d.memberUserId !== "all" && memberIds.includes(d.memberUserId) ? [d.memberUserId] : [...memberIds];
   if (userIds.length === 0) {
     return { campaigns: [], replies: [], filters: d };

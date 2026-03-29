@@ -14,6 +14,18 @@ import { scoreLeadForPriority } from "@/lib/scoring";
 import { notifyCampaignCompletedPush } from "@/lib/push";
 import { getServiceRoleSupabaseOrNull } from "@/lib/supabase-server";
 
+/** Shallow copy of upsert row without listed keys (schema fallback retries). */
+function omitCampaignUpsertFields(
+  row: Record<string, unknown>,
+  keys: readonly string[],
+): Record<string, unknown> {
+  const out = { ...row };
+  for (const k of keys) {
+    delete out[k];
+  }
+  return out;
+}
+
 export interface SaveCampaignParams {
   userId: string;
   threadId: string;
@@ -150,6 +162,8 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
     ...(Object.keys(qualificationPatch).length > 0 ? qualificationPatch : {}),
   };
 
+  const rowRecord = row as unknown as Record<string, unknown>;
+
   let { error } = await sb.from("campaigns").upsert(row, {
     onConflict: "thread_id",
   });
@@ -161,12 +175,12 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
       `${error.message} ${error.details ?? ""} ${error.hint ?? ""}`,
     )
   ) {
-    const { enriched_data: _e, ...rowLegacy } = row as typeof row & {
-      enriched_data?: unknown;
-    };
-    ({ error } = await sb.from("campaigns").upsert(rowLegacy, {
-      onConflict: "thread_id",
-    }));
+    ({ error } = await sb.from("campaigns").upsert(
+      omitCampaignUpsertFields(rowRecord, ["enriched_data"]),
+      {
+        onConflict: "thread_id",
+      },
+    ));
   }
 
   if (
@@ -175,21 +189,17 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
       `${error.message} ${error.details ?? ""} ${error.hint ?? ""}`,
     )
   ) {
-    const {
-      ab_test_id: _a,
-      ab_variant: _b,
-      template_id: _t,
-      ab_voice_note: _n,
-      ...rowNoAb
-    } = row as typeof row & {
-      ab_test_id?: unknown;
-      ab_variant?: unknown;
-      template_id?: unknown;
-      ab_voice_note?: unknown;
-    };
-    ({ error } = await sb.from("campaigns").upsert(rowNoAb, {
-      onConflict: "thread_id",
-    }));
+    ({ error } = await sb.from("campaigns").upsert(
+      omitCampaignUpsertFields(rowRecord, [
+        "ab_test_id",
+        "ab_variant",
+        "template_id",
+        "ab_voice_note",
+      ]),
+      {
+        onConflict: "thread_id",
+      },
+    ));
   }
 
   if (
@@ -198,14 +208,12 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
       `${error.message} ${error.details ?? ""} ${error.hint ?? ""}`,
     )
   ) {
-    const {
-      predicted_revenue: _pr,
-      win_probability: _wp,
-      ...rowNoForecast
-    } = row as typeof row & { predicted_revenue?: unknown; win_probability?: unknown };
-    ({ error } = await sb.from("campaigns").upsert(rowNoForecast, {
-      onConflict: "thread_id",
-    }));
+    ({ error } = await sb.from("campaigns").upsert(
+      omitCampaignUpsertFields(rowRecord, ["predicted_revenue", "win_probability"]),
+      {
+        onConflict: "thread_id",
+      },
+    ));
   }
 
   if (
@@ -214,19 +222,16 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
       `${error.message} ${error.details ?? ""} ${error.hint ?? ""}`,
     )
   ) {
-    const {
-      follow_up_engine_snapshot: _fs,
-      follow_up_approval_status: _fa,
-      follow_up_next_send_at: _fn,
-      ...rowNoFollowUp
-    } = row as typeof row & {
-      follow_up_engine_snapshot?: unknown;
-      follow_up_approval_status?: unknown;
-      follow_up_next_send_at?: unknown;
-    };
-    ({ error } = await sb.from("campaigns").upsert(rowNoFollowUp, {
-      onConflict: "thread_id",
-    }));
+    ({ error } = await sb.from("campaigns").upsert(
+      omitCampaignUpsertFields(rowRecord, [
+        "follow_up_engine_snapshot",
+        "follow_up_approval_status",
+        "follow_up_next_send_at",
+      ]),
+      {
+        onConflict: "thread_id",
+      },
+    ));
   }
 
   if (
@@ -235,14 +240,12 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
       `${error.message} ${error.details ?? ""} ${error.hint ?? ""}`,
     )
   ) {
-    const {
-      lead_score: _ls,
-      priority_reason: _pr,
-      ...rowNoLeadScore
-    } = row as typeof row & { lead_score?: unknown; priority_reason?: unknown };
-    ({ error } = await sb.from("campaigns").upsert(rowNoLeadScore, {
-      onConflict: "thread_id",
-    }));
+    ({ error } = await sb.from("campaigns").upsert(
+      omitCampaignUpsertFields(rowRecord, ["lead_score", "priority_reason"]),
+      {
+        onConflict: "thread_id",
+      },
+    ));
   }
 
   if (
@@ -251,17 +254,12 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
       `${error.message} ${error.details ?? ""} ${error.hint ?? ""}`,
     )
   ) {
-    const {
-      qualification_score: _qs,
-      detected_objections: _do,
-      ...rowNoQualCols
-    } = row as typeof row & {
-      qualification_score?: unknown;
-      detected_objections?: unknown;
-    };
-    ({ error } = await sb.from("campaigns").upsert(rowNoQualCols, {
-      onConflict: "thread_id",
-    }));
+    ({ error } = await sb.from("campaigns").upsert(
+      omitCampaignUpsertFields(rowRecord, ["qualification_score", "detected_objections"]),
+      {
+        onConflict: "thread_id",
+      },
+    ));
   }
 
   if (error) {
