@@ -13,6 +13,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
+import { HeaderInboxButton } from "@/components/dashboard/header-inbox-button";
+import { InboxUnreadProvider } from "@/components/dashboard/inbox-unread-context";
 import { ReplyIntelProvider } from "@/components/dashboard/reply-intel-context";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,6 +53,8 @@ interface DashboardShellProps {
   };
   /** Prompt 84 — primary nav (desktop + mobile sheet). */
   navLinks: DashboardNavLink[];
+  /** Prompt 123 — seed unread badge (`getInboxUnreadCountAction`). */
+  initialInboxUnreadCount: number;
   children: React.ReactNode;
 }
 
@@ -116,6 +120,7 @@ export function DashboardShell({
   displayName,
   whiteLabel,
   navLinks,
+  initialInboxUnreadCount,
   children,
 }: DashboardShellProps) {
   const router = useRouter();
@@ -144,11 +149,12 @@ export function DashboardShell({
   }, [whiteLabel?.primaryColor, whiteLabel?.secondaryColor]);
 
   return (
-    <div
-      className="flex min-h-screen min-h-[100dvh] flex-col text-foreground antialiased selection:bg-primary/15 selection:text-foreground"
-      style={brandCssVars}
-    >
-      <header className="sticky top-0 z-30 border-b border-border/45 bg-gradient-to-b from-[#fffdfb]/95 via-card/90 to-card/75 shadow-soft backdrop-blur-xl supports-[backdrop-filter]:bg-card/65 [border-bottom-color:color-mix(in_srgb,var(--brand-primary,transparent)_8%,hsl(var(--border)))]">
+    <InboxUnreadProvider initialCount={initialInboxUnreadCount}>
+      <div
+        className="flex min-h-screen min-h-[100dvh] flex-col text-foreground antialiased selection:bg-primary/15 selection:text-foreground"
+        style={brandCssVars}
+      >
+        <header className="sticky top-0 z-30 border-b border-border/45 bg-gradient-to-b from-[#fffdfb]/95 via-card/90 to-card/75 shadow-soft backdrop-blur-xl supports-[backdrop-filter]:bg-card/65 [border-bottom-color:color-mix(in_srgb,var(--brand-primary,transparent)_8%,hsl(var(--border)))]">
         <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center justify-between gap-2 px-3 py-2 sm:h-[3.75rem] sm:px-5 sm:py-0">
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-6 md:gap-8">
             <Link
@@ -208,6 +214,7 @@ export function DashboardShell({
           </div>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <HeaderInboxButton />
             <span
               className="hidden max-w-[200px] truncate text-xs text-muted-foreground md:inline lg:max-w-[240px]"
               title={email}
@@ -230,18 +237,19 @@ export function DashboardShell({
       <main className="mx-auto w-full max-w-6xl flex-1 px-3 py-8 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 sm:px-6 sm:py-12">
         <ReplyIntelProvider>{children}</ReplyIntelProvider>
       </main>
-      <footer
-        className="mt-auto border-t border-border/40 bg-gradient-to-t from-muted/25 via-transparent to-transparent [border-top-color:color-mix(in_srgb,var(--brand-primary,transparent)_6%,hsl(var(--border)))]"
-        role="contentinfo"
-      >
-        <div className="mx-auto max-w-6xl px-3 py-5 sm:px-6">
-          <p className="text-center text-[11px] leading-relaxed tracking-wide text-muted-foreground/90">
-            <span className="font-medium text-foreground/80">{brandLabel}</span>
-            <span className="mx-2 inline-block h-0.5 w-0.5 rounded-full bg-border align-middle opacity-70" aria-hidden />
-            <span className="text-muted-foreground/80">Campaign intelligence workspace</span>
-          </p>
-        </div>
-      </footer>
-    </div>
+        <footer
+          className="mt-auto border-t border-border/40 bg-gradient-to-t from-muted/25 via-transparent to-transparent [border-top-color:color-mix(in_srgb,var(--brand-primary,transparent)_6%,hsl(var(--border)))]"
+          role="contentinfo"
+        >
+          <div className="mx-auto max-w-6xl px-3 py-5 sm:px-6">
+            <p className="text-center text-[11px] leading-relaxed tracking-wide text-muted-foreground/90">
+              <span className="font-medium text-foreground/80">{brandLabel}</span>
+              <span className="mx-2 inline-block h-0.5 w-0.5 rounded-full bg-border align-middle opacity-70" aria-hidden />
+              <span className="text-muted-foreground/80">Campaign intelligence workspace</span>
+            </p>
+          </div>
+        </footer>
+      </div>
+    </InboxUnreadProvider>
   );
 }

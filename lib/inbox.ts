@@ -9,7 +9,9 @@ import "server-only";
  *   `public.inbox_threads` with `filter: user_id=eq.{userId}`. Inbound replies are stored under the
  *   original sender’s `user_id`, so only that user sees the thread in-app.
  * - **Polling:** Client backup interval uses `INBOX_NOTIFICATIONS_POLL_MS` (`lib/inbox-shared.ts`) aligned
- *   with inbox tab polling for efficient refresh when Realtime is unavailable.
+ *   with inbox list refresh for efficient updates when Realtime is unavailable.
+ * - **Prompt 123 — Header badge:** `getInboxUnreadCountAction()` (server) seeds `InboxUnreadProvider`; the
+ *   header `InboxNotificationsBridge` refreshes the same count for the mail icon on `/inbox` and elsewhere.
  * - **Prompt 121 — Performance:** `INBOX_SEARCH_DEBOUNCE_MS` limits list refetch churn; `INBOX_REALTIME_DEBOUNCE_MS`
  *   batches websocket-triggered refreshes. Parsing helpers below stay pure for predictable server work.
  * - **Campaign link:** `upsertInboxThreadAfterOutreachSend` runs after a successful Workspace outreach

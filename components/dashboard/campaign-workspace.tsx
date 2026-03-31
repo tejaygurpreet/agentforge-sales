@@ -2417,7 +2417,7 @@ export function CampaignWorkspace({
                   </CardDescription>
                   <p className="text-xs leading-relaxed text-muted-foreground">
                     <Link
-                      href="/?tab=inbox"
+                      href="/inbox"
                       className="font-medium text-primary underline-offset-4 transition-colors hover:text-primary/90 hover:underline"
                     >
                       Professional Inbox

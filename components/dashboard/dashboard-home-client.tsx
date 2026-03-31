@@ -33,10 +33,6 @@ import { CustomVoicesSection } from "@/components/dashboard/custom-voices-sectio
 import { HubSpotConnectSection } from "@/components/dashboard/hubspot-connect-section";
 import { CompetitiveEdgePanel } from "@/components/dashboard/competitive-edge-panel";
 import { DashboardHero } from "@/components/dashboard/dashboard-hero";
-import { InboxNotificationsBridge } from "@/components/dashboard/inbox-notifications-bridge";
-import { InboxTabDeepLink } from "@/components/dashboard/inbox-tab-deeplink";
-import { ProfessionalInbox } from "@/components/dashboard/professional-inbox";
-import type { InboxThreadRow } from "@/lib/inbox";
 import { ProductRoadmapSection } from "@/components/dashboard/product-roadmap-section";
 import { ReportsSection } from "@/components/dashboard/reports-section";
 import { AbTestingSection } from "@/components/dashboard/ab-testing-section";
@@ -58,7 +54,7 @@ import { FirstRunSetupBanner } from "@/components/onboarding/first-run-setup-ban
 import { PwaBanner } from "@/components/pwa/pwa-banner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRouter } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { DeliverabilitySuitePayload, WhiteLabelClientSettingsDTO } from "@/types";
 import type { WorkspaceMemberDTO, WorkspaceMemberRole } from "@/types";
 
@@ -101,10 +97,6 @@ type Props = {
   coachingPayload: SalesCoachingPayloadDTO;
   /** Prompt 102 — executive KPIs, health, cached executive report. */
   sdrManagerPayload: SdrManagerPayloadDTO;
-  /** Prompt 116 — server-prefetched inbox threads (empty when logged out). */
-  initialInboxThreads: InboxThreadRow[];
-  /** Prompt 119 — unread count for Inbox tab badge (0 when logged out). */
-  initialInboxUnreadCount: number;
 };
 
 /**
@@ -153,18 +145,19 @@ export function DashboardHomeClient({
   knowledgeBaseEntries,
   coachingPayload,
   sdrManagerPayload,
-  initialInboxThreads,
-  initialInboxUnreadCount,
 }: Props) {
   const router = useRouter();
   const [batchProgress, setBatchProgress] = useState<BatchRunItem[] | null>(null);
   const [mainTab, setMainTab] = useState("workspace");
-  const [inboxUnreadCount, setInboxUnreadCount] = useState(initialInboxUnreadCount);
   const [templatePrefill, setTemplatePrefill] = useState<CampaignRerunPayload | null>(null);
 
   useEffect(() => {
-    setInboxUnreadCount(initialInboxUnreadCount);
-  }, [initialInboxUnreadCount]);
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("tab") === "inbox") {
+      router.replace("/inbox");
+    }
+  }, [router]);
   const [sequencePrefill, setSequencePrefill] = useState<{ id: string; nonce: number } | null>(null);
 
   const onTemplatePrefillConsumed = useCallback(() => {
@@ -200,13 +193,6 @@ export function DashboardHomeClient({
 
   return (
     <div className="mx-auto max-w-6xl animate-in fade-in slide-in-from-bottom-2 space-y-11 px-4 py-2 duration-500 ease-out sm:space-y-14 sm:px-5 sm:py-4 lg:px-6">
-      <Suspense fallback={null}>
-        <InboxTabDeepLink setMainTab={setMainTab} />
-      </Suspense>
-      <InboxNotificationsBridge
-        inboxActive={mainTab === "inbox"}
-        onCount={setInboxUnreadCount}
-      />
       <PwaBanner />
       <FirstRunSetupBanner />
       <DashboardHero outboundFromPreview={outboundFromPreview} whiteLabel={whiteLabel} />
@@ -276,26 +262,12 @@ export function DashboardHomeClient({
       />
 
       <Tabs value={mainTab} onValueChange={setMainTab} className="w-full">
-        <TabsList className="flex h-auto w-full max-w-6xl flex-nowrap justify-start gap-1 overflow-x-auto border-border/40 bg-muted/50 p-1.5 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:grid sm:grid-cols-11 sm:overflow-visible sm:pb-1.5 [&::-webkit-scrollbar]:hidden">
+        <TabsList className="flex h-auto w-full max-w-6xl flex-nowrap justify-start gap-1 overflow-x-auto border-border/40 bg-muted/50 p-1.5 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:grid sm:grid-cols-10 sm:overflow-visible sm:pb-1.5 [&::-webkit-scrollbar]:hidden">
           <TabsTrigger
             value="workspace"
             className="shrink-0 transition-all duration-200 data-[state=active]:shadow-soft"
           >
             Workspace
-          </TabsTrigger>
-          <TabsTrigger
-            value="inbox"
-            className="relative shrink-0 gap-1.5 transition-all duration-200 data-[state=active]:shadow-soft"
-          >
-            Inbox
-            {inboxUnreadCount > 0 ? (
-              <span
-                className="inline-flex min-h-[1.125rem] min-w-[1.125rem] animate-in zoom-in-95 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-violet-500 px-1 text-[10px] font-semibold tabular-nums text-white shadow-sm ring-2 ring-background duration-300 ease-out"
-                aria-label={`${inboxUnreadCount} unread`}
-              >
-                {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
-              </span>
-            ) : null}
           </TabsTrigger>
           <TabsTrigger
             value="sdr-manager"
@@ -352,12 +324,6 @@ export function DashboardHomeClient({
             Custom voices
           </TabsTrigger>
         </TabsList>
-        <TabsContent value="inbox" className="space-y-8 pt-2">
-          <ProfessionalInbox
-            initialThreads={initialInboxThreads}
-            onUnreadCountChange={setInboxUnreadCount}
-          />
-        </TabsContent>
         <TabsContent value="workspace" className="space-y-11 sm:space-y-14">
           <LeadPrioritySection
             rows={analytics.leadPriorityLeaderboard}

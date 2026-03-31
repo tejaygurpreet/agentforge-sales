@@ -12,8 +12,6 @@ import {
   listAbTestsAction,
   listKnowledgeBaseEntriesAction,
   listPlaybooksForWorkspaceAction,
-  listInboxThreadsAction,
-  getInboxUnreadCountAction,
   listRecentCampaigns,
   listScheduledReportsAction,
   loadObjectionLibraryForDashboard,
@@ -25,7 +23,6 @@ import { buildDynamicFromEmail } from "@/lib/resend";
 import { createServerSupabaseClient, getServiceRoleSupabaseOrNull } from "@/lib/supabase-server";
 import { ensurePersonalWorkspaceMembership, resolveWorkspaceContext } from "@/lib/workspace";
 import { fetchWhiteLabelSettings } from "@/lib/white-label";
-import type { InboxThreadRow } from "@/lib/inbox";
 import type {
   AbTestExperimentRow,
   CampaignSequenceRow,
@@ -182,6 +179,7 @@ export const dynamic = "force-dynamic";
  * Prompt 121 — Inbox UX/performance finalized in `ProfessionalInbox` + shared `lib/inbox-shared` debounce constants.
  * Prompt 122 — Campaign ↔ inbox: outreach sends call `upsertInboxThreadAfterOutreachSend`; inbox replies call
  * `linkInboxThreadToCampaignIfKnown`; inbound webhook enriches threads via `findCampaignThreadIdForProspect`.
+ * Prompt 123 — Inbox UI lives at `/inbox`; dashboard home no longer prefetches inbox rows (layout seeds unread for header).
  */
 export default async function DashboardPage() {
   const envWarnings = getDashboardEnvWarnings();
@@ -308,13 +306,6 @@ export default async function DashboardPage() {
     ? await Promise.all([listPlaybooksForWorkspaceAction(), listKnowledgeBaseEntriesAction()])
     : [[], []];
 
-  let initialInboxThreads: InboxThreadRow[] = [];
-  let initialInboxUnreadCount = 0;
-  if (user) {
-    initialInboxThreads = await listInboxThreadsAction();
-    initialInboxUnreadCount = await getInboxUnreadCountAction();
-  }
-
   return (
     <DashboardHomeClient
       envWarnings={envWarnings}
@@ -340,8 +331,6 @@ export default async function DashboardPage() {
       knowledgeBaseEntries={knowledgeBaseEntries}
       coachingPayload={coachingPayload}
       sdrManagerPayload={sdrManagerPayload}
-      initialInboxThreads={initialInboxThreads}
-      initialInboxUnreadCount={initialInboxUnreadCount}
     />
   );
 }
