@@ -1,6 +1,8 @@
 "use client";
 
 import { LeadPrioritySection } from "@/components/dashboard/lead-priority-section";
+import { DealClosePanel } from "@/components/dashboard/deal-close-panel";
+import { OptimizerPanel } from "@/components/dashboard/optimizer-panel";
 import { QualificationObjectionPanel } from "@/components/dashboard/qualification-objection-panel";
 import type { DashboardAnalyticsSummary } from "@/types";
 import { cn } from "@/lib/utils";
@@ -27,6 +29,7 @@ import {
 import {
   Activity,
   BarChart3,
+  Briefcase,
   Flame,
   GitCompare,
   Heart,
@@ -40,11 +43,16 @@ import {
   Wallet,
 } from "lucide-react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 type Props = {
   data: DashboardAnalyticsSummary;
   /** Prompt 70 — hide duplicate page chrome when embedded on the main dashboard tab. */
   variant?: "page" | "embedded";
+  /** Prompt 101 — switch parent tab to Coaching (embedded dashboard only). */
+  onOpenCoachingTab?: () => void;
+  /** Prompt 102 — switch parent tab to SDR Manager (embedded dashboard only). */
+  onOpenSdrManagerTab?: () => void;
 };
 
 const CHART_COLORS = ["#64748b", "#38bdf8", "#34d399", "#a78bfa"];
@@ -76,7 +84,12 @@ function StatCard({
   );
 }
 
-export function AnalyticsDashboard({ data, variant = "page" }: Props) {
+export function AnalyticsDashboard({
+  data,
+  variant = "page",
+  onOpenCoachingTab,
+  onOpenSdrManagerTab,
+}: Props) {
   const {
     campaignCount,
     avgCompositeScore,
@@ -101,6 +114,10 @@ export function AnalyticsDashboard({ data, variant = "page" }: Props) {
     leadPrioritySummary,
     qualificationInsights,
     replyObjectionCards,
+    dealCloseQualifications,
+    avgCloseProbability,
+    optimizerFeed,
+    coachingPreview,
   } = data;
 
   const chartData = strengthBuckets.map((b, i) => ({
@@ -140,7 +157,65 @@ export function AnalyticsDashboard({ data, variant = "page" }: Props) {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {coachingPreview ? (
+        <Card className="rounded-2xl border-violet-500/25 bg-violet-500/[0.04] shadow-sm ring-1 ring-violet-500/10">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Sparkles className="h-4 w-4 text-violet-500" aria-hidden />
+              AI coaching (Prompt 101)
+            </CardTitle>
+            <CardDescription>
+              Real-time voice benchmarks and pipeline momentum feed the Coaching tab — open it for full AI
+              tips and weekly email options.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-3">
+            {coachingPreview.voiceStats[0] ? (
+              <span className="text-sm text-muted-foreground">
+                Top voice:{" "}
+                <span className="font-medium text-foreground">{coachingPreview.voiceStats[0].voice}</span> (
+                avg {coachingPreview.voiceStats[0].avgComposite})
+              </span>
+            ) : (
+              <span className="text-sm text-muted-foreground">Coaching signals update as you add runs.</span>
+            )}
+            {onOpenCoachingTab ? (
+              <Button type="button" size="sm" variant="outline" onClick={onOpenCoachingTab}>
+                Open Coaching tab
+              </Button>
+            ) : (
+              <Link
+                href="/"
+                className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Go to dashboard → Coaching
+              </Link>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {onOpenSdrManagerTab ? (
+        <Card className="rounded-2xl border-sky-500/25 bg-sky-500/[0.04] shadow-sm ring-1 ring-sky-500/10">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Briefcase className="h-4 w-4 text-sky-600 dark:text-sky-400" aria-hidden />
+              AI SDR Manager (Prompt 102)
+            </CardTitle>
+            <CardDescription>
+              Executive pipeline, ROI themes, system health, and a one-click AI executive report — open the SDR
+              Manager tab for the full dashboard.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button type="button" size="sm" variant="outline" onClick={onOpenSdrManagerTab}>
+              Open SDR Manager tab
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Weighted pipeline"
           value={`$${forecastWeightedPipelineUsd.toLocaleString()}`}
@@ -159,6 +234,12 @@ export function AnalyticsDashboard({ data, variant = "page" }: Props) {
           hint="Mean close score across saved snapshots (forecast engine)."
           icon={TrendingUp}
         />
+        <StatCard
+          title="Avg deal close (engine)"
+          value={avgCloseProbability != null ? `${avgCloseProbability}%` : "—"}
+          hint="Prompt 93 — ICP + qual + reply + objections + forecast blend."
+          icon={Trophy}
+        />
       </div>
 
       <LeadPrioritySection rows={leadPriorityLeaderboard} summary={leadPrioritySummary} />
@@ -167,6 +248,10 @@ export function AnalyticsDashboard({ data, variant = "page" }: Props) {
         qualificationRows={qualificationInsights}
         objectionCards={replyObjectionCards}
       />
+
+      <DealClosePanel rows={dealCloseQualifications} avgCloseProbability={avgCloseProbability} />
+
+      <OptimizerPanel mode="feed" rows={optimizerFeed} />
 
       <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-md dark:bg-card/90">
         <CardHeader>

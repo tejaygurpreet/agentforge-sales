@@ -135,3 +135,38 @@ export async function resolveWorkspaceContext(
   return { workspaceId, currentUserRole, memberUserIds };
 }
 
+/**
+ * Prompt 97 — same primary workspace pick as `resolveWorkspaceContext` (service-role safe for save hooks).
+ */
+export async function pickPrimaryWorkspaceIdForUser(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<string> {
+  const { data, error } = await supabase
+    .from("workspace_members")
+    .select("workspace_id, role, created_at")
+    .eq("user_id", userId)
+    .eq("status", "active");
+
+  if (error || !Array.isArray(data) || data.length === 0) {
+    return userId;
+  }
+
+  const rows = data.map((r) => ({
+    workspace_id: String((r as { workspace_id?: unknown }).workspace_id ?? ""),
+    role: normRole((r as { role?: unknown }).role),
+    created_at: String((r as { created_at?: unknown }).created_at ?? ""),
+  }));
+
+  rows.sort((a, b) => {
+    const aNonSelf = a.workspace_id !== userId ? 1 : 0;
+    const bNonSelf = b.workspace_id !== userId ? 1 : 0;
+    if (aNonSelf !== bNonSelf) return bNonSelf - aNonSelf;
+    const roleDelta = ROLE_RANK[b.role] - ROLE_RANK[a.role];
+    if (roleDelta !== 0) return roleDelta;
+    return a.created_at.localeCompare(b.created_at);
+  });
+
+  return rows[0]?.workspace_id || userId;
+}
+

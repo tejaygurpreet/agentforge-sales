@@ -6,6 +6,7 @@ import {
   runCampaignGraph,
   serializeCampaignStateForClient,
 } from "@/agents/graph";
+import type { SequenceRecommendationSnapshot } from "@/agents/types";
 import { saveCampaign as persistCampaignToDatabase } from "@/lib/save-campaign";
 import { deleteThreadCheckpoint, mergeDashboardState } from "@/agents/supabase-checkpointer";
 import {
@@ -24,7 +25,11 @@ import {
 import { runLeadEnrichmentStep } from "@/lib/agents/research_node";
 import { getServiceRoleSupabaseOrNull } from "@/lib/supabase-server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
-import { hasLlmProviderConfigured, warnIfResendNotConfigured } from "@/lib/env";
+import {
+  getDashboardEnvWarnings,
+  hasLlmProviderConfigured,
+  warnIfResendNotConfigured,
+} from "@/lib/env";
 import {
   analyzeProspectReply,
   replyAnalysisWithLabels,
@@ -46,6 +51,7 @@ import {
   buildReplyObjectionCardFromRow,
   computeDisplayQualificationScore,
 } from "@/lib/agents/qualification_node";
+import { computeDealQualificationClose } from "@/lib/qualification-engine";
 import {
   buildLeadPriorityQueueSummary,
   priorityTierLabel,
@@ -61,6 +67,7 @@ import type {
   CampaignThreadRow,
   CustomVoiceRow,
   DashboardAnalyticsSummary,
+  DeliverabilityCoachInsightsDTO,
   DeliverabilitySuitePayload,
   ForecastTrendPoint,
   LeadPriorityLeaderboardRow,
@@ -70,20 +77,42 @@ import type {
   ProspectReplyAnalysisPayload,
   QualificationInsightRow,
   ReplyObjectionCardRow,
+  DealCloseQualificationRow,
+  KnowledgeBaseEntryRow,
+  PlaybookRow,
   ReportFiltersPayload,
   ScheduledReportRow,
   WorkspaceMemberDTO,
   WorkspaceMemberRole,
+  PersonalizedDemoScriptDTO,
+  SalesCoachingPayloadDTO,
+  SdrManagerPayloadDTO,
 } from "@/types";
 import { computeCampaignStrength } from "@/lib/campaign-strength";
 import { mergeTemplatePayloadIntoLeadForm } from "@/lib/campaign-templates-merge";
 import { computeForecastFromSnapshot } from "@/lib/forecast";
+import { buildDashboardOptimizerFeedFromRows } from "@/lib/optimizer";
+import {
+  buildSequenceRecommendation,
+  historicSampleFromResultsRow,
+  type HistoricCampaignSample,
+} from "@/lib/recommendation-engine";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { withTimeout } from "@/lib/async-timeout";
 import { fetchCustomVoiceProfileForUser } from "@/lib/custom-voices";
 import { sdrVoiceLabel, voiceLabelForLead } from "@/lib/sdr-voice";
 import { generateCampaignPdfArrayBuffer } from "@/lib/campaign-pdf";
+import {
+  generateSalesPlaybookWithAi,
+  renderSalesPlaybookPdfBytes,
+  salesPlaybookSchema,
+} from "@/lib/playbook-generator";
+import {
+  generateProposalPdfInputWithAi,
+  isProposalEligible,
+  renderProposalPdfBytes,
+} from "@/lib/proposal-generator";
 import { syncCampaignToHubSpot } from "@/lib/hubspot";
 import { buildDynamicFromEmail, sendTransactionalEmail } from "@/lib/resend";
 import {
@@ -91,6 +120,20 @@ import {
   inboxPlacementFromWarmupVolume,
   placementScoreForDailyLog,
 } from "@/lib/deliverability";
+import {
+  buildCoachInsightsFromSuite,
+  computeNextSuggestedSendIso,
+  generateAiCoachLayer,
+  mergeCoachWithCache,
+  scheduleTagForUtcNow,
+  type DeliverabilityWarmupMetricsInput,
+} from "@/lib/deliverability-coach";
+import {
+  buildSystemHealthStatus,
+  computeExecutiveMetrics,
+  formatExecutiveReportMarkdown,
+  generateExecutiveReportWithAi,
+} from "@/lib/sdr-manager";
 import {
   buildCampaignPdfExportOptionsFromWhiteLabel,
   fetchWhiteLabelSettings,
@@ -127,6 +170,18 @@ import {
   getValidAccessTokenForUser,
 } from "@/lib/calendar";
 import type { CalendarProvider } from "@/lib/calendar";
+import { isPersonalizedDemoEligible } from "@/lib/demo-eligibility";
+import {
+  buildDeterministicCoachingPreview,
+  computeVoiceCoachingStats,
+  generateSalesCoachingWithAi,
+} from "@/lib/coaching-engine";
+import {
+  buildDemoEventTitle,
+  formatDemoScriptForCalendarDescription,
+  generatePersonalizedDemoScriptWithAi,
+  parseStoredDemoScript,
+} from "@/lib/demo-generator";
 
 /** Prompt 18: hard cap so the dashboard never spins forever (must be ≥ `GRAPH_INVOKE_MAX_MS` in graph). */
 const START_CAMPAIGN_MAX_MS = 90_000;
@@ -626,6 +681,20 @@ const incomingLeadSchema = z.object({
   custom_voice_name: z.string().max(200).optional(),
 });
 
+const sequenceRecommendationSnapshotSchema = z.object({
+  engine_version: z.literal("p95-v1"),
+  computed_at: z.string(),
+  recommended_sequence_id: z.string().uuid().nullable(),
+  recommended_sequence_name: z.string().nullable(),
+  confidence_0_to_100: z.number().min(0).max(100),
+  sdr_voice_tone: z.enum(SDR_VOICE_TONE_VALUES),
+  custom_voice_id: z.string().uuid().nullable(),
+  custom_voice_name: z.string().max(200).nullable(),
+  first_message_hint: z.string().max(1400),
+  why_this_sequence: z.string().max(4000),
+  signals_used: z.array(z.string()).max(24),
+});
+
 const campaignRunOptionsSchema = z.object({
   ab_test_id: z.string().uuid().optional(),
   ab_variant: z.enum(["A", "B"]).optional(),
@@ -633,6 +702,8 @@ const campaignRunOptionsSchema = z.object({
   template_voice_note: z.string().max(2000).optional(),
   /** Prompt 88 — optional saved sequence for display + milestone progress in the UI. */
   sequence_id: z.string().uuid().optional(),
+  /** Prompt 95 — optional metadata from the recommendation engine (does not alter pipeline nodes). */
+  sequence_recommendation_snapshot: sequenceRecommendationSnapshotSchema.optional(),
 });
 
 const startCampaignWithOptionsPayloadSchema = z.object({
@@ -702,6 +773,120 @@ export async function saveCampaign(params: {
   snapshot: CampaignClientSnapshot;
 }): Promise<void> {
   await persistCampaignToDatabase(params);
+}
+
+/** Prompt 95 — best-effort audit row when a run includes recommendation metadata. */
+async function persistSequenceRecommendationLog(
+  workspaceId: string,
+  userId: string,
+  company: string,
+  email: string,
+  snap: SequenceRecommendationSnapshot,
+): Promise<void> {
+  const sb = getServiceRoleSupabaseOrNull();
+  if (!sb) return;
+  const { error } = await sb.from("sequence_recommendation_log").insert({
+    workspace_id: workspaceId,
+    user_id: userId,
+    company: company.trim().slice(0, 240),
+    prospect_email: email.trim().slice(0, 240),
+    recommended_sequence_id: snap.recommended_sequence_id,
+    confidence: snap.confidence_0_to_100,
+    payload: snap as unknown as Record<string, unknown>,
+  });
+  if (error && !/sequence_recommendation_log|column|schema/i.test(error.message ?? "")) {
+    console.warn("[AgentForge] persistSequenceRecommendationLog", error.message);
+  }
+}
+
+const sequenceRecommendationRequestSchema = z.object({
+  company: z.string().min(1).max(400),
+  email: z.string().email(),
+  notes: z.string().max(8000).optional(),
+});
+
+/**
+ * Prompt 95 — heuristic sequence / voice / opener recommendation (no extra LLM round-trip).
+ */
+export async function getSequenceRecommendationAction(
+  raw: z.input<typeof sequenceRecommendationRequestSchema>,
+): Promise<
+  | { ok: true; recommendation: SequenceRecommendationSnapshot }
+  | { ok: false; error: string }
+> {
+  const parsed = sequenceRecommendationRequestSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Enter a company and valid email to get a recommendation." };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  const memberIds = ws.memberUserIds;
+  const sr = getServiceRoleSupabaseOrNull();
+  const campaignsReader = sr ?? supabase;
+
+  const { data: seqRows, error: seqErr } = await supabase
+    .from("campaign_sequences")
+    .select("id, name, steps, created_at, updated_at")
+    .eq("workspace_id", ws.workspaceId)
+    .order("updated_at", { ascending: false })
+    .limit(80);
+
+  if (seqErr && !isMissingColumnOrSchemaError(seqErr.message)) {
+    console.warn("[AgentForge] getSequenceRecommendationAction sequences", seqErr.message);
+  }
+
+  const sequences: CampaignSequenceRow[] = (seqRows ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      id: String(row.id ?? ""),
+      name: String(row.name ?? ""),
+      steps: parseSequenceStepsFromJson(row.steps),
+      created_at: String(row.created_at ?? ""),
+      updated_at: String(row.updated_at ?? ""),
+    };
+  });
+
+  const { data: campRows, error: campErr } = await campaignsReader
+    .from("campaigns")
+    .select("results, company")
+    .in("user_id", memberIds)
+    .limit(220);
+
+  if (campErr && !isMissingColumnOrSchemaError(campErr.message)) {
+    console.warn("[AgentForge] getSequenceRecommendationAction campaigns", campErr.message);
+  }
+
+  const historicSamples: HistoricCampaignSample[] = [];
+  for (const row of campRows ?? []) {
+    const r = row as { results?: unknown; company?: unknown };
+    const co = typeof r.company === "string" ? r.company : "";
+    const h = historicSampleFromResultsRow(r.results, co);
+    if (h) historicSamples.push(h);
+  }
+
+  const customVoices = await listCustomVoicesAction();
+
+  const recommendation = buildSequenceRecommendation({
+    company: parsed.data.company.trim(),
+    email: parsed.data.email.trim(),
+    notes: parsed.data.notes,
+    sequences,
+    historicSamples,
+    customVoices: customVoices.map((v) => ({ id: v.id, name: v.name })),
+  });
+
+  return { ok: true, recommendation };
 }
 
 const workspaceRoleSchema = z.enum(["admin", "member", "viewer"]);
@@ -1058,11 +1243,22 @@ async function runSingleCampaignPipeline(
         template_voice_note: options?.template_voice_note,
         sequence_plan,
         reply_follow_up_intel: reply_follow_up_intel ?? null,
+        sequence_recommendation_snapshot: options?.sequence_recommendation_snapshot ?? null,
       }),
       START_CAMPAIGN_MAX_MS,
       "startCampaign.runCampaignGraph",
     );
     const snapshot = serializeCampaignStateForClient(finalState);
+
+    if (options?.sequence_recommendation_snapshot) {
+      void persistSequenceRecommendationLog(
+        ws.workspaceId,
+        user.id,
+        formLead.company,
+        formLead.email,
+        options.sequence_recommendation_snapshot,
+      ).catch(() => {});
+    }
 
     revalidatePath("/");
     revalidatePath("/analytics");
@@ -1848,6 +2044,8 @@ const proposeMeetingSchema = z.object({
   title: z.string().min(2).max(200).optional(),
   body: z.string().max(4000).optional(),
   attendee_email: z.string().email().optional(),
+  /** Prompt 100 — demo-specific calendar event (same provider APIs). */
+  event_kind: z.enum(["standard", "demo"]).optional(),
 });
 
 /** Prompt 89 — OAuth connection flags for dashboard meeting scheduler. */
@@ -1936,10 +2134,14 @@ export async function proposeMeetingAction(
 
   const title =
     parsed.data.title?.trim() ||
-    `Meeting — ${parsed.data.thread_id.slice(0, 8)} (AgentForge)`;
+    (parsed.data.event_kind === "demo"
+      ? `Product demo — ${parsed.data.thread_id.slice(0, 8)} (AgentForge)`
+      : `Meeting — ${parsed.data.thread_id.slice(0, 8)} (AgentForge)`);
   const bodyText =
     parsed.data.body?.trim() ||
-    `Scheduled via AgentForge Sales.\nThread: ${parsed.data.thread_id}`;
+    (parsed.data.event_kind === "demo"
+      ? `Personalized demo — AgentForge Sales.\nThread: ${parsed.data.thread_id}`
+      : `Scheduled via AgentForge Sales.\nThread: ${parsed.data.thread_id}`);
 
   try {
     if (parsed.data.provider === "google") {
@@ -1966,6 +2168,283 @@ export async function proposeMeetingAction(
     const msg = e instanceof Error ? e.message : "Calendar API failed";
     return { ok: false, error: msg };
   }
+}
+
+const demoThreadSchema = z.object({
+  thread_id: z.string().min(1).max(280),
+});
+
+const bookPersonalizedDemoSchema = z.object({
+  thread_id: z.string().min(1).max(280),
+  provider: z.enum(["google", "microsoft"]),
+  start_iso: z.string().min(12).max(44),
+  end_iso: z.string().min(12).max(44),
+});
+
+const recordDemoOutcomeSchema = z.object({
+  thread_id: z.string().min(1).max(280),
+  outcome: z.enum(["completed", "no_show", "cancelled"]),
+  notes: z.string().max(2000).optional(),
+});
+
+export type GeneratePersonalizedDemoScriptResult =
+  | { ok: true; script: PersonalizedDemoScriptDTO; demo_status: string }
+  | { ok: false; error: string };
+
+/**
+ * Prompt 100 — AI personalized demo script; persists `demo_script` + `demo_status` when columns exist.
+ */
+export async function generatePersonalizedDemoScriptAction(
+  raw: z.input<typeof demoThreadSchema>,
+): Promise<GeneratePersonalizedDemoScriptResult> {
+  const parsed = demoThreadSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid request." };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+
+  const { data: row, error: qErr } = await supabase
+    .from("campaigns")
+    .select("user_id, results")
+    .eq("thread_id", parsed.data.thread_id)
+    .maybeSingle();
+  if (qErr || !row || (row as { user_id?: string }).user_id !== user.id) {
+    return { ok: false, error: "Campaign not found for this thread." };
+  }
+  const snap = snapshotFromPersistedResults((row as { results?: unknown }).results);
+  if (!snap) return { ok: false, error: "Campaign snapshot is missing." };
+  if (!isPersonalizedDemoEligible(snap)) {
+    return {
+      ok: false,
+      error: "Demo unlocks when qualification is strong (score ≥70) or the lead is Qualified.",
+    };
+  }
+
+  const script = await generatePersonalizedDemoScriptWithAi(snap);
+  const scriptJson = { ...script, generated_at: new Date().toISOString() };
+  const { error: upErr } = await supabase
+    .from("campaigns")
+    .update({
+      demo_script: scriptJson as unknown as Record<string, unknown>,
+      demo_status: "script_ready",
+    })
+    .eq("thread_id", parsed.data.thread_id)
+    .eq("user_id", user.id);
+
+  if (upErr) {
+    if (!isMissingColumnOrSchemaError(upErr.message)) {
+      return { ok: false, error: upErr.message };
+    }
+  }
+
+  revalidatePath("/");
+  return { ok: true, script, demo_status: "script_ready" };
+}
+
+export type BookPersonalizedDemoResult =
+  | {
+      ok: true;
+      html_link?: string;
+      event_id: string;
+      provider: CalendarProvider;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Prompt 100 — ensure demo script, create calendar event with script body, store booking metadata.
+ */
+export async function bookPersonalizedDemoAction(
+  raw: z.input<typeof bookPersonalizedDemoSchema>,
+): Promise<BookPersonalizedDemoResult> {
+  const parsed = bookPersonalizedDemoSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid booking payload." };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+
+  const { data: row, error: qErr } = await supabase
+    .from("campaigns")
+    .select("user_id, results, demo_script, company, lead_name, email")
+    .eq("thread_id", parsed.data.thread_id)
+    .maybeSingle();
+  if (qErr || !row || (row as { user_id?: string }).user_id !== user.id) {
+    return { ok: false, error: "Campaign not found for this thread." };
+  }
+
+  const snap = snapshotFromPersistedResults((row as { results?: unknown }).results);
+  if (!snap) return { ok: false, error: "Campaign snapshot is missing." };
+  if (!isPersonalizedDemoEligible(snap)) {
+    return { ok: false, error: "Lead is not in the demo-eligible band yet." };
+  }
+
+  let script: PersonalizedDemoScriptDTO | null = parseStoredDemoScript(
+    (row as { demo_script?: unknown }).demo_script,
+  );
+  if (!script) {
+    script = await generatePersonalizedDemoScriptWithAi(snap);
+    const scriptJson = { ...script, generated_at: new Date().toISOString() };
+    await supabase
+      .from("campaigns")
+      .update({
+        demo_script: scriptJson as unknown as Record<string, unknown>,
+        demo_status: "script_ready",
+      })
+      .eq("thread_id", parsed.data.thread_id)
+      .eq("user_id", user.id);
+  }
+
+  const company =
+    (row as { company?: string }).company?.trim() || snap.lead.company?.trim() || "Account";
+  const leadEmail = (row as { email?: string }).email?.trim() || snap.lead.email?.trim();
+
+  const title = buildDemoEventTitle(script, company);
+  const bodyCore = formatDemoScriptForCalendarDescription(script);
+  const bodyText = `${bodyCore}\n\n---\n${script.invite_email_paragraph}\n\n${script.booking_cta}`;
+
+  const tok = await getValidAccessTokenForUser(supabase, user.id, parsed.data.provider);
+  if (!tok) {
+    return { ok: false, error: "Connect your calendar first (Google or Microsoft)." };
+  }
+
+  try {
+    const bookedAt = new Date().toISOString();
+    let eventId: string;
+    let htmlLink: string | undefined;
+
+    if (parsed.data.provider === "google") {
+      const ev = await createGoogleCalendarEvent(tok.accessToken, {
+        summary: title,
+        description: bodyText.slice(0, 12000),
+        startIso: parsed.data.start_iso,
+        endIso: parsed.data.end_iso,
+        attendeeEmail: leadEmail,
+      });
+      eventId = ev.id;
+      htmlLink = ev.htmlLink;
+    } else {
+      const ev = await createMicrosoftCalendarEvent(tok.accessToken, {
+        summary: title,
+        description: bodyText.slice(0, 12000),
+        startIso: parsed.data.start_iso,
+        endIso: parsed.data.end_iso,
+        attendeeEmail: leadEmail,
+      });
+      eventId = ev.id;
+      htmlLink = ev.webLink;
+    }
+
+    const outcomePayload = {
+      last_booking: {
+        booked_at: bookedAt,
+        event_id: eventId,
+        provider: parsed.data.provider,
+        calendar_link: htmlLink ?? null,
+        slot_start: parsed.data.start_iso,
+        slot_end: parsed.data.end_iso,
+      },
+    };
+
+    const { error: upErr } = await supabase
+      .from("campaigns")
+      .update({
+        demo_status: "scheduled",
+        demo_outcome: outcomePayload as unknown as Record<string, unknown>,
+      })
+      .eq("thread_id", parsed.data.thread_id)
+      .eq("user_id", user.id);
+
+    if (upErr && !isMissingColumnOrSchemaError(upErr.message)) {
+      console.warn("[AgentForge] bookPersonalizedDemoAction demo_outcome", upErr.message);
+    }
+
+    revalidatePath("/");
+    return {
+      ok: true,
+      event_id: eventId,
+      html_link: htmlLink,
+      provider: parsed.data.provider,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Calendar API failed";
+    return { ok: false, error: msg };
+  }
+}
+
+export type RecordDemoOutcomeResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Prompt 100 — append a recorded outcome to `demo_outcome` for playbook improvement.
+ */
+export async function recordDemoOutcomeAction(
+  raw: z.input<typeof recordDemoOutcomeSchema>,
+): Promise<RecordDemoOutcomeResult> {
+  const parsed = recordDemoOutcomeSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid outcome payload." };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+
+  const { data: row, error: qErr } = await supabase
+    .from("campaigns")
+    .select("user_id, demo_outcome")
+    .eq("thread_id", parsed.data.thread_id)
+    .maybeSingle();
+  if (qErr || !row || (row as { user_id?: string }).user_id !== user.id) {
+    return { ok: false, error: "Campaign not found for this thread." };
+  }
+
+  const prev =
+    (row as { demo_outcome?: unknown }).demo_outcome != null &&
+    typeof (row as { demo_outcome?: unknown }).demo_outcome === "object" &&
+    !Array.isArray((row as { demo_outcome?: unknown }).demo_outcome)
+      ? ((
+          row as {
+            demo_outcome?: Record<string, unknown>;
+          }
+        ).demo_outcome as Record<string, unknown>)
+      : {};
+
+  const statusMap = {
+    completed: "completed",
+    no_show: "no_show",
+    cancelled: "cancelled",
+  } as const;
+
+  const nextOutcome = {
+    ...prev,
+    recorded_session: {
+      outcome: parsed.data.outcome,
+      notes: parsed.data.notes?.trim() || null,
+      recorded_at: new Date().toISOString(),
+    },
+  };
+
+  const { error: upErr } = await supabase
+    .from("campaigns")
+    .update({
+      demo_status: statusMap[parsed.data.outcome],
+      demo_outcome: nextOutcome as unknown as Record<string, unknown>,
+    })
+    .eq("thread_id", parsed.data.thread_id)
+    .eq("user_id", user.id);
+
+  if (upErr) {
+    if (!isMissingColumnOrSchemaError(upErr.message)) {
+      return { ok: false, error: upErr.message };
+    }
+  }
+
+  revalidatePath("/");
+  return { ok: true };
 }
 
 /**
@@ -2149,6 +2628,11 @@ export async function listRecentCampaigns(): Promise<PersistedCampaignRow[]> {
     "id, thread_id, lead_name, company, email, status, created_at, completed_at, results, spam_score, deliverability_status, ab_test_id, ab_variant";
   const selectWithScore = `${selectFull}, lead_score, priority_reason`;
   const selectWithQual = `${selectWithScore}, qualification_score, detected_objections`;
+  const selectWithDeal = `${selectWithQual}, close_probability, qualification_factors`;
+  /** Prompt 98 — optional proposal columns (backward-compatible select fallback). */
+  const selectWithProposal = `${selectWithDeal}, proposal_status, generated_proposal_url`;
+  /** Prompt 100 — optional demo booking columns. */
+  const selectWithDemo = `${selectWithProposal}, demo_status, demo_script, demo_outcome`;
   const selectMin =
     "id, thread_id, lead_name, company, email, status, created_at, completed_at, results, spam_score, deliverability_status";
 
@@ -2162,27 +2646,27 @@ export async function listRecentCampaigns(): Promise<PersistedCampaignRow[]> {
     return q.order("created_at", { ascending: false }).limit(25);
   };
 
-  const zeroth = await runSelect(selectWithQual);
-  if (zeroth.error && isMissingColumnOrSchemaError(zeroth.error.message)) {
-    const first = await runSelect(selectWithScore);
-    if (first.error && isMissingColumnOrSchemaError(first.error.message)) {
-      const second = await runSelect(selectFull);
-      if (second.error && isMissingColumnOrSchemaError(second.error.message)) {
-        const third = await runSelect(selectMin);
-        data = (third.data ?? null) as Record<string, unknown>[] | null;
-        error = third.error;
-      } else {
-        data = (second.data ?? null) as Record<string, unknown>[] | null;
-        error = second.error;
-      }
-    } else {
-      data = (first.data ?? null) as Record<string, unknown>[] | null;
-      error = first.error;
-    }
-  } else {
-    data = (zeroth.data ?? null) as Record<string, unknown>[] | null;
-    error = zeroth.error;
+  let result = await runSelect(selectWithDemo);
+  if (result.error && isMissingColumnOrSchemaError(result.error.message)) {
+    result = await runSelect(selectWithProposal);
   }
+  if (result.error && isMissingColumnOrSchemaError(result.error.message)) {
+    result = await runSelect(selectWithDeal);
+  }
+  if (result.error && isMissingColumnOrSchemaError(result.error.message)) {
+    result = await runSelect(selectWithQual);
+  }
+  if (result.error && isMissingColumnOrSchemaError(result.error.message)) {
+    result = await runSelect(selectWithScore);
+  }
+  if (result.error && isMissingColumnOrSchemaError(result.error.message)) {
+    result = await runSelect(selectFull);
+  }
+  if (result.error && isMissingColumnOrSchemaError(result.error.message)) {
+    result = await runSelect(selectMin);
+  }
+  data = (result.data ?? null) as Record<string, unknown>[] | null;
+  error = result.error;
 
   if (error) {
     console.error(
@@ -2209,6 +2693,13 @@ export async function listRecentCampaigns(): Promise<PersistedCampaignRow[]> {
       priority_reason?: unknown;
       qualification_score?: unknown;
       detected_objections?: unknown;
+      close_probability?: unknown;
+      qualification_factors?: unknown;
+      proposal_status?: unknown;
+      generated_proposal_url?: unknown;
+      demo_status?: unknown;
+      demo_script?: unknown;
+      demo_outcome?: unknown;
     };
     const snap = results as Record<string, unknown> | undefined;
     const enrichmentFromSnapshot =
@@ -2249,6 +2740,30 @@ export async function listRecentCampaigns(): Promise<PersistedCampaignRow[]> {
           : null,
       detected_objections:
         r.detected_objections != null ? r.detected_objections : undefined,
+      close_probability:
+        typeof r.close_probability === "number" && Number.isFinite(r.close_probability)
+          ? Math.round(r.close_probability)
+          : null,
+      qualification_factors:
+        r.qualification_factors != null ? r.qualification_factors : undefined,
+      proposal_status:
+        typeof r.proposal_status === "string" && r.proposal_status.trim()
+          ? r.proposal_status.trim()
+          : null,
+      generated_proposal_url:
+        typeof r.generated_proposal_url === "string" && r.generated_proposal_url.trim()
+          ? r.generated_proposal_url.trim()
+          : null,
+      demo_status:
+        typeof r.demo_status === "string" && r.demo_status.trim() ? r.demo_status.trim() : null,
+      demo_script:
+        r.demo_script != null && typeof r.demo_script === "object" && !Array.isArray(r.demo_script)
+          ? (r.demo_script as Record<string, unknown>)
+          : null,
+      demo_outcome:
+        r.demo_outcome != null && typeof r.demo_outcome === "object" && !Array.isArray(r.demo_outcome)
+          ? (r.demo_outcome as Record<string, unknown>)
+          : null,
     };
   });
 }
@@ -2607,17 +3122,80 @@ export async function sendOutreachEmailAction(
   };
 }
 
-/**
- * Prompt 80 — full warm-up + chart payload for the Deliverability tab.
- */
-export async function getDeliverabilitySuiteAction(): Promise<DeliverabilitySuitePayload | null> {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-  if (authError || !user) return null;
+function isSupabaseMissingColumnError(err: { code?: string; message?: string }): boolean {
+  return err.code === "42703" || /column .* does not exist/i.test(err.message ?? "");
+}
 
+type UserDeliverabilityPrefsRow = {
+  warmupEnabled: boolean;
+  last_coach_json: unknown;
+  next_suggested_send_at: string | null;
+  last_coach_at: string | null;
+};
+
+/**
+ * Prompt 99 — extended prefs when `supabase/deliverability_coach_p99.sql` is applied; falls back to warmup flag only.
+ */
+async function fetchUserDeliverabilityPrefs(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<UserDeliverabilityPrefsRow | null> {
+  const ext = await supabase
+    .from("user_deliverability_prefs")
+    .select(
+      "warmup_enabled, deliverability_health_score, last_coach_json, next_suggested_send_at, last_coach_at",
+    )
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (!ext.error) {
+    if (!ext.data) {
+      return {
+        warmupEnabled: false,
+        last_coach_json: undefined,
+        next_suggested_send_at: null,
+        last_coach_at: null,
+      };
+    }
+    const r = ext.data as Record<string, unknown>;
+    return {
+      warmupEnabled: Boolean(r.warmup_enabled),
+      last_coach_json: r.last_coach_json,
+      next_suggested_send_at:
+        typeof r.next_suggested_send_at === "string" ? r.next_suggested_send_at : null,
+      last_coach_at: typeof r.last_coach_at === "string" ? r.last_coach_at : null,
+    };
+  }
+
+  if (ext.error && !isSupabaseMissingColumnError(ext.error)) {
+    console.warn("[AgentForge] fetchUserDeliverabilityPrefs extended", ext.error.message);
+  }
+
+  const basic = await supabase
+    .from("user_deliverability_prefs")
+    .select("warmup_enabled")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (basic.error) {
+    console.warn("[AgentForge] fetchUserDeliverabilityPrefs basic", basic.error.message);
+    return null;
+  }
+
+  const r = basic.data as { warmup_enabled?: unknown } | null;
+  return {
+    warmupEnabled: Boolean(r?.warmup_enabled),
+    last_coach_json: undefined,
+    next_suggested_send_at: null,
+    last_coach_at: null,
+  };
+}
+
+async function loadDeliverabilityWarmupMetrics(
+  supabase: SupabaseClient,
+  userId: string,
+  prefsWarmup: boolean,
+): Promise<DeliverabilityWarmupMetricsInput> {
   const today = new Date();
   const isoToday = today.toISOString().slice(0, 10);
   const fourteen = new Date(today);
@@ -2627,44 +3205,30 @@ export async function getDeliverabilitySuiteAction(): Promise<DeliverabilitySuit
   seven.setDate(seven.getDate() - 7);
   const isoSeven = seven.toISOString().slice(0, 10);
 
-  const [prefsRes, logsRes, logs7Res, todayRes] = await Promise.all([
-    supabase
-      .from("user_deliverability_prefs")
-      .select("warmup_enabled")
-      .eq("user_id", user.id)
-      .maybeSingle(),
+  const [logsRes, logs7Res, todayRes] = await Promise.all([
     supabase
       .from("email_warmup_logs")
       .select("log_date, emails_sent, inbox_placement_score")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .gte("log_date", iso14)
       .order("log_date", { ascending: true }),
     supabase
       .from("email_warmup_logs")
       .select("emails_sent, inbox_placement_score")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .gte("log_date", isoSeven)
       .lte("log_date", isoToday),
     supabase
       .from("email_warmup_logs")
       .select("emails_sent, inbox_placement_score")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .eq("log_date", isoToday)
       .maybeSingle(),
   ]);
 
-  if (prefsRes.error) {
-    console.warn("[AgentForge] getDeliverabilitySuiteAction prefs", prefsRes.error.message);
-  }
   if (logsRes.error) {
-    console.warn("[AgentForge] getDeliverabilitySuiteAction logs", logsRes.error.message);
+    console.warn("[AgentForge] loadDeliverabilityWarmupMetrics logs", logsRes.error.message);
   }
-
-  const warmupEnabled =
-    prefsRes.data != null &&
-    typeof (prefsRes.data as { warmup_enabled?: unknown }).warmup_enabled === "boolean"
-      ? Boolean((prefsRes.data as { warmup_enabled: boolean }).warmup_enabled)
-      : false;
 
   const logs14d = (logsRes.data ?? []).map((row) => {
     const r = row as {
@@ -2701,13 +3265,124 @@ export async function getDeliverabilitySuiteAction(): Promise<DeliverabilitySuit
     typeof todayRow?.inbox_placement_score === "number" ? todayRow.inbox_placement_score : null;
 
   return {
-    warmupEnabled,
+    warmupEnabled: prefsWarmup,
     logs14d,
     emailsSentLast7Days,
     avgPlacementLast7d,
     todayEmails,
     todayPlacement,
   };
+}
+
+/**
+ * Prompt 80 — full warm-up + chart payload for the Deliverability tab.
+ * Prompt 99 — coach insights + next-send window (backward-compatible if coach columns missing).
+ */
+export async function getDeliverabilitySuiteAction(): Promise<DeliverabilitySuitePayload | null> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return null;
+
+  const prefs = await fetchUserDeliverabilityPrefs(supabase, user.id);
+  const warmupEnabled = prefs?.warmupEnabled ?? false;
+
+  const metrics = await loadDeliverabilityWarmupMetrics(supabase, user.id, warmupEnabled);
+
+  const baseCoach = buildCoachInsightsFromSuite(metrics);
+  const { insights: coach, cachedCoachAt } = mergeCoachWithCache(
+    baseCoach,
+    prefs?.last_coach_json,
+    prefs?.last_coach_at ?? null,
+  );
+
+  const nextSuggestedSendAt =
+    prefs?.next_suggested_send_at ?? computeNextSuggestedSendIso();
+
+  return {
+    ...metrics,
+    coach,
+    cachedCoachAt,
+    nextSuggestedSendAt,
+  };
+}
+
+export type RefreshDeliverabilityCoachResult =
+  | { ok: true; coach: DeliverabilityCoachInsightsDTO; cachedAt: string | null }
+  | { ok: false; error: string };
+
+/**
+ * Prompt 99 — refresh AI coach layer + persist prefs / health snapshot (no outbound mail).
+ */
+export async function refreshDeliverabilityCoachAction(): Promise<RefreshDeliverabilityCoachResult> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+
+  const prefs = await fetchUserDeliverabilityPrefs(supabase, user.id);
+  const warmupEnabled = prefs?.warmupEnabled ?? false;
+  const metrics = await loadDeliverabilityWarmupMetrics(supabase, user.id, warmupEnabled);
+  const base = buildCoachInsightsFromSuite(metrics);
+  const ai = await generateAiCoachLayer(base);
+  const nowIso = new Date().toISOString();
+  const coachJson = {
+    suggestions: [...ai.suggestions, ...ai.pattern_notes].slice(0, 10),
+    subject_line_ideas: ai.subject_line_ideas,
+    pattern_notes: ai.pattern_notes,
+    cached_at: nowIso,
+  };
+  const nextSend = computeNextSuggestedSendIso();
+
+  const upsertBody = {
+    user_id: user.id,
+    deliverability_health_score: base.healthScore,
+    last_coach_json: coachJson,
+    last_coach_at: nowIso,
+    next_suggested_send_at: nextSend,
+    updated_at: nowIso,
+  };
+
+  const up = await supabase.from("user_deliverability_prefs").upsert(upsertBody, {
+    onConflict: "user_id",
+  });
+  if (up.error) {
+    if (!isSupabaseMissingColumnError(up.error)) {
+      console.error("[AgentForge] refreshDeliverabilityCoachAction prefs", up.error.message);
+      return { ok: false, error: up.error.message };
+    }
+    const basicUp = await supabase.from("user_deliverability_prefs").upsert(
+      {
+        user_id: user.id,
+        warmup_enabled: warmupEnabled,
+        updated_at: nowIso,
+      },
+      { onConflict: "user_id" },
+    );
+    if (basicUp.error) {
+      return { ok: false, error: basicUp.error.message };
+    }
+  }
+
+  const snap = await supabase.from("deliverability_health_snapshots").insert({
+    user_id: user.id,
+    composite_health: base.healthScore,
+    placement_prediction: base.placementPrediction,
+    coaching_json: coachJson,
+  });
+  if (snap.error && snap.error.code !== "42P01" && !/deliverability_health_snapshots/i.test(snap.error.message)) {
+    console.warn("[AgentForge] refreshDeliverabilityCoachAction snapshot", snap.error.message);
+  }
+
+  const merged = mergeCoachWithCache(base, coachJson, nowIso);
+
+  revalidatePath("/");
+  revalidatePath("/analytics");
+  return { ok: true, coach: merged.insights, cachedAt: merged.cachedCoachAt };
 }
 
 const warmupToggleSchema = z.object({
@@ -2791,15 +3466,32 @@ export async function recordWarmupEmailAction(): Promise<RecordWarmupEmailResult
   const next = Math.min(50, prev + 1);
   const inbox_placement_score = placementScoreForDailyLog(next);
 
-  const { error } = await supabase.from("email_warmup_logs").upsert(
-    {
-      user_id: user.id,
-      log_date: isoToday,
-      emails_sent: next,
-      inbox_placement_score,
-    },
-    { onConflict: "user_id,log_date" },
-  );
+  const withTag = {
+    user_id: user.id,
+    log_date: isoToday,
+    emails_sent: next,
+    inbox_placement_score,
+    schedule_tag: scheduleTagForUtcNow(),
+  };
+  let error = (
+    await supabase.from("email_warmup_logs").upsert(withTag, { onConflict: "user_id,log_date" })
+  ).error;
+
+  if (error && isSupabaseMissingColumnError(error)) {
+    error = (
+      await supabase
+        .from("email_warmup_logs")
+        .upsert(
+          {
+            user_id: user.id,
+            log_date: isoToday,
+            emails_sent: next,
+            inbox_placement_score,
+          },
+          { onConflict: "user_id,log_date" },
+        )
+    ).error;
+  }
 
   if (error) {
     console.error("[AgentForge] recordWarmupEmailAction upsert", error.message);
@@ -3182,6 +3874,10 @@ const EMPTY_ANALYTICS: DashboardAnalyticsSummary = {
   leadPrioritySummary: null,
   qualificationInsights: [],
   replyObjectionCards: [],
+  dealCloseQualifications: [],
+  avgCloseProbability: null,
+  optimizerFeed: [],
+  coachingPreview: null,
 };
 
 /**
@@ -3212,7 +3908,7 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
   const isoToday = today.toISOString().slice(0, 10);
 
   const campSelectFull =
-    "results, thread_id, completed_at, predicted_revenue, win_probability, lead_name, company, email, qualification_score";
+    "results, thread_id, completed_at, predicted_revenue, win_probability, lead_name, company, email, qualification_score, ab_variant";
   const campSelectMid =
     "results, thread_id, completed_at, predicted_revenue, win_probability, lead_name, company, email";
   const campSelectNarrow =
@@ -3528,6 +4224,62 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
   }
   const replyObjectionCardsTrimmed = replyObjectionCards.slice(0, 22);
 
+  const campRowsAll = campRes.data ?? [];
+  const workspaceHistoricalCompleted = campRowsAll.filter((row) => {
+    const s = snapshotFromPersistedResults((row as { results?: unknown }).results);
+    return s?.final_status === "completed" || s?.final_status === "completed_with_errors";
+  }).length;
+
+  const dealCloseQualificationsRaw: DealCloseQualificationRow[] = [];
+  for (const row of campRowsAll) {
+    const snap = snapshotFromPersistedResults((row as { results?: unknown }).results);
+    if (!snap || snap.final_status === "failed") continue;
+    const r = row as {
+      thread_id?: unknown;
+      completed_at?: unknown;
+      lead_name?: unknown;
+      company?: unknown;
+      email?: unknown;
+    };
+    const tid = String(r.thread_id ?? snap.thread_id ?? "");
+    if (!tid) continue;
+    const email = String(r.email ?? snap.lead?.email ?? "");
+    const leadName = String(r.lead_name ?? snap.lead?.name ?? "Lead");
+    const company = String(r.company ?? snap.lead?.company ?? "");
+    const completed =
+      r.completed_at != null ? String(r.completed_at) : snap.campaign_completed_at ?? null;
+    const replyI = resolveReplyInterestForLead(tid, email, interestByThread, interestByEmail);
+    const engine = computeDealQualificationClose(snap, {
+      replyInterest0to10: replyI,
+      workspaceHistoricalCompletedCount: workspaceHistoricalCompleted,
+    });
+    dealCloseQualificationsRaw.push({
+      thread_id: tid,
+      lead_name: leadName,
+      company,
+      close_probability: engine.close_probability,
+      confidence: engine.confidence,
+      factors: engine.factors,
+      suggested_actions: engine.suggested_actions,
+      completed_at: completed,
+    });
+  }
+  dealCloseQualificationsRaw.sort((a, b) => b.close_probability - a.close_probability);
+  const dealCloseQualifications = dealCloseQualificationsRaw.slice(0, 28);
+  const avgCloseProbability =
+    dealCloseQualificationsRaw.length > 0
+      ? Math.round(
+          dealCloseQualificationsRaw.reduce((s, x) => s + x.close_probability, 0) /
+            dealCloseQualificationsRaw.length,
+        )
+      : null;
+
+  const optimizerFeed = buildDashboardOptimizerFeedFromRows(
+    campRowsAll as Record<string, unknown>[],
+    interestByThread,
+    interestByEmail,
+  );
+
   const forecastAvgWinProbability =
     forecastDealCount > 0 ? Math.round(forecastWinSum / forecastDealCount) : null;
 
@@ -3584,6 +4336,18 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
       ? Math.round((avgComposite / 55) * 10) / 10
       : 0;
 
+  const voiceStats = computeVoiceCoachingStats(campRowsAll);
+  const coachingPreview = buildDeterministicCoachingPreview({
+    voiceStats,
+    abTestComparisons,
+    forecastTrend,
+    avgReplyInterest: avgInterest,
+    avgCompositeScore: avgComposite,
+    avgWarmupPlacementScore,
+    replyAnalyzedCount: nRep,
+    campaignCount: nCamp,
+  });
+
   return {
     campaignCount: nCamp,
     avgCompositeScore: avgComposite,
@@ -3608,7 +4372,466 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalyticsSummary
     leadPrioritySummary,
     qualificationInsights,
     replyObjectionCards: replyObjectionCardsTrimmed,
+    dealCloseQualifications,
+    avgCloseProbability,
+    optimizerFeed,
+    coachingPreview,
   };
+}
+
+function isCoachingCacheStale(cachedAt: string | null): boolean {
+  if (!cachedAt) return true;
+  const t = new Date(cachedAt).getTime();
+  if (Number.isNaN(t)) return true;
+  return Date.now() - t > 3 * 86400000;
+}
+
+function parseCoachingNotesPayload(raw: unknown): {
+  ai: SalesCoachingPayloadDTO["ai"];
+  cachedAt: string | null;
+} {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ai: null, cachedAt: null };
+  }
+  const o = raw as Record<string, unknown>;
+  const cachedAt = typeof o.cached_at === "string" ? o.cached_at : null;
+  const tips = Array.isArray(o.personalized_tips)
+    ? o.personalized_tips.filter((x): x is string => typeof x === "string")
+    : [];
+  const focus = Array.isArray(o.focus_areas)
+    ? o.focus_areas.filter((x): x is string => typeof x === "string")
+    : [];
+  const seq = Array.isArray(o.sequence_tips)
+    ? o.sequence_tips.filter((x): x is string => typeof x === "string")
+    : [];
+  const vtRaw = Array.isArray(o.voice_tips) ? o.voice_tips : [];
+  const voice_tips = vtRaw
+    .map((x) => {
+      if (!x || typeof x !== "object") return null;
+      const v = x as Record<string, unknown>;
+      const voice = typeof v.voice === "string" ? v.voice.trim() : "";
+      const tip = typeof v.tip === "string" ? v.tip.trim() : "";
+      return voice && tip ? { voice, tip } : null;
+    })
+    .filter((x): x is { voice: string; tip: string } => x != null);
+  const team = typeof o.team_insight === "string" ? o.team_insight.trim() : null;
+  if (
+    tips.length === 0 &&
+    focus.length === 0 &&
+    seq.length === 0 &&
+    voice_tips.length === 0 &&
+    !team
+  ) {
+    return { ai: null, cachedAt };
+  }
+  return {
+    ai: {
+      personalized_tips: tips,
+      focus_areas: focus,
+      voice_tips,
+      sequence_tips: seq,
+      team_insight: team || null,
+    },
+    cachedAt,
+  };
+}
+
+/**
+ * Prompt 101 — AI coaching + cached profile notes; pass `analytics` from the dashboard to avoid a second query.
+ */
+export async function getSalesCoachingPayloadAction(
+  analytics?: DashboardAnalyticsSummary,
+): Promise<SalesCoachingPayloadDTO> {
+  const empty: SalesCoachingPayloadDTO = {
+    preview: null,
+    ai: null,
+    cachedAt: null,
+    weeklyEmailEnabled: false,
+    performanceMetrics: null,
+  };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return empty;
+
+  const a = analytics ?? (await getDashboardAnalytics());
+  const preview = a.coachingPreview;
+
+  const ext = await supabase
+    .from("profiles")
+    .select("coaching_notes, performance_metrics, coaching_weekly_email_enabled")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  let coachingNotes: unknown;
+  let performanceMetrics: Record<string, unknown> | null = null;
+  let weeklyEmailEnabled = false;
+
+  if (!ext.error && ext.data) {
+    const r = ext.data as Record<string, unknown>;
+    coachingNotes = r.coaching_notes;
+    performanceMetrics =
+      r.performance_metrics != null && typeof r.performance_metrics === "object" && !Array.isArray(r.performance_metrics)
+        ? (r.performance_metrics as Record<string, unknown>)
+        : null;
+    weeklyEmailEnabled = Boolean(r.coaching_weekly_email_enabled);
+  } else if (ext.error && !isMissingColumnOrSchemaError(ext.error.message)) {
+    console.warn("[AgentForge] getSalesCoachingPayloadAction profiles", ext.error.message);
+  }
+
+  let parsed = parseCoachingNotesPayload(coachingNotes);
+  let ai = parsed.ai;
+  let cachedAt = parsed.cachedAt;
+
+  const shouldRefresh =
+    preview != null && (isCoachingCacheStale(cachedAt) || !ai?.personalized_tips?.length);
+
+  if (shouldRefresh && preview) {
+    const generated = await generateSalesCoachingWithAi({ analytics: a, preview });
+    const payloadJson = {
+      ...generated,
+      cached_at: new Date().toISOString(),
+    };
+    const perfSnap = {
+      voice_stats: preview.voiceStats,
+      momentum: preview.momentum,
+      updated_at: new Date().toISOString(),
+    };
+    ai = {
+      personalized_tips: generated.personalized_tips,
+      focus_areas: generated.focus_areas,
+      voice_tips: generated.voice_tips,
+      sequence_tips: generated.sequence_tips,
+      team_insight: generated.team_insight,
+    };
+    cachedAt = payloadJson.cached_at;
+    performanceMetrics = perfSnap as unknown as Record<string, unknown>;
+    const { error: upErr } = await supabase
+      .from("profiles")
+      .update({
+        coaching_notes: payloadJson as unknown as Record<string, unknown>,
+        performance_metrics: perfSnap as unknown as Record<string, unknown>,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", user.id);
+    if (upErr && !isMissingColumnOrSchemaError(upErr.message)) {
+      console.warn("[AgentForge] getSalesCoachingPayloadAction cache write", upErr.message);
+    }
+  }
+
+  return {
+    preview,
+    ai,
+    cachedAt,
+    weeklyEmailEnabled,
+    performanceMetrics,
+  };
+}
+
+const weeklyCoachingEmailSchema = z.object({
+  enabled: z.boolean(),
+});
+
+export type SetWeeklyCoachingEmailResult = { ok: true } | { ok: false; error: string };
+
+/** Prompt 101 — weekly summary email opt-in (delivery via scheduled job). */
+export async function setWeeklyCoachingEmailAction(
+  raw: z.input<typeof weeklyCoachingEmailSchema>,
+): Promise<SetWeeklyCoachingEmailResult> {
+  const parsed = weeklyCoachingEmailSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid request." };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      coaching_weekly_email_enabled: parsed.data.enabled,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", user.id);
+
+  if (error) {
+    if (!isMissingColumnOrSchemaError(error.message)) {
+      return { ok: false, error: error.message };
+    }
+  }
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/** Prompt 101 — force refresh AI coaching (same persistence as payload). */
+export async function refreshSalesCoachingAction(
+  analytics?: DashboardAnalyticsSummary,
+): Promise<SalesCoachingPayloadDTO> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  const empty: SalesCoachingPayloadDTO = {
+    preview: null,
+    ai: null,
+    cachedAt: null,
+    weeklyEmailEnabled: false,
+    performanceMetrics: null,
+  };
+  if (authError || !user) return empty;
+
+  const a = analytics ?? (await getDashboardAnalytics());
+  const preview = a.coachingPreview;
+  if (!preview) {
+    return getSalesCoachingPayloadAction(a);
+  }
+
+  const generated = await generateSalesCoachingWithAi({ analytics: a, preview });
+  const payloadJson = {
+    ...generated,
+    cached_at: new Date().toISOString(),
+  };
+  const perfSnap = {
+    voice_stats: preview.voiceStats,
+    momentum: preview.momentum,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error: upErr } = await supabase
+    .from("profiles")
+    .update({
+      coaching_notes: payloadJson as unknown as Record<string, unknown>,
+      performance_metrics: perfSnap as unknown as Record<string, unknown>,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", user.id);
+
+  if (upErr && !isMissingColumnOrSchemaError(upErr.message)) {
+    console.warn("[AgentForge] refreshSalesCoachingAction", upErr.message);
+  }
+
+  let weeklyEmailEnabled = false;
+  const wk = await supabase
+    .from("profiles")
+    .select("coaching_weekly_email_enabled")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!wk.error && wk.data) {
+    weeklyEmailEnabled = Boolean(
+      (wk.data as { coaching_weekly_email_enabled?: unknown }).coaching_weekly_email_enabled,
+    );
+  }
+
+  revalidatePath("/");
+  return {
+    preview,
+    ai: {
+      personalized_tips: generated.personalized_tips,
+      focus_areas: generated.focus_areas,
+      voice_tips: generated.voice_tips,
+      sequence_tips: generated.sequence_tips,
+      team_insight: generated.team_insight,
+    },
+    cachedAt: payloadJson.cached_at,
+    weeklyEmailEnabled,
+    performanceMetrics: perfSnap as unknown as Record<string, unknown>,
+  };
+}
+
+/**
+ * Prompt 102 — executive metrics + health + cached executive report (`profiles.executive_metrics`,
+ * `profiles.system_health_status`).
+ */
+export async function getSdrManagerPayloadAction(args: {
+  analytics: DashboardAnalyticsSummary;
+  deliverabilitySuite: DeliverabilitySuitePayload | null;
+  calendarStatus: CalendarConnectionStatusDTO;
+  hubspotConnected: boolean;
+  envWarningCount: number;
+  workspaceMemberCount: number;
+  coachingPayload?: SalesCoachingPayloadDTO | null;
+}): Promise<SdrManagerPayloadDTO> {
+  const metrics = computeExecutiveMetrics({
+    analytics: args.analytics,
+    teamMemberCount: Math.max(1, args.workspaceMemberCount),
+  });
+  const health = buildSystemHealthStatus({
+    analytics: args.analytics,
+    deliverabilitySuite: args.deliverabilitySuite,
+    calendarStatus: args.calendarStatus,
+    hubspotConnected: args.hubspotConnected,
+    envWarningCount: args.envWarningCount,
+  });
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    let aiRecommendations: string[] = [];
+    if (args.coachingPayload?.ai?.personalized_tips?.length) {
+      aiRecommendations = args.coachingPayload.ai.personalized_tips.slice(0, 8);
+    }
+    return {
+      metrics,
+      health,
+      cachedExecutiveReportMarkdown: null,
+      cachedReportAt: null,
+      aiRecommendations,
+    };
+  }
+
+  const ext = await supabase
+    .from("profiles")
+    .select("executive_metrics, system_health_status")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  let cachedExecutiveReportMarkdown: string | null = null;
+  let cachedReportAt: string | null = null;
+  let aiRecommendations: string[] = [];
+
+  if (!ext.error && ext.data) {
+    const row = ext.data as Record<string, unknown>;
+    const em = row.executive_metrics;
+    if (em && typeof em === "object" && !Array.isArray(em)) {
+      const o = em as Record<string, unknown>;
+      if (typeof o.last_report_markdown === "string") {
+        cachedExecutiveReportMarkdown = o.last_report_markdown;
+      }
+      if (typeof o.last_report_at === "string") {
+        cachedReportAt = o.last_report_at;
+      }
+      if (Array.isArray(o.ai_recommendations)) {
+        aiRecommendations = o.ai_recommendations.map(String).filter(Boolean);
+      }
+    }
+  } else if (ext.error && !isMissingColumnOrSchemaError(ext.error.message)) {
+    console.warn("[AgentForge] getSdrManagerPayloadAction profiles", ext.error.message);
+  }
+
+  if (!aiRecommendations.length && args.coachingPayload?.ai?.personalized_tips?.length) {
+    aiRecommendations = args.coachingPayload.ai.personalized_tips.slice(0, 8);
+  }
+
+  const executiveMetricsJson: Record<string, unknown> = {
+    snapshot: metrics,
+    snapshot_at: new Date().toISOString(),
+    last_report_markdown: cachedExecutiveReportMarkdown,
+    last_report_at: cachedReportAt,
+    ai_recommendations: aiRecommendations,
+  };
+
+  const { error: upErr } = await supabase
+    .from("profiles")
+    .update({
+      executive_metrics: executiveMetricsJson,
+      system_health_status: health as unknown as Record<string, unknown>,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", user.id);
+
+  if (upErr && !isMissingColumnOrSchemaError(upErr.message)) {
+    console.warn("[AgentForge] getSdrManagerPayloadAction persist", upErr.message);
+  }
+
+  return {
+    metrics,
+    health,
+    cachedExecutiveReportMarkdown,
+    cachedReportAt,
+    aiRecommendations,
+  };
+}
+
+export type GenerateExecutiveReportResult =
+  | { ok: true; markdown: string; generatedAt: string }
+  | { ok: false; error: string };
+
+/** Prompt 102 — one-click AI executive report; persists to `profiles.executive_metrics`. */
+export async function generateExecutiveReportAction(): Promise<GenerateExecutiveReportResult> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+
+  const envWarningCount = getDashboardEnvWarnings().length;
+
+  const [analytics, deliverabilitySuite, calendarStatus, ws] = await Promise.all([
+    getDashboardAnalytics(),
+    getDeliverabilitySuiteAction(),
+    getCalendarConnectionStatusAction(),
+    getWorkspaceMembersAction(),
+  ]);
+
+  const sr = getServiceRoleSupabaseOrNull();
+  let hubspotConnected = false;
+  if (sr) {
+    const { data: hs } = await sr
+      .from("user_hubspot_credentials")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    hubspotConnected = !!hs;
+  }
+
+  const workspaceMemberCount = Math.max(1, ws?.members?.length ?? 1);
+
+  const metrics = computeExecutiveMetrics({
+    analytics,
+    teamMemberCount: workspaceMemberCount,
+  });
+  const health = buildSystemHealthStatus({
+    analytics,
+    deliverabilitySuite,
+    calendarStatus,
+    hubspotConnected,
+    envWarningCount,
+  });
+
+  const analyticsSnippet = {
+    campaignCount: analytics.campaignCount,
+    forecastWeightedPipelineUsd: analytics.forecastWeightedPipelineUsd,
+    avgCompositeScore: analytics.avgCompositeScore,
+    leadPrioritySummary: analytics.leadPrioritySummary,
+    coachingMomentum: analytics.coachingPreview?.momentum,
+  };
+
+  const report = await generateExecutiveReportWithAi({ metrics, health, analyticsSnippet });
+  const markdown = formatExecutiveReportMarkdown(report);
+  const generatedAt = new Date().toISOString();
+
+  const executive_metrics = {
+    snapshot: metrics,
+    snapshot_at: generatedAt,
+    last_report_markdown: markdown,
+    last_report_at: generatedAt,
+    ai_recommendations: report.ai_recommendations,
+  };
+
+  const { error: upErr } = await supabase
+    .from("profiles")
+    .update({
+      executive_metrics: executive_metrics as unknown as Record<string, unknown>,
+      system_health_status: health as unknown as Record<string, unknown>,
+      updated_at: generatedAt,
+    })
+    .eq("id", user.id);
+
+  if (upErr && !isMissingColumnOrSchemaError(upErr.message)) {
+    console.warn("[AgentForge] generateExecutiveReportAction", upErr.message);
+    return { ok: false, error: upErr.message };
+  }
+
+  revalidatePath("/");
+  return { ok: true, markdown, generatedAt };
 }
 
 export type UploadBrandingLogoResult =
@@ -4494,4 +5717,330 @@ export async function runScheduledReportsCronJob(): Promise<{ processed: number;
   }
 
   return { processed, errors };
+}
+
+/** Prompt 97 — list saved playbooks for the active workspace. */
+export async function listPlaybooksForWorkspaceAction(): Promise<PlaybookRow[]> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return [];
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  const { data, error } = await supabase
+    .from("playbooks")
+    .select("id, workspace_id, thread_id, lead_name, company, title, playbook_body, created_at")
+    .eq("workspace_id", ws.workspaceId)
+    .order("created_at", { ascending: false })
+    .limit(80);
+  if (error) {
+    if (!isMissingColumnOrSchemaError(error.message)) {
+      console.warn("[AgentForge] listPlaybooksForWorkspace", error.message);
+    }
+    return [];
+  }
+  return (data ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      id: String(row.id ?? ""),
+      workspace_id: String(row.workspace_id ?? ""),
+      thread_id: row.thread_id != null ? String(row.thread_id) : null,
+      lead_name: String(row.lead_name ?? ""),
+      company: String(row.company ?? ""),
+      title: String(row.title ?? ""),
+      playbook_body:
+        row.playbook_body && typeof row.playbook_body === "object" && !Array.isArray(row.playbook_body)
+          ? (row.playbook_body as Record<string, unknown>)
+          : {},
+      created_at: String(row.created_at ?? ""),
+    };
+  });
+}
+
+/** Prompt 97 — recent knowledge base rows for the workspace. */
+export async function listKnowledgeBaseEntriesAction(): Promise<KnowledgeBaseEntryRow[]> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return [];
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  const { data, error } = await supabase
+    .from("knowledge_base_entries")
+    .select("id, entry_type, title, body, tags, source_thread_id, created_at")
+    .eq("workspace_id", ws.workspaceId)
+    .order("created_at", { ascending: false })
+    .limit(120);
+  if (error) {
+    if (!isMissingColumnOrSchemaError(error.message)) {
+      console.warn("[AgentForge] listKnowledgeBaseEntries", error.message);
+    }
+    return [];
+  }
+  return (data ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      id: String(row.id ?? ""),
+      entry_type: String(row.entry_type ?? "account"),
+      title: String(row.title ?? ""),
+      body: String(row.body ?? ""),
+      tags: Array.isArray(row.tags) ? row.tags.filter((t): t is string => typeof t === "string") : [],
+      source_thread_id: row.source_thread_id != null ? String(row.source_thread_id) : null,
+      created_at: String(row.created_at ?? ""),
+    };
+  });
+}
+
+/** Prompt 97 — generate + persist a playbook from a completed campaign snapshot. */
+export async function generatePlaybookForThreadAction(
+  threadId: string,
+): Promise<{ ok: true; playbookId: string } | { ok: false; error: string }> {
+  const tid = threadId.trim();
+  if (!tid) return { ok: false, error: "Missing thread id." };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  const sr = getServiceRoleSupabaseOrNull();
+  const q = sr
+    ? sr
+        .from("campaigns")
+        .select("results, lead_name, company, thread_id, user_id")
+        .eq("thread_id", tid)
+        .in("user_id", ws.memberUserIds)
+    : supabase
+        .from("campaigns")
+        .select("results, lead_name, company, thread_id, user_id")
+        .eq("thread_id", tid)
+        .eq("user_id", user.id);
+  const { data: row, error } = await q.maybeSingle();
+  if (error || !row) {
+    return { ok: false, error: "Campaign not found or inaccessible." };
+  }
+  const snap = snapshotFromPersistedResults(
+    (row as { results?: unknown }).results,
+  );
+  if (!snap) return { ok: false, error: "No campaign snapshot to synthesize." };
+  let playbook;
+  try {
+    playbook = await generateSalesPlaybookWithAi(snap);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg.slice(0, 240) };
+  }
+  const { data: ins, error: insErr } = await supabase
+    .from("playbooks")
+    .insert({
+      workspace_id: ws.workspaceId,
+      user_id: user.id,
+      thread_id: tid,
+      lead_name: String((row as { lead_name?: string }).lead_name ?? snap.lead.name ?? ""),
+      company: String((row as { company?: string }).company ?? snap.lead.company ?? ""),
+      title: playbook.title.slice(0, 200),
+      playbook_body: playbook as unknown as Record<string, unknown>,
+    })
+    .select("id")
+    .single();
+  if (insErr || !ins) {
+    const hint = insErr?.message.includes("playbooks")
+      ? " Run supabase/playbooks_knowledge_p97.sql."
+      : "";
+    return { ok: false, error: (insErr?.message ?? "Insert failed.") + hint };
+  }
+  revalidatePath("/");
+  return { ok: true, playbookId: String((ins as { id: string }).id) };
+}
+
+/** Prompt 97 — PDF export for a saved playbook (base64 for client download). */
+export async function getPlaybookPdfBase64Action(
+  playbookId: string,
+): Promise<
+  | { ok: true; base64: string; filename: string }
+  | { ok: false; error: string }
+> {
+  const id = playbookId.trim();
+  if (!id) return { ok: false, error: "Missing id." };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  const { data: row, error } = await supabase
+    .from("playbooks")
+    .select("workspace_id, thread_id, company, playbook_body")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !row) return { ok: false, error: "Playbook not found." };
+  if (String((row as { workspace_id?: string }).workspace_id) !== ws.workspaceId) {
+    return { ok: false, error: "Access denied." };
+  }
+  const parsed = salesPlaybookSchema.safeParse(
+    (row as { playbook_body?: unknown }).playbook_body,
+  );
+  if (!parsed.success) return { ok: false, error: "Invalid playbook payload." };
+  const bytes = renderSalesPlaybookPdfBytes(parsed.data, {
+    company: String((row as { company?: string }).company ?? "Account"),
+    threadId: String((row as { thread_id?: string | null }).thread_id ?? ""),
+    exportedAt: new Date().toISOString(),
+  });
+  return {
+    ok: true,
+    base64: Buffer.from(bytes).toString("base64"),
+    filename: `sales-playbook-${id.slice(0, 8)}.pdf`,
+  };
+}
+
+/** Prompt 98 — proposal status + URL from persisted campaign row. */
+export async function getCampaignProposalStatusAction(threadId: string): Promise<{
+  proposal_status: string | null;
+  generated_proposal_url: string | null;
+}> {
+  const tid = threadId.trim();
+  if (!tid) return { proposal_status: null, generated_proposal_url: null };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { proposal_status: null, generated_proposal_url: null };
+  }
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  const sr = getServiceRoleSupabaseOrNull();
+  const q = sr
+    ? sr
+        .from("campaigns")
+        .select("proposal_status, generated_proposal_url")
+        .eq("thread_id", tid)
+        .in("user_id", ws.memberUserIds)
+    : supabase
+        .from("campaigns")
+        .select("proposal_status, generated_proposal_url")
+        .eq("thread_id", tid)
+        .eq("user_id", user.id);
+  const { data, error } = await q.maybeSingle();
+  if (error || !data) {
+    return { proposal_status: null, generated_proposal_url: null };
+  }
+  const row = data as { proposal_status?: unknown; generated_proposal_url?: unknown };
+  return {
+    proposal_status:
+      typeof row.proposal_status === "string" && row.proposal_status.trim()
+        ? row.proposal_status.trim()
+        : null,
+    generated_proposal_url:
+      typeof row.generated_proposal_url === "string" && row.generated_proposal_url.trim()
+        ? row.generated_proposal_url.trim()
+        : null,
+  };
+}
+
+/** Prompt 98 — AI proposal / quote PDF + optional Storage URL. */
+export async function generateCampaignProposalAction(threadId: string): Promise<
+  | { ok: true; proposalUrl: string | null; proposal_status: "ready" }
+  | { ok: false; error: string }
+> {
+  const tid = threadId.trim();
+  if (!tid) return { ok: false, error: "Missing thread id." };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+  await ensurePersonalWorkspaceMembership(supabase, user.id);
+  const ws = await resolveWorkspaceContext(supabase, {
+    id: user.id,
+    email: user.email ?? null,
+  });
+  const sr = getServiceRoleSupabaseOrNull();
+  const q = sr
+    ? sr
+        .from("campaigns")
+        .select("results, user_id")
+        .eq("thread_id", tid)
+        .in("user_id", ws.memberUserIds)
+    : supabase
+        .from("campaigns")
+        .select("results, user_id")
+        .eq("thread_id", tid)
+        .eq("user_id", user.id);
+  const { data: row, error } = await q.maybeSingle();
+  if (error || !row) return { ok: false, error: "Campaign not found or inaccessible." };
+  const snap = snapshotFromPersistedResults((row as { results?: unknown }).results);
+  if (!snap) return { ok: false, error: "No campaign snapshot — run must be saved first." };
+  if (!isProposalEligible(snap)) {
+    return {
+      ok: false,
+      error:
+        "Proposal unlocks when the lead is Qualified, qualification score is strong, or a Next Best Action is present.",
+    };
+  }
+
+  const patchStatus = async (status: string, url?: string | null) => {
+    if (!sr) return;
+    const payload: Record<string, unknown> = { proposal_status: status };
+    if (url !== undefined) payload.generated_proposal_url = url;
+    const { error: pe } = await sr
+      .from("campaigns")
+      .update(payload)
+      .eq("thread_id", tid)
+      .in("user_id", ws.memberUserIds);
+    if (pe && !/proposal_status|generated_proposal_url|column|schema/i.test(`${pe.message}`)) {
+      console.warn("[AgentForge] proposal status patch", pe.message);
+    }
+  };
+
+  await patchStatus("generating");
+
+  try {
+    const input = await generateProposalPdfInputWithAi(snap, snap.brand_display_name ?? null);
+    const bytes = renderProposalPdfBytes(input);
+    let publicUrl: string | null = null;
+    if (sr) {
+      const path = `${user.id}/${tid}/proposal.pdf`;
+      const { error: upErr } = await sr.storage.from("campaign-proposals").upload(path, bytes, {
+        contentType: "application/pdf",
+        upsert: true,
+      });
+      if (!upErr) {
+        const { data: pub } = sr.storage.from("campaign-proposals").getPublicUrl(path);
+        publicUrl = pub.publicUrl;
+      }
+    }
+    await patchStatus("ready", publicUrl);
+    revalidatePath("/");
+    return { ok: true, proposalUrl: publicUrl, proposal_status: "ready" };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await patchStatus("failed");
+    return { ok: false, error: msg.slice(0, 280) };
+  }
 }

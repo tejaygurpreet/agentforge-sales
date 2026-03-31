@@ -8,7 +8,14 @@ import { gatherWebResearchDigest } from "@/lib/web-research";
  * Prompt 82 — Built-in lead enrichment + intelligent sourcing (Tavily / Browserless / Serper).
  * Runs once per lead; structured payload is shown in the dashboard before Start Campaign and
  * fed into the graph via `prefetched_web_digest` so `research_node` does not duplicate the fetch.
+ *
+ * Prompt 96 — Competitor battle cards: the LLM research JSON may include `competitor_landscape`;
+ * `normalizeResearchLlmToCanonical` merges/pads via `mergeCompetitorLandscape` (see
+ * `lib/competitor-analysis.ts`) so exports and PDFs always have 3–5 rows when research completes.
  */
+
+/** Re-export for callers that only import from the research node module. */
+export { mergeCompetitorLandscape } from "@/lib/competitor-analysis";
 
 function parseMarkdownSections(body: string): Map<string, string> {
   const map = new Map<string, string>();

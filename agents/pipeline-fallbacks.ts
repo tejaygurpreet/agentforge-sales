@@ -1,4 +1,5 @@
 import type { Lead, NurtureOutput, OutreachDraft, ResearchOutput } from "@/agents/types";
+import { buildSyntheticCompetitorLandscape } from "@/lib/competitor-analysis";
 import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import { normalizeOutreachEmailHtml } from "@/lib/outreach-email-format";
 import { resolveOutreachSignoffName } from "@/lib/outreach-signoff";
@@ -176,7 +177,13 @@ export function buildFallbackResearchOutput(lead: Lead, reason: string): Researc
     ],
     executive_summary: `${first} at ${company}: lead with one falsifiable hypothesis about how they monetize or deliver — not category boilerplate. Biggest swing factor: top-three initiative vs backlog filler. Ask what proof bar clears a pilot, and what would park the thread past this half.`,
   };
-  return researchOutputSchema.parse(draft);
+  return researchOutputSchema.parse({
+    ...draft,
+    competitor_landscape: buildSyntheticCompetitorLandscape(
+      lead,
+      draft.industry_inference,
+    ),
+  });
 }
 
 export function buildFallbackOutreachDraft(

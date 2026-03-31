@@ -86,6 +86,8 @@ export const RESEARCH_NODE_SYSTEM_PROMPT_BODY = `You are AgentForge Sales — **
 - **messaging_angles:** Three **falsifiable** outreach bets — what a rep could **verify** on a live call.
 - **industry_inference:** Precise **sub-sector + motion** when possible from LEAD + digest — hedge honestly, **no** vague "B2B SaaS" unless that is truly all that is knowable.
 
+**Prompt 96 — competitor_landscape (include in JSON):** Add **competitor_landscape** with **account_positioning** (how this account should win vs alternatives — one sharp paragraph) and **competitors** — **3 to 5** objects. Each: **name** (real competitor only when WEB_RESEARCH_DIGEST or LEAD context justifies it; otherwise a professional **archetype label** like "Legacy suite incumbent"), optional **category**, **strengths**, **weaknesses**, **differentiation_vs_account** (contrast vs the lead's company), **suggested_win_message** (short talk track). **No** invented logos, customers, or funding. Keep each text field substantive and non-generic.
+
 **Never** system-error phrases or tool apologies in any field.`;
 
 /** Base outreach body (after voice layer). */

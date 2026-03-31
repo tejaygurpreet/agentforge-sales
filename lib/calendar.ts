@@ -6,6 +6,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const GCAL_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 const MS_SCOPE = "offline_access Calendars.ReadWrite User.Read";
 
+/** Prompt 100 — demo invites reuse `createGoogleCalendarEvent` / `createMicrosoftCalendarEvent` with a richer description from `lib/demo-generator.formatDemoScriptForCalendarDescription`. */
+
 function appBaseUrl(): string {
   const u =
     process.env.NEXT_PUBLIC_SITE_URL?.trim() ||

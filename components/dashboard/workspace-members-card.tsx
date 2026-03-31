@@ -93,7 +93,8 @@ export function WorkspaceMembersCard({ members, currentRole }: Props) {
           Workspace members
         </CardTitle>
         <CardDescription>
-          Invite team members to share campaigns, leads, and analytics in this workspace.
+          Invite team members to share campaigns, leads, and analytics in this workspace. AI team coaching
+          insights (Prompt 101) live on the Coaching tab.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">

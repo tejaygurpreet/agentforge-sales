@@ -363,6 +363,7 @@ export function DashboardCampaignRunner({
         sequencePrefillRequest={sequencePrefillRequest}
         onSequencePrefillConsumed={onSequencePrefillConsumed}
         calendarStatus={calendarStatus}
+        recentCampaigns={recentCampaigns}
       />
     </div>
   );

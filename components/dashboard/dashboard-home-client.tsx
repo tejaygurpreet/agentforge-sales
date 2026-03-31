@@ -10,13 +10,19 @@ import type {
   CampaignThreadRow,
   CustomVoiceRow,
   DashboardAnalyticsSummary,
+  KnowledgeBaseEntryRow,
   ObjectionLibraryEntryRow,
   PersistedCampaignRow,
+  PlaybookRow,
+  SalesCoachingPayloadDTO,
   ScheduledReportRow,
+  SdrManagerPayloadDTO,
 } from "@/types";
 import { ActiveAgents } from "@/components/dashboard/active-agents";
 import { AnalyticsDashboard } from "@/components/dashboard/analytics-dashboard";
 import { LeadPrioritySection } from "@/components/dashboard/lead-priority-section";
+import { DealClosePanel } from "@/components/dashboard/deal-close-panel";
+import { OptimizerPanel } from "@/components/dashboard/optimizer-panel";
 import { QualificationObjectionPanel } from "@/components/dashboard/qualification-objection-panel";
 import { CampaignList } from "@/components/dashboard/campaign-list";
 import { BetaProgramSignupCard } from "@/components/dashboard/beta-program-signup-card";
@@ -32,9 +38,13 @@ import { ReportsSection } from "@/components/dashboard/reports-section";
 import { AbTestingSection } from "@/components/dashboard/ab-testing-section";
 import { SequencesSection } from "@/components/dashboard/sequences-section";
 import { WorkspaceMembersCard } from "@/components/dashboard/workspace-members-card";
+import { DeliverabilityCoachWidget } from "@/components/dashboard/deliverability-coach-widget";
 import { DeliverabilityPanel } from "@/components/dashboard/deliverability-panel";
 import { WhiteLabelSettingsCard } from "@/components/dashboard/white-label-settings-card";
 import { ObjectionLibrarySection } from "@/components/dashboard/objection-library-section";
+import { PlaybooksSection } from "@/components/dashboard/playbooks-section";
+import { SalesCoachingSection } from "@/components/dashboard/sales-coaching-section";
+import { SdrManagerSection } from "@/components/dashboard/sdr-manager-section";
 import { PwaBanner } from "@/components/pwa/pwa-banner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRouter } from "next/navigation";
@@ -74,6 +84,13 @@ type Props = {
   reportRecipientEmail: string;
   /** Prompt 89 — Google / Microsoft calendar OAuth for meeting proposals. */
   calendarStatus: CalendarConnectionStatusDTO;
+  /** Prompt 97 — saved playbooks + knowledge base rows. */
+  playbooks: PlaybookRow[];
+  knowledgeBaseEntries: KnowledgeBaseEntryRow[];
+  /** Prompt 101 — AI coaching + performance payload. */
+  coachingPayload: SalesCoachingPayloadDTO;
+  /** Prompt 102 — executive KPIs, health, cached executive report. */
+  sdrManagerPayload: SdrManagerPayloadDTO;
 };
 
 /**
@@ -81,6 +98,10 @@ type Props = {
  * Prompt 84 — PWA banner (SW + optional push) + scrollable tabs on small screens.
  * Prompt 85 — Templates tab (library + A/B voice runner).
  * Prompt 86 — Reports tab (PDF/CSV + scheduled emails).
+ * Prompt 97 — Playbooks tab (AI playbook generator + living knowledge base).
+ * Prompt 99 — `DeliverabilityCoachWidget` on Workspace + coach in `DeliverabilityPanel`.
+ * Prompt 101 — Coaching tab (`SalesCoachingSection`) + `coachingPreview` on analytics.
+ * Prompt 102 — SDR Manager tab (`SdrManagerSection`) + analytics/reports entry points.
  */
 export function DashboardHomeClient({
   envWarnings,
@@ -102,6 +123,10 @@ export function DashboardHomeClient({
   scheduledReports,
   reportRecipientEmail,
   calendarStatus,
+  playbooks,
+  knowledgeBaseEntries,
+  coachingPayload,
+  sdrManagerPayload,
 }: Props) {
   const router = useRouter();
   const [batchProgress, setBatchProgress] = useState<BatchRunItem[] | null>(null);
@@ -157,6 +182,11 @@ export function DashboardHomeClient({
 
       <ActiveAgents batchProgress={batchProgress} />
 
+      <DeliverabilityCoachWidget
+        suite={deliverabilitySuite}
+        onOpenDeliverability={() => setMainTab("deliverability")}
+      />
+
       <ProductRoadmapSection
         analyticsPreview={{
           campaignCount: analytics.campaignCount,
@@ -166,7 +196,7 @@ export function DashboardHomeClient({
       />
 
       <Tabs value={mainTab} onValueChange={setMainTab} className="w-full">
-        <TabsList className="flex h-auto w-full max-w-6xl flex-nowrap justify-start gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:grid sm:grid-cols-7 sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden">
+        <TabsList className="flex h-auto w-full max-w-6xl flex-nowrap justify-start gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:grid sm:grid-cols-10 sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden">
           <TabsTrigger
             value="workspace"
             className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
@@ -174,10 +204,22 @@ export function DashboardHomeClient({
             Workspace
           </TabsTrigger>
           <TabsTrigger
+            value="sdr-manager"
+            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
+          >
+            SDR Manager
+          </TabsTrigger>
+          <TabsTrigger
             value="analytics"
             className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
           >
             Analytics
+          </TabsTrigger>
+          <TabsTrigger
+            value="coaching"
+            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
+          >
+            Coaching
           </TabsTrigger>
           <TabsTrigger
             value="templates"
@@ -196,6 +238,12 @@ export function DashboardHomeClient({
             className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
           >
             Reports
+          </TabsTrigger>
+          <TabsTrigger
+            value="playbooks"
+            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
+          >
+            Playbooks
           </TabsTrigger>
           <TabsTrigger
             value="deliverability"
@@ -219,6 +267,11 @@ export function DashboardHomeClient({
             qualificationRows={analytics.qualificationInsights}
             objectionCards={analytics.replyObjectionCards}
           />
+          <DealClosePanel
+            rows={analytics.dealCloseQualifications}
+            avgCloseProbability={analytics.avgCloseProbability}
+          />
+          <OptimizerPanel mode="feed" rows={analytics.optimizerFeed} />
           <CampaignList campaigns={campaigns} />
           <DashboardCampaignRunner
             recentCampaigns={recentCampaigns}
@@ -235,8 +288,27 @@ export function DashboardHomeClient({
           />
           <BetaProgramSignupCard />
         </TabsContent>
+        <TabsContent value="sdr-manager" className="space-y-8 pt-2">
+          <SdrManagerSection
+            initial={sdrManagerPayload}
+            onOpenDeliverability={() => setMainTab("deliverability")}
+            onOpenCoaching={() => setMainTab("coaching")}
+          />
+        </TabsContent>
         <TabsContent value="analytics">
-          <AnalyticsDashboard data={analytics} variant="embedded" />
+          <AnalyticsDashboard
+            data={analytics}
+            variant="embedded"
+            onOpenCoachingTab={() => setMainTab("coaching")}
+            onOpenSdrManagerTab={() => setMainTab("sdr-manager")}
+          />
+        </TabsContent>
+        <TabsContent value="coaching" className="space-y-8 pt-2">
+          <SalesCoachingSection
+            initial={coachingPayload}
+            analytics={analytics}
+            workspaceMembers={workspaceMembers}
+          />
         </TabsContent>
         <TabsContent value="templates" className="space-y-8 pt-2">
           <CampaignTemplatesSection
@@ -263,6 +335,14 @@ export function DashboardHomeClient({
             workspaceMembers={workspaceMembers}
             scheduledReports={scheduledReports}
             defaultRecipientEmail={reportRecipientEmail}
+            onOpenSdrManagerTab={() => setMainTab("sdr-manager")}
+          />
+        </TabsContent>
+        <TabsContent value="playbooks" className="space-y-8 pt-2">
+          <PlaybooksSection
+            recentCampaigns={recentCampaigns}
+            initialPlaybooks={playbooks}
+            initialKnowledge={knowledgeBaseEntries}
           />
         </TabsContent>
         <TabsContent value="deliverability" className="pt-2">

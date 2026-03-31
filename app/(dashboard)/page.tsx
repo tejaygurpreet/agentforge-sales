@@ -2,12 +2,16 @@ import {
   getCalendarConnectionStatusAction,
   getDashboardAnalytics,
   getDeliverabilitySuiteAction,
+  getSalesCoachingPayloadAction,
+  getSdrManagerPayloadAction,
   getWorkspaceMembersAction,
   listCampaignSequencesAction,
   listCampaignTemplatesAction,
   listCampaignThreads,
   listCustomVoicesAction,
   listAbTestsAction,
+  listKnowledgeBaseEntriesAction,
+  listPlaybooksForWorkspaceAction,
   listRecentCampaigns,
   listScheduledReportsAction,
   loadObjectionLibraryForDashboard,
@@ -84,6 +88,50 @@ export const dynamic = "force-dynamic";
  * (pattern detection, suggested replies, display score refinement with reply interest),
  * `QualificationObjectionPanel` on Workspace + Analytics, optional `campaigns.qualification_score` /
  * `detected_objections` — `supabase/qualification_objections_p92.sql`.
+ *
+ * Prompt 93 — Deal close probability engine (`lib/qualification-engine.ts`): blends ICP, smart lead
+ * scores, qualification, forecast, reply interest, objections; `DealClosePanel` + campaign badges;
+ * optional `campaigns.close_probability` / `qualification_factors` — `supabase/deal_close_p93.sql`.
+ *
+ * Prompt 94 — AI campaign optimizer (`lib/optimizer.ts`): auto-pause suggestions + variant switches +
+ * live feed on Workspace / Analytics (`OptimizerPanel`); graph merges hints into smart follow-up
+ * metadata; optional `campaigns.optimization_status` / `performance_metrics` —
+ * `supabase/optimizer_p94.sql`.
+ *
+ * Prompt 95 — Intelligent sequence recommendation (`lib/recommendation-engine.ts`,
+ * `getSequenceRecommendationAction`, `SequenceRecommendationCard` on the new-campaign form):
+ * suggests saved playbook + voice + opener from workspace history; optional
+ * `campaigns.sequence_recommendation` + `sequence_recommendation_log` — `supabase/sequence_recommendation_p95.sql`.
+ *
+ * Prompt 96 — Automated competitor analysis & battle cards: research populates `competitor_landscape`
+ * (merged in `agents/research-normalize.ts`); `CampaignWorkspace` + PDF dossier show the matrix;
+ * optional `campaigns.competitor_analysis` jsonb — `supabase/competitor_analysis_p96.sql`.
+ *
+ * Prompt 97 — AI sales playbook generator (`lib/playbook-generator.ts`) + living knowledge base:
+ * `nurture_node` / `qualification_node` expose snapshot signals; completed saves append KB rows;
+ * Playbooks tab — `listPlaybooksForWorkspaceAction`, `generatePlaybookForThreadAction`,
+ * `getPlaybookPdfBase64Action`; SQL: `supabase/playbooks_knowledge_p97.sql`.
+ *
+ * Prompt 98 — AI proposal & quote PDF: `lib/proposal-generator.ts` + `renderProposalQuotePdfBytes` in
+ * `lib/campaign-pdf.ts`; `CampaignWorkspace` **Generate proposal** after qualification signals;
+ * `generateCampaignProposalAction` uploads to Storage; SQL: `supabase/proposal_columns_p98.sql`
+ * (`proposal_status`, `generated_proposal_url` on `campaigns`).
+ *
+ * Prompt 99 — AI Sales Email Warm-up & Deliverability Coach: `lib/deliverability-coach.ts` (scoring +
+ * Groq coach), `getDeliverabilitySuiteAction` / `refreshDeliverabilityCoachAction`, Workspace widget +
+ * Deliverability tab; SQL: `supabase/deliverability_coach_p99.sql` (prefs cache + health snapshots).
+ *
+ * Prompt 100 — One-click personalized demo: `lib/demo-generator.ts` + `CampaignWorkspace`
+ * `PersonalizedDemoBookingCard` (high qualification); calendar events reuse Prompt 89 APIs with demo
+ * descriptions; SQL: `supabase/demo_booking_p100.sql` (`demo_status`, `demo_script`, `demo_outcome`).
+ *
+ * Prompt 101 — AI sales coaching: `lib/coaching-engine.ts`, `getSalesCoachingPayloadAction`, Coaching tab;
+ * analytics gains `coachingPreview`; profiles SQL: `supabase/coaching_p101.sql` (`coaching_notes`,
+ * `performance_metrics`, `coaching_weekly_email_enabled`).
+ *
+ * Prompt 102 — AI SDR Manager: `lib/sdr-manager.ts`, `getSdrManagerPayloadAction`,
+ * `generateExecutiveReportAction`, SDR Manager tab; SQL: `supabase/sdr_manager_p102.sql`
+ * (`executive_metrics`, `system_health_status` on `profiles`).
  */
 export default async function DashboardPage() {
   const envWarnings = getDashboardEnvWarnings();
@@ -159,15 +207,35 @@ export default async function DashboardPage() {
       loadObjectionLibraryForDashboard(),
     ]);
 
+  const calendarStatus = user ? await getCalendarConnectionStatusAction() : { google: false, microsoft: false };
+
+  const coachingPayload = await getSalesCoachingPayloadAction(analytics);
+
+  const sdrManagerPayload = await getSdrManagerPayloadAction({
+    analytics,
+    deliverabilitySuite,
+    calendarStatus,
+    hubspotConnected,
+    envWarningCount: envWarnings.length,
+    workspaceMemberCount: Math.max(1, workspaceData?.members?.length ?? 1),
+    coachingPayload,
+  });
+
   const priorityByThread = new Map(
     analytics.leadPriorityLeaderboard.map((r) => [r.thread_id, r]),
   );
+  const dealCloseByThread = new Map(
+    analytics.dealCloseQualifications.map((r) => [r.thread_id, r]),
+  );
   const campaigns = campaignsRaw.map((c) => {
     const p = priorityByThread.get(c.thread_id);
+    const d = dealCloseByThread.get(c.thread_id);
     return {
       ...c,
       lead_priority_tier: p?.priority_tier ?? null,
       lead_priority_score: p?.composite_score ?? null,
+      deal_close_probability: d?.close_probability ?? null,
+      deal_confidence: d?.confidence ?? null,
     };
   });
 
@@ -182,7 +250,9 @@ export default async function DashboardPage() {
 
   const scheduledReports = user ? await listScheduledReportsAction() : [];
   const reportRecipientEmail = user?.email ?? "";
-  const calendarStatus = user ? await getCalendarConnectionStatusAction() : { google: false, microsoft: false };
+  const [playbooks, knowledgeBaseEntries] = user
+    ? await Promise.all([listPlaybooksForWorkspaceAction(), listKnowledgeBaseEntriesAction()])
+    : [[], []];
 
   return (
     <DashboardHomeClient
@@ -205,6 +275,10 @@ export default async function DashboardPage() {
       scheduledReports={scheduledReports}
       reportRecipientEmail={reportRecipientEmail}
       calendarStatus={calendarStatus}
+      playbooks={playbooks}
+      knowledgeBaseEntries={knowledgeBaseEntries}
+      coachingPayload={coachingPayload}
+      sdrManagerPayload={sdrManagerPayload}
     />
   );
 }

@@ -1,5 +1,5 @@
 import { replaceLegacyNewsSummaryIfNeeded } from "@/agents/pipeline-fallbacks";
-import type { CampaignClientSnapshot, SdrVoiceTone } from "@/agents/types";
+import type { CampaignClientSnapshot, CompetitorLandscape, SdrVoiceTone } from "@/agents/types";
 import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import { computeCampaignStrength } from "@/lib/campaign-strength";
 import { emailPlainTextFromHtml } from "@/lib/email-plain";
@@ -51,6 +51,8 @@ export type CampaignSummaryExport = {
       need: { confidence: string; evidence: string };
       timeline: { confidence: string; evidence: string };
     };
+    /** Prompt 96 — automated competitor battle cards (3–5 alternatives). */
+    competitor_landscape?: CompetitorLandscape | null;
   } | null;
   outreach: {
     subject: string;
@@ -165,6 +167,7 @@ export function buildCampaignSummaryExport(
               evidence: r.bant_assessment.timeline.evidence,
             },
           },
+          competitor_landscape: r.competitor_landscape ?? null,
         }
       : null,
     outreach: o

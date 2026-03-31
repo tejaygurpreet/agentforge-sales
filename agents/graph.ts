@@ -4,6 +4,7 @@ import type {
   CampaignClientSnapshot,
   CampaignFinalStatus,
   CampaignLiveSignal,
+  CampaignOptimizerSnapshot,
   CampaignSequencePlan,
   CustomVoiceProfile,
   Lead,
@@ -15,6 +16,7 @@ import type {
   ReplyFollowUpIntel,
   ResearchOutput,
   SdrVoiceTone,
+  SequenceRecommendationSnapshot,
   SmartFollowUpEngineState,
 } from "@/agents/types";
 import { computeSequenceRunProgress } from "@/lib/sequences";
@@ -48,8 +50,10 @@ import { fetchLiveSignalsAfterResearch } from "@/lib/live-signals";
 import { loadLivingObjectionContextForWorkspace } from "@/lib/agents/qualification_node";
 import {
   buildSmartFollowUpEngineState,
+  mergeOptimizerIntoFollowUpEngine,
   mergeQualMeetingIntoNurtureOutput,
 } from "@/lib/agents/nurture_node";
+import { buildCampaignOptimizerSnapshot } from "@/lib/optimizer";
 
 /** Just under `START_CAMPAIGN_MAX_MS` (90s) in actions.ts. */
 const GRAPH_INVOKE_MAX_MS = 89_000;
@@ -282,6 +286,25 @@ const GraphState = Annotation.Root({
     reducer: (c, n) => (n !== undefined ? n : c),
     default: () => undefined,
   }),
+  /** Prompt 90 — experiment arm for optimizer + dashboard. */
+  ab_test_id: Annotation<string | null | undefined>({
+    reducer: (c, n) => (n !== undefined ? n : c),
+    default: () => undefined,
+  }),
+  ab_variant: Annotation<"A" | "B" | null | undefined>({
+    reducer: (c, n) => (n !== undefined ? n : c),
+    default: () => undefined,
+  }),
+  /** Prompt 94 — AI optimizer snapshot for client + persistence. */
+  campaign_optimizer: Annotation<CampaignOptimizerSnapshot | undefined>({
+    reducer: (c, n) => (n !== undefined ? n : c),
+    default: () => undefined,
+  }),
+  /** Prompt 95 — optional pre-run recommendation metadata (does not change graph edges). */
+  sequence_recommendation_snapshot: Annotation<SequenceRecommendationSnapshot | undefined>({
+    reducer: (c, n) => (n !== undefined ? n : c),
+    default: () => undefined,
+  }),
 });
 
 export type SalesGraphState = typeof GraphState.State;
@@ -309,6 +332,10 @@ export function serializeCampaignStateForClient(
     brand_display_name: state.brand_display_name ?? null,
     lead_enrichment_preview: state.lead_enrichment_preview ?? null,
     smart_follow_up_engine: state.smart_follow_up_engine ?? null,
+    ab_test_id: state.ab_test_id ?? null,
+    ab_variant: state.ab_variant ?? null,
+    campaign_optimizer: state.campaign_optimizer ?? null,
+    sequence_recommendation: state.sequence_recommendation_snapshot ?? null,
   };
   if (state.sequence_plan) {
     snap.sequence_plan = state.sequence_plan;
@@ -478,6 +505,7 @@ async function researchNode(
       pain_points: research_output.pain_points,
       messaging_angles: research_output.messaging_angles,
       executive_summary: research_output.executive_summary,
+      competitor_landscape: research_output.competitor_landscape,
       ...(degraded ? { degraded: true as const } : {}),
       ...(groqInvokeMeta?.usedLighterModelAfterRateLimit
         ? { rate_limit_lighter_model: true as const }
@@ -530,6 +558,7 @@ async function researchNode(
       pain_points: research_output.pain_points,
       messaging_angles: research_output.messaging_angles,
       executive_summary: research_output.executive_summary,
+      competitor_landscape: research_output.competitor_landscape,
       degraded: true as const,
       error_note: message.slice(0, 400),
       live_signals,
@@ -933,12 +962,25 @@ async function nurtureNode(
   }
 
   const anchorDate = new Date();
-  const smart_follow_up_engine = buildSmartFollowUpEngineState(nurture_output, {
+  const campaign_optimizer = buildCampaignOptimizerSnapshot({
+    qualificationScore: score,
+    qualificationDetail: state.qualification_detail,
+    nurtureOutput: nurture_output,
+    replyIntel: state.reply_follow_up_intel ?? null,
+    abVariant: state.ab_variant ?? null,
+    hadPriorErrors,
+    nurtureDegraded,
+  });
+  let smart_follow_up_engine = buildSmartFollowUpEngineState(nurture_output, {
     qualificationScore: score,
     qualificationDetail: state.qualification_detail,
     replyIntel: state.reply_follow_up_intel ?? null,
     anchorDate,
   });
+  smart_follow_up_engine = mergeOptimizerIntoFollowUpEngine(
+    smart_follow_up_engine,
+    campaign_optimizer,
+  );
 
   try {
     const nextLead: Lead = { ...state.lead, status: "nurtured" };
@@ -971,6 +1013,7 @@ async function nurtureNode(
       current_agent: "nurture_node",
       nurture_output,
       smart_follow_up_engine,
+      campaign_optimizer,
       final_status,
       results: { nurture_node: nodeResult },
     });
@@ -984,6 +1027,7 @@ async function nurtureNode(
     return {
       nurture_output,
       smart_follow_up_engine,
+      campaign_optimizer,
       lead: nextLead,
       current_agent: "nurture_node",
       final_status,
@@ -999,12 +1043,22 @@ async function nurtureNode(
     const message = e instanceof Error ? e.message : "Nurture failed";
     console.error("[AgentForge] nurture_node:unexpected", state.thread_id, message);
     const fb = buildFallbackNurtureOutput(state.lead, message);
-    const fbEngine = buildSmartFollowUpEngineState(fb, {
+    const fbOpt = buildCampaignOptimizerSnapshot({
+      qualificationScore: score,
+      qualificationDetail: state.qualification_detail,
+      nurtureOutput: fb,
+      replyIntel: state.reply_follow_up_intel ?? null,
+      abVariant: state.ab_variant ?? null,
+      hadPriorErrors,
+      nurtureDegraded: true,
+    });
+    let fbEngine = buildSmartFollowUpEngineState(fb, {
       qualificationScore: score,
       qualificationDetail: state.qualification_detail,
       replyIntel: state.reply_follow_up_intel ?? null,
       anchorDate: new Date(),
     });
+    fbEngine = mergeOptimizerIntoFollowUpEngine(fbEngine, fbOpt);
     const nextLead: Lead = { ...state.lead, status: "nurtured" };
     const nodeResult = {
       sequence_summary: fb.sequence_summary,
@@ -1020,12 +1074,14 @@ async function nurtureNode(
       current_agent: "nurture_node",
       nurture_output: fb,
       smart_follow_up_engine: fbEngine,
+      campaign_optimizer: fbOpt,
       final_status: fatalStatus,
       results: { nurture_node: nodeResult },
     });
     return {
       nurture_output: fb,
       smart_follow_up_engine: fbEngine,
+      campaign_optimizer: fbOpt,
       lead: nextLead,
       current_agent: "nurture_node",
       final_status: fatalStatus,
@@ -1057,6 +1113,8 @@ export interface RunCampaignInput {
   sequence_plan?: CampaignSequencePlan | null;
   /** Prompt 91 — latest reply analysis for this lead email (optional). */
   reply_follow_up_intel?: ReplyFollowUpIntel | null;
+  /** Prompt 95 — optional sequence/voice/opener recommendation captured at run start. */
+  sequence_recommendation_snapshot?: SequenceRecommendationSnapshot | null;
 }
 
 function buildLeadWithTemplateAbNote(input: RunCampaignInput): Lead {
@@ -1096,6 +1154,10 @@ function initialCampaignGraphState(input: RunCampaignInput): SalesGraphState {
     sequence_plan: input.sequence_plan ?? undefined,
     reply_follow_up_intel: input.reply_follow_up_intel ?? undefined,
     smart_follow_up_engine: undefined,
+    ab_test_id: input.ab_test_id ?? undefined,
+    ab_variant: input.ab_variant ?? undefined,
+    campaign_optimizer: undefined,
+    sequence_recommendation_snapshot: input.sequence_recommendation_snapshot ?? undefined,
   };
 }
 
@@ -1140,6 +1202,10 @@ export async function runCampaignGraph(
       sequence_plan: input.sequence_plan ?? undefined,
       reply_follow_up_intel: input.reply_follow_up_intel ?? undefined,
       smart_follow_up_engine: undefined,
+      ab_test_id: input.ab_test_id ?? undefined,
+      ab_variant: input.ab_variant ?? undefined,
+      campaign_optimizer: undefined,
+      sequence_recommendation_snapshot: input.sequence_recommendation_snapshot ?? undefined,
     };
     await mergeDashboardState(input.thread_id, input.user_id, {
       current_agent: "research_node",
@@ -1329,6 +1395,7 @@ export const runSalesGraph = async (input: {
   template_voice_note?: string | null;
   sequence_plan?: CampaignSequencePlan | null;
   reply_follow_up_intel?: ReplyFollowUpIntel | null;
+  sequence_recommendation_snapshot?: SequenceRecommendationSnapshot | null;
 }) =>
   runCampaignGraph({
     lead: input.lead,
@@ -1343,4 +1410,5 @@ export const runSalesGraph = async (input: {
     template_voice_note: input.template_voice_note,
     sequence_plan: input.sequence_plan,
     reply_follow_up_intel: input.reply_follow_up_intel ?? null,
+    sequence_recommendation_snapshot: input.sequence_recommendation_snapshot ?? null,
   });

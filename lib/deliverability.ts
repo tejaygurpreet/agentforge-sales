@@ -1,6 +1,9 @@
 /**
  * Prompt 80 — heuristic email deliverability helpers (no third-party API).
  * Higher `inboxHealthScore` = safer / better predicted inbox placement (0–100).
+ *
+ * Prompt 99 — composite warm-up health, placement prediction, and AI coach tips live in
+ * `lib/deliverability-coach.ts` (used by `getDeliverabilitySuiteAction`); spam checks here stay unchanged.
  */
 
 export type DeliverabilityStatus = "excellent" | "good" | "fair" | "poor";

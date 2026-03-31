@@ -4,6 +4,7 @@ import {
   checkSpamScoreAction,
   getDeliverabilitySuiteAction,
   recordWarmupEmailAction,
+  refreshDeliverabilityCoachAction,
   setWarmupEnabledAction,
 } from "@/app/(dashboard)/actions";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { dashboardOutlineActionClass } from "@/lib/dashboard-action-classes";
 import { cn } from "@/lib/utils";
 import type { DashboardAnalyticsSummary, DeliverabilitySuitePayload } from "@/types";
-import { Activity, Flame, Loader2, ShieldCheck, TrendingUp } from "lucide-react";
+import { Activity, Flame, Loader2, ShieldCheck, Sparkles, TrendingUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useState, useTransition } from "react";
 import { toast } from "@/hooks/use-toast";
@@ -118,6 +119,18 @@ export function DeliverabilityPanel({ initial, analytics }: Props) {
     ? Math.min(100, Math.round((suite.emailsSentLast7Days / 35) * 100))
     : 0;
 
+  const onRefreshCoach = () => {
+    startTransition(async () => {
+      const res = await refreshDeliverabilityCoachAction();
+      if (!res.ok) {
+        toast({ variant: "destructive", title: "Coach refresh failed", description: res.error });
+        return;
+      }
+      toast({ title: "Coach updated", description: "Suggestions refreshed for your workspace." });
+      refresh();
+    });
+  };
+
   return (
     <div className="space-y-8">
       <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-primary/[0.03] via-card to-card px-5 py-6 shadow-sm sm:px-7">
@@ -186,6 +199,99 @@ export function DeliverabilityPanel({ initial, analytics }: Props) {
           </CardContent>
         </Card>
       </div>
+
+      {suite ? (
+        <Card className="rounded-2xl border-border/80 border-primary/20 bg-primary/[0.02]">
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Sparkles className="h-5 w-5 text-primary" aria-hidden />
+                AI deliverability coach
+              </CardTitle>
+              <CardDescription>
+                Real-time health score, inbox placement outlook, and Groq-powered suggestions (refresh to
+                update). Scheduling hints are informational — they do not send mail.
+              </CardDescription>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={cn("shrink-0 gap-2", dashboardOutlineActionClass)}
+              disabled={pending}
+              onClick={onRefreshCoach}
+            >
+              {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              Refresh AI coach
+            </Button>
+          </CardHeader>
+          <CardContent className="grid gap-6 lg:grid-cols-2">
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-border/60 bg-card px-3 py-2">
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Health score
+                  </p>
+                  <p className="text-2xl font-bold tabular-nums">{suite.coach.healthScore}</p>
+                </div>
+                <div className="rounded-lg border border-border/60 bg-card px-3 py-2">
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Placement prediction
+                  </p>
+                  <p className="text-2xl font-bold tabular-nums">{suite.coach.placementPrediction}</p>
+                  <p className="text-xs text-muted-foreground">{suite.coach.inboxPlacementLabel}</p>
+                </div>
+                <div className="rounded-lg border border-border/60 bg-card px-3 py-2">
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Warm-up progress
+                  </p>
+                  <p className="text-2xl font-bold tabular-nums">{suite.coach.warmupProgressPct}%</p>
+                </div>
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-medium text-muted-foreground">Smart scheduling (UTC)</p>
+                <ul className="space-y-1 text-sm text-muted-foreground">
+                  {suite.coach.suggestedSendWindows.map((w) => (
+                    <li key={w} className="leading-snug">
+                      {w}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Next suggested log window:{" "}
+                  {suite.nextSuggestedSendAt
+                    ? new Date(suite.nextSuggestedSendAt).toLocaleString(undefined, {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "—"}
+                </p>
+                {suite.cachedCoachAt ? (
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    AI layer last merged: {new Date(suite.cachedCoachAt).toLocaleString()}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 text-xs font-medium text-muted-foreground">Coaching tips</p>
+              <ul className="max-h-64 space-y-2 overflow-y-auto text-sm">
+                {suite.coach.quickTips.map((t) => (
+                  <li
+                    key={t}
+                    className="rounded-md border border-border/50 bg-muted/15 px-3 py-2 leading-snug"
+                  >
+                    {t}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="rounded-2xl border-border/80">

@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, GitCompare, Inbox, Mail, RefreshCw, Shield, User } from "lucide-react";
+import { Calendar, GitCompare, Inbox, Mail, Percent, RefreshCw, Shield, User } from "lucide-react";
 import type { LeadFormInput } from "@/agents/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -203,6 +203,16 @@ export function RecentCampaigns({
                         <Shield className="h-3 w-3" aria-hidden />
                         {c.spam_score}/100
                         {c.deliverability_status ? ` · ${c.deliverability_status}` : ""}
+                      </Badge>
+                    ) : null}
+                    {c.close_probability != null ? (
+                      <Badge
+                        variant="outline"
+                        className="gap-1 border-teal-500/45 bg-teal-500/[0.12] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-teal-950 dark:border-teal-400/45 dark:bg-teal-500/16 dark:text-teal-50"
+                        title="Deal close probability (Prompt 93)"
+                      >
+                        <Percent className="h-3 w-3" aria-hidden />
+                        Close {c.close_probability}%
                       </Badge>
                     ) : null}
                   </div>

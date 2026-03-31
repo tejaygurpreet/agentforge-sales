@@ -250,6 +250,97 @@ async function renderCampaignPdfDocument(
     y += 10;
   }
 
+  /** Prompt 96 — battle card narrative + five-column comparison matrix. */
+  function renderCompetitorBattleCard() {
+    const cl = data.research?.competitor_landscape;
+    if (!cl?.competitors?.length) return;
+    const colFrac = [0.17, 0.2, 0.2, 0.2, 0.23] as const;
+    const lineH = 9.0;
+    const pad = 3.5;
+    const headerFs = 7.1;
+    const cellFs = 6.7;
+    const widths = colFrac.map((f) => f * maxW);
+
+    function colXs(): number[] {
+      const xs: number[] = [];
+      let x = margin;
+      for (const w of widths) {
+        xs.push(x);
+        x += w;
+      }
+      return xs;
+    }
+
+    function drawMatrixRow(cells: string[], header: boolean) {
+      const xs = colXs();
+      const cellLines = cells.map((c, i) =>
+        doc.splitTextToSize(
+          forPdf(header ? trunc(c, 72) : trunc(c, 520)),
+          widths[i] - pad * 2,
+        ),
+      );
+      const linesPerCell = cellLines.map((l) => Math.max(1, l.length));
+      const rowH = Math.max(...linesPerCell) * lineH + pad * 2 + (header ? 4 : 2);
+      ensureSpace(rowH + 8);
+      const rowTop = y;
+      doc.setDrawColor(rule.r, rule.g, rule.b);
+      doc.setLineWidth(0.35);
+      const hdrBg = mixRgb(primary, pageBg, dark ? 0.18 : 0.9);
+      for (let i = 0; i < widths.length; i++) {
+        if (header) {
+          doc.setFillColor(hdrBg.r, hdrBg.g, hdrBg.b);
+        } else {
+          doc.setFillColor(cardBg.r, cardBg.g, cardBg.b);
+        }
+        doc.rect(xs[i], rowTop, widths[i], rowH, "FD");
+      }
+      doc.setDrawColor(rule.r, rule.g, rule.b);
+      for (let i = 0; i < widths.length; i++) {
+        doc.rect(xs[i], rowTop, widths[i], rowH, "S");
+      }
+      doc.setFont("helvetica", header ? "bold" : "normal");
+      doc.setFontSize(header ? headerFs : cellFs);
+      doc.setTextColor(ink.r, ink.g, ink.b);
+      for (let i = 0; i < cells.length; i++) {
+        let ly = rowTop + pad + (header ? headerFs * 0.75 : cellFs * 0.72);
+        for (const line of cellLines[i]) {
+          doc.text(line, xs[i] + pad, ly);
+          ly += lineH;
+        }
+      }
+      y = rowTop + rowH + 2;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(bodySize);
+    }
+
+    heading("Competitor battle card", 13);
+    labeledBlock("Account positioning vs alternatives", cl.account_positioning);
+
+    subheading("Competitive comparison matrix");
+    y += 2;
+
+    drawMatrixRow(
+      ["Competitor", "Strengths", "Weaknesses", "Vs our account", "Win message"],
+      true,
+    );
+    for (const c of cl.competitors) {
+      const nameLine = c.category?.trim()
+        ? `${c.name} (${c.category})`
+        : c.name;
+      drawMatrixRow(
+        [
+          nameLine,
+          c.strengths,
+          c.weaknesses,
+          c.differentiation_vs_account,
+          c.suggested_win_message,
+        ],
+        false,
+      );
+    }
+    y += 10;
+  }
+
   function drawCardShadow(top: number, height: number) {
     const s = dark ? 36 : 228;
     doc.setFillColor(s, s, s + (dark ? 3 : 4));
@@ -570,6 +661,7 @@ async function renderCampaignPdfDocument(
       data.research.messaging_angles.forEach((a, i) => writeLines(`${i + 1}. ${a}`));
       y += 6;
     }
+    renderCompetitorBattleCard();
   }
 
   if (data.live_signals?.length) {
@@ -677,4 +769,192 @@ export async function generateCampaignPdfArrayBuffer(
   const { doc, base } = await renderCampaignPdfDocument(snapshot, options);
   const data = doc.output("arraybuffer") as ArrayBuffer;
   return { data, filename: `${base}-full-report.pdf` };
+}
+
+/** Prompt 98 — structured proposal / quote for `renderProposalQuotePdfBytes`. */
+export type ProposalQuotePdfInput = {
+  org_line: string;
+  title: string;
+  cover_subtitle: string;
+  company: string;
+  contact_name: string;
+  value_proposition: string;
+  pricing_summary: string;
+  line_items: { label: string; amount_usd: number; detail: string }[];
+  roi_section: string;
+  roi_highlight: string;
+  assumptions: string[];
+  next_steps: string[];
+  payment_terms: string;
+  valid_until: string;
+  disclaimer: string;
+  thread_id: string;
+  exported_at: string;
+};
+
+export type ProposalQuotePdfOptions = {
+  primaryRgb?: CampaignPdfRgb;
+  secondaryRgb?: CampaignPdfRgb;
+};
+
+/**
+ * Prompt 98 — branded proposal & quote PDF (distinct from the campaign intelligence dossier).
+ */
+export function renderProposalQuotePdfBytes(
+  input: ProposalQuotePdfInput,
+  options?: ProposalQuotePdfOptions,
+): Uint8Array {
+  const primary = options?.primaryRgb ?? DEFAULT_PRIMARY;
+  const secondary = options?.secondaryRgb ?? DEFAULT_SECONDARY;
+  const pageBg: CampaignPdfRgb = { r: 252, g: 253, b: 255 };
+  const ink: CampaignPdfRgb = { r: 30, g: 41, b: 59 };
+  const muted: CampaignPdfRgb = { r: 100, g: 116, b: 139 };
+  const rule: CampaignPdfRgb = { r: 226, g: 232, b: 240 };
+
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const margin = 54;
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const maxW = pageW - margin * 2;
+  const footerH = 44;
+  let y = margin;
+  const bodyLead = 11.5;
+  const bodySize = 9.25;
+
+  doc.setProperties({
+    title: forPdf(`${input.title} — ${input.company}`),
+    subject: forPdf("Commercial proposal"),
+    author: forPdf(input.org_line),
+  });
+
+  function ensureSpace(need: number) {
+    if (y + need > pageH - margin - footerH) {
+      doc.addPage();
+      doc.setFillColor(pageBg.r, pageBg.g, pageBg.b);
+      doc.rect(0, 0, pageW, pageH, "F");
+      y = margin;
+    }
+  }
+
+  function writeBlock(title: string, body: string, titleSize = 11) {
+    ensureSpace(28);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(titleSize);
+    doc.setTextColor(primary.r, primary.g, primary.b);
+    doc.text(forPdf(title), margin, y);
+    y += titleSize + 8;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(bodySize);
+    doc.setTextColor(ink.r, ink.g, ink.b);
+    for (const line of doc.splitTextToSize(forPdf(body), maxW)) {
+      ensureSpace(bodyLead);
+      doc.text(line, margin, y);
+      y += bodyLead;
+    }
+    y += 10;
+  }
+
+  doc.setFillColor(secondary.r, secondary.g, secondary.b);
+  doc.rect(0, 0, pageW, 112, "F");
+  doc.setFillColor(primary.r, primary.g, primary.b);
+  doc.rect(0, 0, pageW * 0.38, 112, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(22);
+  doc.text(forPdf(input.org_line), margin, 48);
+  doc.setFontSize(10);
+  doc.setTextColor(230, 235, 245);
+  doc.text(forPdf("Proposal & commercial quote"), margin, 72);
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(255, 255, 255);
+  const titleLines = doc.splitTextToSize(forPdf(input.title), maxW - 20);
+  let ty = 92;
+  for (const tl of titleLines.slice(0, 3)) {
+    doc.text(tl, margin + 8, ty);
+    ty += 16;
+  }
+  y = 120;
+
+  doc.setFillColor(pageBg.r, pageBg.g, pageBg.b);
+  doc.rect(0, 112, pageW, pageH - 112, "F");
+  doc.setTextColor(ink.r, ink.g, ink.b);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(forPdf(input.cover_subtitle), margin, y);
+  y += 26;
+  doc.setFontSize(8.5);
+  doc.setTextColor(muted.r, muted.g, muted.b);
+  doc.text(
+    forPdf(`Prepared for: ${input.contact_name} · ${input.company}`),
+    margin,
+    y,
+  );
+  y += 14;
+  doc.text(forPdf(`Reference: ${input.thread_id}`), margin, y);
+  y += 14;
+  doc.text(forPdf(`Generated: ${input.exported_at}`), margin, y);
+  y += 28;
+
+  writeBlock("Value proposition", input.value_proposition);
+  writeBlock("Investment summary", input.pricing_summary);
+
+  ensureSpace(36);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(primary.r, primary.g, primary.b);
+  doc.text(forPdf("Pricing detail"), margin, y);
+  y += 16;
+  doc.setDrawColor(rule.r, rule.g, rule.b);
+  doc.setLineWidth(0.45);
+  doc.line(margin, y, pageW - margin, y);
+  y += 12;
+
+  const fmt = (n: number) =>
+    n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+  for (const row of input.line_items) {
+    ensureSpace(42);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(ink.r, ink.g, ink.b);
+    doc.text(forPdf(row.label), margin, y);
+    doc.text(forPdf(fmt(row.amount_usd)), pageW - margin - 120, y);
+    y += 12;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(muted.r, muted.g, muted.b);
+    for (const line of doc.splitTextToSize(forPdf(row.detail), maxW - 40)) {
+      doc.text(line, margin + 8, y);
+      y += 10;
+    }
+    y += 10;
+  }
+
+  writeBlock(
+    "ROI outlook",
+    `${input.roi_highlight}\n\n${input.roi_section}\n\nAssumptions:\n${input.assumptions.map((a, i) => `${i + 1}. ${a}`).join("\n")}`,
+  );
+
+  writeBlock("Next steps", input.next_steps.map((s, i) => `${i + 1}. ${s}`).join("\n"));
+  writeBlock("Payment terms", input.payment_terms);
+  writeBlock("Validity", `This proposal is presented for discussion and remains valid until ${input.valid_until} unless withdrawn in writing.`);
+  writeBlock("Disclaimer", input.disclaimer, 9);
+
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7);
+    doc.setTextColor(muted.r, muted.g, muted.b);
+    doc.setFont("helvetica", "normal");
+    doc.text(
+      forPdf(`${input.org_line} · Proposal · ${input.exported_at}`),
+      margin,
+      pageH - 28,
+    );
+    doc.text(forPdf(`Page ${i} / ${totalPages}`), pageW - margin - 72, pageH - 28);
+  }
+
+  const buf = doc.output("arraybuffer");
+  return new Uint8Array(buf as ArrayBuffer);
 }

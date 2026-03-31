@@ -6,13 +6,19 @@ import {
   computeDisplayQualificationScore,
 } from "@/lib/agents/qualification_node";
 import {
+  computeDealQualificationClose,
+  serializeQualificationFactorsForDb,
+} from "@/lib/qualification-engine";
+import {
   deriveFollowUpApprovalStatus,
   nextFollowUpSendIso,
 } from "@/lib/agents/nurture_node";
 import { computeForecastFromSnapshot } from "@/lib/forecast";
 import { scoreLeadForPriority } from "@/lib/scoring";
 import { notifyCampaignCompletedPush } from "@/lib/push";
+import { appendKnowledgeEntriesFromCampaignSave } from "@/lib/playbook-generator";
 import { getServiceRoleSupabaseOrNull } from "@/lib/supabase-server";
+import { pickPrimaryWorkspaceIdForUser } from "@/lib/workspace";
 
 /** Shallow copy of upsert row without listed keys (schema fallback retries). */
 function omitCampaignUpsertFields(
@@ -28,6 +34,8 @@ function omitCampaignUpsertFields(
 
 export interface SaveCampaignParams {
   userId: string;
+  /** Defaults to userId (personal workspace) when omitted — Prompt 97 KB scope. */
+  workspaceId?: string;
   threadId: string;
   lead: Lead;
   snapshot: CampaignClientSnapshot;
@@ -121,6 +129,42 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
     }
   }
 
+  const dealResult =
+    snapshot.final_status !== "failed"
+      ? computeDealQualificationClose(snapshot, { replyInterest0to10: null })
+      : null;
+  const dealPatch: Record<string, unknown> = {};
+  if (dealResult) {
+    dealPatch.close_probability = dealResult.close_probability;
+    dealPatch.qualification_factors = serializeQualificationFactorsForDb(dealResult);
+  }
+
+  const optSnap = snapshot.campaign_optimizer ?? null;
+  const optimizationPatch: Record<string, unknown> = {};
+  if (optSnap) {
+    optimizationPatch.optimization_status = String(optSnap.status).slice(0, 48);
+    optimizationPatch.performance_metrics = optSnap.metrics as unknown as Record<
+      string,
+      unknown
+    >;
+  }
+
+  const seqRec = snapshot.sequence_recommendation ?? null;
+  const sequenceRecommendationPatch: Record<string, unknown> = {};
+  if (seqRec) {
+    sequenceRecommendationPatch.sequence_recommendation = seqRec as unknown as Record<
+      string,
+      unknown
+    >;
+  }
+
+  const competitorAnalysis = snapshot.research_output?.competitor_landscape ?? null;
+  const competitorAnalysisPatch: Record<string, unknown> = {};
+  if (competitorAnalysis) {
+    competitorAnalysisPatch.competitor_analysis =
+      competitorAnalysis as unknown as Record<string, unknown>;
+  }
+
   const row = {
     user_id: userId,
     thread_id: threadId,
@@ -160,6 +204,12 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
       : {}),
     ...(leadScoringRow ?? {}),
     ...(Object.keys(qualificationPatch).length > 0 ? qualificationPatch : {}),
+    ...(Object.keys(dealPatch).length > 0 ? dealPatch : {}),
+    ...(Object.keys(optimizationPatch).length > 0 ? optimizationPatch : {}),
+    ...(Object.keys(sequenceRecommendationPatch).length > 0
+      ? sequenceRecommendationPatch
+      : {}),
+    ...(Object.keys(competitorAnalysisPatch).length > 0 ? competitorAnalysisPatch : {}),
   };
 
   const rowRecord = row as unknown as Record<string, unknown>;
@@ -262,6 +312,62 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
     ));
   }
 
+  if (
+    error &&
+    /close_probability|qualification_factors|column|schema/i.test(
+      `${error.message} ${error.details ?? ""} ${error.hint ?? ""}`,
+    )
+  ) {
+    ({ error } = await sb.from("campaigns").upsert(
+      omitCampaignUpsertFields(rowRecord, ["close_probability", "qualification_factors"]),
+      {
+        onConflict: "thread_id",
+      },
+    ));
+  }
+
+  if (
+    error &&
+    /optimization_status|performance_metrics|column|schema/i.test(
+      `${error.message} ${error.details ?? ""} ${error.hint ?? ""}`,
+    )
+  ) {
+    ({ error } = await sb.from("campaigns").upsert(
+      omitCampaignUpsertFields(rowRecord, ["optimization_status", "performance_metrics"]),
+      {
+        onConflict: "thread_id",
+      },
+    ));
+  }
+
+  if (
+    error &&
+    /sequence_recommendation|column|schema/i.test(
+      `${error.message} ${error.details ?? ""} ${error.hint ?? ""}`,
+    )
+  ) {
+    ({ error } = await sb.from("campaigns").upsert(
+      omitCampaignUpsertFields(rowRecord, ["sequence_recommendation"]),
+      {
+        onConflict: "thread_id",
+      },
+    ));
+  }
+
+  if (
+    error &&
+    /competitor_analysis|column|schema/i.test(
+      `${error.message} ${error.details ?? ""} ${error.hint ?? ""}`,
+    )
+  ) {
+    ({ error } = await sb.from("campaigns").upsert(
+      omitCampaignUpsertFields(rowRecord, ["competitor_analysis"]),
+      {
+        onConflict: "thread_id",
+      },
+    ));
+  }
+
   if (error) {
     console.error(
       "[AgentForge] saveCampaign",
@@ -275,5 +381,13 @@ export async function saveCampaign(params: SaveCampaignParams): Promise<void> {
   const fin = snapshot.final_status;
   if (fin === "completed" || fin === "completed_with_errors") {
     void notifyCampaignCompletedPush(userId, lead.name, threadId).catch(() => {});
+    const workspaceId =
+      params.workspaceId?.trim() || (await pickPrimaryWorkspaceIdForUser(sb, userId));
+    void appendKnowledgeEntriesFromCampaignSave({
+      userId,
+      workspaceId,
+      threadId,
+      snapshot,
+    }).catch(() => {});
   }
 }

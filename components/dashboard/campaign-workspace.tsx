@@ -15,10 +15,10 @@ import {
   Cpu,
   Download,
   ExternalLink,
+  FileText,
   Eye,
   HelpCircle,
   FileJson,
-  FileText,
   Lightbulb,
   Loader2,
   Mail,
@@ -28,6 +28,7 @@ import {
   Radar,
   ScrollText,
   Sparkles,
+  Swords,
   Target,
   Timer,
   TrendingUp,
@@ -35,11 +36,13 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ComponentType, ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { CampaignRerunPayload } from "@/components/dashboard/campaign-rerun-types";
 import { useForm } from "react-hook-form";
 import {
   exportCampaignToHubSpotAction,
+  generateCampaignProposalAction,
+  getCampaignProposalStatusAction,
   previewLeadEnrichmentAction,
   sendOutreachEmailAction,
   startCampaignAction,
@@ -49,6 +52,9 @@ import {
 import { DashboardReplyStrip } from "@/components/dashboard/dashboard-reply-strip";
 import { useReplyIntel } from "@/components/dashboard/reply-intel-context";
 import { MeetingSchedulerPanel } from "@/components/dashboard/meeting-scheduler-panel";
+import { PersonalizedDemoBookingCard } from "@/components/dashboard/personalized-demo-booking-card";
+import { OptimizerPanel } from "@/components/dashboard/optimizer-panel";
+import { SequenceRecommendationCard } from "@/components/dashboard/sequence-recommendation-card";
 import { PdfBrandingPanel } from "@/components/dashboard/pdf-branding-panel";
 import { campaignSnapshotToMarkdown } from "@/lib/campaign-markdown";
 import { buildCampaignSummaryExport } from "@/lib/campaign-summary-export";
@@ -64,6 +70,7 @@ import {
   type CampaignClientSnapshot,
   type LeadEnrichmentPayload,
   type LeadFormInput,
+  type SequenceRecommendationSnapshot,
   type SmartFollowUpStepPlan,
 } from "@/agents/types";
 import { toast } from "@/hooks/use-toast";
@@ -74,8 +81,11 @@ import type {
   CalendarConnectionStatusDTO,
   CampaignSequenceRow,
   CustomVoiceRow,
+  PersistedCampaignRow,
   WhiteLabelClientSettingsDTO,
 } from "@/types";
+import { isPersonalizedDemoEligible } from "@/lib/demo-eligibility";
+import { isProposalEligible } from "@/lib/proposal-eligibility";
 import { textEchoesAnyCorpus } from "@/lib/text-similarity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -707,6 +717,8 @@ type CampaignWorkspaceProps = {
   onSequencePrefillConsumed?: () => void;
   /** Prompt 89 — calendar OAuth flags for one-click meeting creation. */
   calendarStatus?: CalendarConnectionStatusDTO;
+  /** Prompt 100 — recent rows to hydrate demo script / outcome for the active thread. */
+  recentCampaigns?: PersistedCampaignRow[];
 };
 
 function sequenceStepLabel(
@@ -742,6 +754,7 @@ export function CampaignWorkspace({
   sequencePrefillRequest = null,
   onSequencePrefillConsumed,
   calendarStatus = { google: false, microsoft: false },
+  recentCampaigns = [],
 }: CampaignWorkspaceProps) {
   const { setReplyIntel } = useReplyIntel();
   const router = useRouter();
@@ -762,8 +775,15 @@ export function CampaignWorkspace({
   const [enrichmentBusy, setEnrichmentBusy] = useState(false);
   const [enrichmentError, setEnrichmentError] = useState<string | null>(null);
   const [followUpStepBusy, setFollowUpStepBusy] = useState<number | null>(null);
+  const [proposalMeta, setProposalMeta] = useState<{
+    status: string | null;
+    url: string | null;
+  }>({ status: null, url: null });
+  const [proposalBusy, setProposalBusy] = useState(false);
   /** Prompt 85 — next Start campaign passes `template_id` when prefill came from the template library. */
   const pendingTemplateIdRef = useRef<string | null>(null);
+  /** Prompt 95 — passed on next Start campaign when user applied a recommendation. */
+  const pendingRecommendationRef = useRef<SequenceRecommendationSnapshot | null>(null);
   const [selectedSequenceId, setSelectedSequenceId] = useState<string>("");
 
   useEffect(() => {
@@ -814,6 +834,28 @@ export function CampaignWorkspace({
     }
   }, [form]);
 
+  const onApplySequenceRecommendation = useCallback(
+    (rec: SequenceRecommendationSnapshot) => {
+      form.setValue("sdr_voice_tone", rec.sdr_voice_tone);
+      if (rec.custom_voice_id) {
+        form.setValue("custom_voice_id", rec.custom_voice_id);
+        form.setValue("custom_voice_name", rec.custom_voice_name ?? "");
+      } else {
+        form.setValue("custom_voice_id", undefined);
+        form.setValue("custom_voice_name", undefined);
+      }
+      if (rec.recommended_sequence_id) {
+        setSelectedSequenceId(rec.recommended_sequence_id);
+      }
+      pendingRecommendationRef.current = rec;
+      toast({
+        title: "Recommendation applied",
+        description: "Voice and sequence updated. Start the campaign when you are ready.",
+      });
+    },
+    [form],
+  );
+
   const runCampaignFromValues = useCallback(
     (values: LeadFormInput) => {
       setFeedback(null);
@@ -822,6 +864,7 @@ export function CampaignWorkspace({
       startTransition(async () => {
         const tid = pendingTemplateIdRef.current;
         const sid = selectedSequenceId.trim() || undefined;
+        const recSnap = pendingRecommendationRef.current;
         const baseLead = {
           ...values,
           status: values.status ?? "new",
@@ -829,14 +872,16 @@ export function CampaignWorkspace({
           custom_voice_id: values.custom_voice_id,
           custom_voice_name: values.custom_voice_name,
         };
-        const hasOpts = Boolean(tid || sid);
+        const optPayload = {
+          ...(tid ? { template_id: tid } : {}),
+          ...(sid ? { sequence_id: sid } : {}),
+          ...(recSnap ? { sequence_recommendation_snapshot: recSnap } : {}),
+        };
+        const hasOpts = Object.keys(optPayload).length > 0;
         const res = hasOpts
           ? await startCampaignWithOptionsAction({
               lead: baseLead,
-              options: {
-                ...(tid ? { template_id: tid } : {}),
-                ...(sid ? { sequence_id: sid } : {}),
-              },
+              options: optPayload,
             })
           : await startCampaignAction(baseLead);
         if (!res.ok) {
@@ -850,6 +895,7 @@ export function CampaignWorkspace({
           return;
         }
         if (tid) pendingTemplateIdRef.current = null;
+        pendingRecommendationRef.current = null;
         setSnapshot(res.snapshot);
         const when = formatCompletedAt(res.snapshot.campaign_completed_at);
         setFeedback({
@@ -954,6 +1000,48 @@ export function CampaignWorkspace({
     },
     [snapshot?.thread_id],
   );
+
+  useEffect(() => {
+    if (!snapshot?.thread_id) {
+      setProposalMeta({ status: null, url: null });
+      return;
+    }
+    let cancelled = false;
+    void getCampaignProposalStatusAction(snapshot.thread_id).then((r) => {
+      if (!cancelled) {
+        setProposalMeta({ status: r.proposal_status, url: r.generated_proposal_url });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [snapshot?.thread_id]);
+
+  const onGenerateProposal = useCallback(async () => {
+    if (!snapshot?.thread_id) return;
+    setProposalBusy(true);
+    try {
+      const r = await generateCampaignProposalAction(snapshot.thread_id);
+      if (!r.ok) {
+        toast({
+          variant: "destructive",
+          title: "Could not generate proposal",
+          description: r.error,
+        });
+        return;
+      }
+      setProposalMeta({ status: r.proposal_status, url: r.proposalUrl });
+      toast({
+        title: "Proposal generated",
+        description: r.proposalUrl
+          ? "Preview below — share the link internally."
+          : "PDF stored — add campaign-proposals bucket (Prompt 98 SQL) for a public URL.",
+      });
+      router.refresh();
+    } finally {
+      setProposalBusy(false);
+    }
+  }, [snapshot?.thread_id, router]);
 
   useEffect(() => {
     if (!sequencePrefillRequest) return;
@@ -1075,6 +1163,11 @@ export function CampaignWorkspace({
       : snapshot?.qualification_detail?.meeting_time_suggestions;
   const meetingNurtureHint = nurture?.meeting_scheduling_hint ?? null;
   const responsePatternHint = snapshot?.qualification_detail?.response_pattern_hint ?? null;
+
+  const persistedForThread = useMemo(
+    () => recentCampaigns.find((c) => c.thread_id === snapshot?.thread_id) ?? null,
+    [recentCampaigns, snapshot?.thread_id],
+  );
 
   async function copyEmailForOutreach() {
     if (!outreach) return;
@@ -1592,6 +1685,10 @@ export function CampaignWorkspace({
                   <EnrichmentPreviewBody data={enrichmentPreview} />
                 ) : null}
               </div>
+              <SequenceRecommendationCard
+                form={form}
+                onApplyRecommendation={onApplySequenceRecommendation}
+              />
               {savedSequences.length > 0 ? (
                 <div className="space-y-2">
                   <label
@@ -1983,6 +2080,26 @@ export function CampaignWorkspace({
             />
           ) : null}
 
+          {snapshot && isPersonalizedDemoEligible(snapshot) ? (
+            <PersonalizedDemoBookingCard
+              threadId={snapshot.thread_id}
+              leadName={snapshot.lead.name}
+              leadEmail={snapshot.lead.email}
+              leadCompany={snapshot.lead.company}
+              calendarStatus={calendarStatus}
+              suggestions={mergedMeetingSuggestions}
+              persistedDemo={
+                persistedForThread
+                  ? {
+                      demo_status: persistedForThread.demo_status ?? null,
+                      demo_script: persistedForThread.demo_script ?? null,
+                      demo_outcome: persistedForThread.demo_outcome ?? null,
+                    }
+                  : null
+              }
+            />
+          ) : null}
+
           <div className="grid gap-6 lg:grid-cols-2 lg:gap-8">
             <Card className={cn(resultCardClass, "overflow-hidden")}>
               <CardHeader
@@ -2044,6 +2161,59 @@ export function CampaignWorkspace({
                               .recent_news_or_funding_summary
                           }
                         </p>
+                      </div>
+                    ) : null}
+                    {research.competitor_landscape &&
+                    research.competitor_landscape.competitors.length > 0 ? (
+                      <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-4 shadow-sm dark:border-amber-500/25 dark:bg-amber-500/[0.06]">
+                        <SectionLabel icon={Swords}>Competitor battle card</SectionLabel>
+                        <p className="mt-2 text-sm font-medium leading-relaxed text-foreground">
+                          {research.competitor_landscape.account_positioning}
+                        </p>
+                        <div className="mt-4 overflow-x-auto rounded-lg border border-border/60 bg-background/80">
+                          <table className="w-full min-w-[720px] border-collapse text-left text-[11px]">
+                            <thead>
+                              <tr className="border-b border-border/70 bg-muted/50">
+                                <th className="whitespace-nowrap px-3 py-2 font-semibold text-foreground">
+                                  Competitor
+                                </th>
+                                <th className="px-3 py-2 font-semibold text-foreground">Strengths</th>
+                                <th className="px-3 py-2 font-semibold text-foreground">Weaknesses</th>
+                                <th className="px-3 py-2 font-semibold text-foreground">
+                                  vs our account
+                                </th>
+                                <th className="px-3 py-2 font-semibold text-foreground">
+                                  Win message
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {research.competitor_landscape.competitors.map((c) => (
+                                <tr
+                                  key={`${c.name}-${c.suggested_win_message.slice(0, 12)}`}
+                                  className="border-b border-border/50 align-top last:border-b-0"
+                                >
+                                  <td className="px-3 py-2 font-semibold text-foreground">
+                                    {c.name}
+                                    {c.category?.trim() ? (
+                                      <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">
+                                        {c.category}
+                                      </span>
+                                    ) : null}
+                                  </td>
+                                  <td className="px-3 py-2 text-muted-foreground">{c.strengths}</td>
+                                  <td className="px-3 py-2 text-muted-foreground">{c.weaknesses}</td>
+                                  <td className="px-3 py-2 text-muted-foreground">
+                                    {c.differentiation_vs_account}
+                                  </td>
+                                  <td className="px-3 py-2 text-muted-foreground">
+                                    {c.suggested_win_message}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     ) : null}
                     {snapshot.live_signals && snapshot.live_signals.length > 0 ? (
@@ -2521,6 +2691,88 @@ export function CampaignWorkspace({
               </CardContent>
             </Card>
 
+            <Card
+              className={cn(
+                resultCardClass,
+                "overflow-hidden lg:col-span-2",
+              )}
+            >
+              <CardHeader
+                className={cn(
+                  resultsCardHeaderClass,
+                  "flex flex-row flex-wrap items-start justify-between gap-3",
+                )}
+              >
+                <div className="min-w-0">
+                  <CardTitle className="text-lg font-semibold tracking-tight">
+                    Proposal &amp; quote
+                  </CardTitle>
+                  <CardDescription className="mt-1.5">
+                    AI-generated commercial PDF when the deal is qualified — pricing, ROI framing, and
+                    next steps.
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="gap-2"
+                  disabled={
+                    proposalBusy ||
+                    !snapshot ||
+                    !isProposalEligible(snapshot)
+                  }
+                  onClick={() => void onGenerateProposal()}
+                >
+                  {proposalBusy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    <FileText className="h-4 w-4" aria-hidden />
+                  )}
+                  Generate proposal
+                </Button>
+              </CardHeader>
+              <CardContent className={cn(resultsCardContentClass, "space-y-4")}>
+                {snapshot && !isProposalEligible(snapshot) ? (
+                  <p className="text-sm text-muted-foreground">
+                    Unlocks when the lead is <strong>Qualified</strong>, qualification score is strong,
+                    or a <strong>Next best action</strong> is present.
+                  </p>
+                ) : null}
+                {proposalMeta.status ? (
+                  <p className="text-xs text-muted-foreground">
+                    Status: <span className="font-medium text-foreground">{proposalMeta.status}</span>
+                  </p>
+                ) : null}
+                {proposalMeta.url ? (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Preview</p>
+                    <div className="overflow-hidden rounded-lg border border-border/80 bg-muted/20">
+                      <iframe
+                        title="Proposal PDF preview"
+                        src={proposalMeta.url}
+                        className="h-[min(520px,70vh)] w-full"
+                      />
+                    </div>
+                    <a
+                      href={proposalMeta.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Open in new tab
+                    </a>
+                  </div>
+                ) : proposalMeta.status === "ready" ? (
+                  <p className="text-sm text-muted-foreground">
+                    PDF generated — public URL unavailable. Re-run SQL Prompt 98 and ensure the{" "}
+                    <code className="rounded bg-muted px-1 py-0.5 text-xs">campaign-proposals</code>{" "}
+                    bucket exists.
+                  </p>
+                ) : null}
+              </CardContent>
+            </Card>
+
             <Card className={cn(resultCardClass, "overflow-hidden")}>
               <CardHeader
                 className={cn(
@@ -2590,6 +2842,12 @@ export function CampaignWorkspace({
                 )}
               </CardContent>
             </Card>
+
+            <OptimizerPanel
+              mode="campaign"
+              snapshot={snapshot}
+              replyInterest10={smartFollowUp?.interest_signal_0_to_10 ?? null}
+            />
 
             {smartFollowUp && smartFollowUp.steps?.length ? (
               <Card className={cn(resultCardClass, "overflow-hidden")}>

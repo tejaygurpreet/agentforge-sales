@@ -5,6 +5,12 @@ import { createServiceRoleSupabase } from "@/lib/supabase-server";
 import { fetchLivingObjectionLibraryPromptBlock } from "@/lib/objection-library";
 
 /**
+ * Prompt 93 — Deal close probability + factor json (`close_probability`, `qualification_factors` on
+ * `campaigns`) is computed in `lib/qualification-engine.ts` using these qualification signals together
+ * with `lib/scoring.ts` and `lib/forecast.ts` (no change to graph thresholds).
+ */
+
+/**
  * Prompt 83 — living objection library context for qualification (and re-used by nurture).
  */
 export async function loadLivingObjectionContextForWorkspace(
@@ -300,4 +306,49 @@ export function buildObjectionCoachAppendixForPrompt(): string {
 When listing top_objections, prefer buyer-voice phrasing that maps to these buckets when accurate:
 ${lines.join("\n")}
 Keep objections specific to this lead; do not paste template bodies into JSON.`;
+}
+
+/** Prompt 97 — structured qualification + objection signals for the sales playbook generator. */
+export type PlaybookQualificationSignals = {
+  qualification_score: number | null;
+  bant_summary: string | null;
+  top_objections: { objection: string; reasoning?: string }[];
+  next_best_action: string | null;
+  detected_pattern_ids: ObjectionPatternId[];
+};
+
+/**
+ * Prompt 97 — feeds `lib/playbook-generator.ts` with qualification + objection coach context
+ * (no new persistence; snapshot-only).
+ */
+export function extractPlaybookQualificationSignals(
+  snapshot: CampaignClientSnapshot,
+): PlaybookQualificationSignals {
+  const detail = snapshot.qualification_detail;
+  const score =
+    typeof snapshot.qualification_score === "number" && Number.isFinite(snapshot.qualification_score)
+      ? snapshot.qualification_score
+      : typeof detail?.score === "number" && Number.isFinite(detail.score)
+        ? detail.score
+        : null;
+  const top =
+    detail?.top_objections?.map((o) => ({
+      objection: `${o.objection}`.slice(0, 400),
+      reasoning: o.reasoning ? `${o.reasoning}`.slice(0, 400) : undefined,
+    })) ?? [];
+  const blob = top.map((o) => `${o.objection} ${o.reasoning ?? ""}`).join(" ");
+  const detected_pattern_ids = detectObjectionPatternsFromText(blob);
+  return {
+    qualification_score: score,
+    bant_summary:
+      typeof detail?.bant_summary === "string" && detail.bant_summary.trim()
+        ? detail.bant_summary.trim().slice(0, 2000)
+        : null,
+    top_objections: top.slice(0, 8),
+    next_best_action:
+      typeof detail?.next_best_action === "string" && detail.next_best_action.trim()
+        ? detail.next_best_action.trim().slice(0, 800)
+        : null,
+    detected_pattern_ids,
+  };
 }

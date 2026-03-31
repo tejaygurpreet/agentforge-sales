@@ -44,6 +44,8 @@ type Props = {
   workspaceMembers: WorkspaceMemberDTO[];
   scheduledReports: ScheduledReportRow[];
   defaultRecipientEmail: string;
+  /** Prompt 102 — jump to SDR Manager on the main dashboard. */
+  onOpenSdrManagerTab?: () => void;
 };
 
 /**
@@ -53,6 +55,7 @@ export function ReportsSection({
   workspaceMembers,
   scheduledReports,
   defaultRecipientEmail,
+  onOpenSdrManagerTab,
 }: Props) {
   const router = useRouter();
   const [filters, setFilters] = useState<ReportFiltersPayload>({
@@ -148,6 +151,22 @@ export function ReportsSection({
 
   return (
     <div className="space-y-8">
+      {onOpenSdrManagerTab ? (
+        <Card className="border-sky-500/25 bg-sky-500/[0.04] shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Executive narrative (Prompt 102)</CardTitle>
+            <CardDescription>
+              PDF/CSV below are data exports. For leadership-ready AI summaries, ROI, and system health, use
+              the SDR Manager tab.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button type="button" size="sm" variant="outline" onClick={onOpenSdrManagerTab}>
+              Open SDR Manager tab
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
       <Card className="border-border/70 bg-card/90 shadow-md">
         <CardHeader>
           <CardTitle className="text-lg">Filters</CardTitle>

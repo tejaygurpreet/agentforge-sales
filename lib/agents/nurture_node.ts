@@ -1,6 +1,8 @@
 import "server-only";
 
 import type {
+  CampaignClientSnapshot,
+  CampaignOptimizerSnapshot,
   NurtureOutput,
   QualificationAgentResult,
   ReplyFollowUpIntel,
@@ -191,6 +193,32 @@ export function buildSmartFollowUpEngineState(
   };
 }
 
+/** Prompt 94 — non-destructive overlay on the smart follow-up engine (hints only). */
+export function mergeOptimizerIntoFollowUpEngine(
+  engine: SmartFollowUpEngineState,
+  snap: CampaignOptimizerSnapshot,
+): SmartFollowUpEngineState {
+  const notes = [
+    snap.recommendations.slice(0, 2).join(" · "),
+    snap.auto_pause_follow_ups
+      ? "Optimizer recommends reviewing or pausing follow-ups until messaging improves."
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const extra =
+    notes.length > 0 ? `\n\n[Optimizer] ${notes}`.slice(0, 800) : "";
+  return {
+    ...engine,
+    overall_rationale: (engine.overall_rationale + extra).slice(0, 2000),
+    optimizer_version: "p94-v1",
+    optimizer_status: snap.status,
+    optimizer_notes: notes.slice(0, 2400),
+    optimizer_hold_sequences: snap.auto_pause_follow_ups,
+    optimizer_recommendations: snap.recommendations,
+  };
+}
+
 /** Derive aggregate DB status from step approvals. */
 export function deriveFollowUpApprovalStatus(
   steps: SmartFollowUpStepPlan[],
@@ -214,4 +242,49 @@ export function nextFollowUpSendIso(steps: SmartFollowUpStepPlan[]): string | nu
       new Date(a.suggested_send_at).getTime() - new Date(b.suggested_send_at).getTime(),
   );
   return sorted[0]?.suggested_send_at ?? null;
+}
+
+/** Prompt 97 — nurture + follow-up engine signals for the sales playbook generator. */
+export type PlaybookNurtureSignals = {
+  sequence_summary: string | null;
+  follow_up_steps: {
+    day_offset: number;
+    channel: string;
+    summary: string;
+    value_add_idea: string;
+  }[];
+  smart_follow_rationale: string | null;
+  reply_interest_0_to_10: number | null;
+};
+
+/**
+ * Prompt 97 — feeds `lib/playbook-generator.ts` with nurture / cadence context (snapshot-only).
+ */
+export function extractPlaybookNurtureSignals(
+  snapshot: CampaignClientSnapshot,
+): PlaybookNurtureSignals {
+  const n = snapshot.nurture_output;
+  const fu = snapshot.smart_follow_up_engine;
+  const steps =
+    n?.follow_up_sequences?.map((s) => ({
+      day_offset: s.day_offset,
+      channel: s.channel,
+      summary: `${s.summary}`.slice(0, 600),
+      value_add_idea: `${s.value_add_idea}`.slice(0, 400),
+    })) ?? [];
+  return {
+    sequence_summary: n?.sequence_summary?.trim()
+      ? n.sequence_summary.trim().slice(0, 2000)
+      : null,
+    follow_up_steps: steps.slice(0, 12),
+    smart_follow_rationale: fu?.overall_rationale?.trim()
+      ? fu.overall_rationale.trim().slice(0, 2000)
+      : null,
+    reply_interest_0_to_10:
+      fu != null &&
+      typeof fu.interest_signal_0_to_10 === "number" &&
+      Number.isFinite(fu.interest_signal_0_to_10)
+        ? fu.interest_signal_0_to_10
+        : null,
+  };
 }

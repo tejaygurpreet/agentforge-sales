@@ -4,6 +4,7 @@ import {
   replaceLegacyNewsSummaryIfNeeded,
   stabilizeResearchIcpScore,
 } from "@/agents/pipeline-fallbacks";
+import { mergeCompetitorLandscape } from "@/lib/competitor-analysis";
 import {
   type BantAssessment,
   type Lead,
@@ -314,6 +315,21 @@ function sanitizeResearchOutput(o: ResearchOutput): ResearchOutput {
         notes: m(o.bant_assessment.timeline.notes),
       },
     },
+    ...(o.competitor_landscape
+      ? {
+          competitor_landscape: {
+            account_positioning: m(o.competitor_landscape.account_positioning),
+            competitors: o.competitor_landscape.competitors.map((c) => ({
+              name: m(c.name),
+              category: c.category ? m(c.category) : undefined,
+              strengths: m(c.strengths),
+              weaknesses: m(c.weaknesses),
+              differentiation_vs_account: m(c.differentiation_vs_account),
+              suggested_win_message: m(c.suggested_win_message),
+            })),
+          },
+        }
+      : {}),
   };
 }
 
@@ -434,6 +450,13 @@ export function normalizeResearchLlmToCanonical(
           return `${first} at ${company}: outbound angle should lean on how they grow revenue or ship product — pick one tension from title + notes (or role alone) and make it the spine of the first call. Biggest open question: is this problem budgeted or still below the line? One discovery line to test: what proof would make ${company} move faster vs. keep status quo for another quarter?`;
         })();
 
+  const competitor_landscape = mergeCompetitorLandscape(
+    (r as Record<string, unknown>).competitor_landscape,
+    lead,
+    industry,
+  );
+  if (!(r as Record<string, unknown>).competitor_landscape) patched = true;
+
   const icp_fit_summary =
     typeof r.icp_fit_summary === "string" && r.icp_fit_summary.trim().length > 40
       ? r.icp_fit_summary.trim()
@@ -459,6 +482,7 @@ export function normalizeResearchLlmToCanonical(
     pain_points,
     messaging_angles,
     executive_summary,
+    competitor_landscape,
   };
 
   const parsed = researchOutputSchema.safeParse(sanitizeResearchOutput(merged));

@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { CampaignThreadRow, LeadPriorityTier } from "@/types";
+import { Percent } from "lucide-react";
 
 function tierOutlineClass(tier: LeadPriorityTier | null | undefined): string | undefined {
   if (!tier) return undefined;
@@ -77,6 +78,21 @@ export function CampaignList({ campaigns }: CampaignListProps) {
                       title="Smart lead priority (workspace leaderboard)"
                     >
                       Prio {c.lead_priority_score}
+                    </Badge>
+                  ) : null}
+                  {c.deal_close_probability != null ? (
+                    <Badge
+                      variant="outline"
+                      className="gap-0.5 border-teal-500/40 bg-teal-500/[0.12] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-teal-950 dark:border-teal-400/40 dark:bg-teal-500/16 dark:text-teal-50"
+                      title={
+                        c.deal_confidence
+                          ? `Deal close estimate · ${c.deal_confidence} confidence`
+                          : "Deal close estimate (Prompt 93)"
+                      }
+                    >
+                      <Percent className="h-3 w-3 opacity-90" aria-hidden />
+                      Close {c.deal_close_probability}%
+                      {c.deal_confidence ? ` · ${c.deal_confidence}` : ""}
                     </Badge>
                   ) : null}
                   {c.sdr_voice_label ? (

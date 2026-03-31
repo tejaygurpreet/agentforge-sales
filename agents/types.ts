@@ -125,6 +125,25 @@ export const bantAssessmentSchema = z.object({
 
 export type BantAssessment = z.infer<typeof bantAssessmentSchema>;
 
+/** Prompt 96 — one row in the battle card / PDF comparison table. */
+export const competitorBattleCardEntrySchema = z.object({
+  name: z.string().min(1).max(120),
+  category: z.string().max(160).optional(),
+  strengths: z.string().min(16).max(1400),
+  weaknesses: z.string().min(16).max(1400),
+  differentiation_vs_account: z.string().min(16).max(1400),
+  suggested_win_message: z.string().min(16).max(900),
+});
+
+export type CompetitorBattleCardEntry = z.infer<typeof competitorBattleCardEntrySchema>;
+
+export const competitorLandscapeSchema = z.object({
+  account_positioning: z.string().min(20).max(2000),
+  competitors: z.array(competitorBattleCardEntrySchema).min(3).max(5),
+});
+
+export type CompetitorLandscape = z.infer<typeof competitorLandscapeSchema>;
+
 export const researchOutputSchema = z.object({
   /** 0–100 holistic ICP match for outbound SaaS motion. */
   icp_fit_score: z.number().min(0).max(100),
@@ -158,6 +177,8 @@ export const researchOutputSchema = z.object({
   /** Exactly three distinct, high-signal outbound hooks. */
   messaging_angles: z.array(z.string()).length(3),
   executive_summary: z.string(),
+  /** Prompt 96 — optional competitive landscape; normalized on every run when missing. */
+  competitor_landscape: competitorLandscapeSchema.optional(),
 });
 
 export type ResearchOutput = z.infer<typeof researchOutputSchema>;
@@ -180,6 +201,7 @@ export const researchOutputLlmSchema = z
     pain_points: z.array(z.string()).optional(),
     messaging_angles: z.array(z.string()).optional(),
     executive_summary: z.string().optional(),
+    competitor_landscape: z.unknown().optional(),
   })
   .passthrough();
 
@@ -329,6 +351,36 @@ export type SmartFollowUpStepPlan = {
   approval_status: "pending_review" | "approved" | "skipped";
 };
 
+/** Prompt 94 — AI campaign optimizer status (heuristic; non-destructive hints). */
+export type CampaignOptimizerStatus =
+  | "monitoring"
+  | "healthy"
+  | "at_risk"
+  | "auto_pause_suggested"
+  | "variant_switch_suggested";
+
+/** Prompt 94 — compact metrics for dashboard + DB `performance_metrics`. */
+export interface CampaignPerformanceMetrics {
+  reply_rate_proxy: number | null;
+  interest_score_0_to_10: number | null;
+  meeting_booking_signal: number;
+  qualification_score: number | null;
+  composite_health: number;
+}
+
+/** Prompt 94 — attached to snapshot + merged into follow-up engine metadata. */
+export interface CampaignOptimizerSnapshot {
+  optimizer_version: "p94-v1";
+  evaluated_at: string;
+  status: CampaignOptimizerStatus;
+  metrics: CampaignPerformanceMetrics;
+  recommendations: string[];
+  /** Soft hint — does not auto-send or mutate approval rows without user action. */
+  auto_pause_follow_ups: boolean;
+  suggested_ab_variant: "A" | "B" | null;
+  sequence_notes: string[];
+}
+
 /** Prompt 91 — intelligent follow-up plan attached to the campaign snapshot. */
 export type SmartFollowUpEngineState = {
   engine_version: "p91-v1";
@@ -338,6 +390,12 @@ export type SmartFollowUpEngineState = {
   reply_signals_summary: string;
   overall_rationale: string;
   steps: SmartFollowUpStepPlan[];
+  /** Prompt 94 — optional optimizer overlay (backward-compatible). */
+  optimizer_version?: "p94-v1";
+  optimizer_status?: CampaignOptimizerStatus;
+  optimizer_notes?: string;
+  optimizer_hold_sequences?: boolean;
+  optimizer_recommendations?: string[];
 };
 
 /** Prompt 70 — post-research live signals (Tavily / heuristic fallback). */
@@ -397,6 +455,21 @@ export interface SequenceRunProgress {
   currentIndex: number;
 }
 
+/** Prompt 95 — persisted with campaign + optional audit log. */
+export interface SequenceRecommendationSnapshot {
+  engine_version: "p95-v1";
+  computed_at: string;
+  recommended_sequence_id: string | null;
+  recommended_sequence_name: string | null;
+  confidence_0_to_100: number;
+  sdr_voice_tone: SdrVoiceTone;
+  custom_voice_id: string | null;
+  custom_voice_name: string | null;
+  first_message_hint: string;
+  why_this_sequence: string;
+  signals_used: string[];
+}
+
 /** JSON-safe payload returned to the dashboard after a campaign run. */
 export interface CampaignClientSnapshot {
   lead: Lead;
@@ -428,4 +501,11 @@ export interface CampaignClientSnapshot {
   sequence_plan?: CampaignSequencePlan | null;
   /** Prompt 88 — step completion derived from pipeline outputs. */
   sequence_progress?: SequenceRunProgress | null;
+  /** Prompt 90 — echoed when the run was part of an A/B pair. */
+  ab_test_id?: string | null;
+  ab_variant?: "A" | "B" | null;
+  /** Prompt 94 — AI optimizer snapshot (pause / variant / recommendations). */
+  campaign_optimizer?: CampaignOptimizerSnapshot | null;
+  /** Prompt 95 — sequence / voice / opener recommendation applied at run start (metadata only). */
+  sequence_recommendation?: SequenceRecommendationSnapshot | null;
 }
