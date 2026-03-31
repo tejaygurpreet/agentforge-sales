@@ -21,7 +21,7 @@ export async function loadLivingObjectionContextForWorkspace(
 }
 
 /** Prompt 89 — coarse region hint for scheduling (not a geolocation guarantee). */
-export function inferLeadTimezoneHint(lead: Lead, research?: ResearchOutput | null): string {
+export function inferLeadTimezoneHint(lead: Lead): string {
   const email = lead.email?.toLowerCase() ?? "";
   const company = `${lead.company ?? ""} ${lead.notes ?? ""}`.toLowerCase();
   if (/\.(co\.uk|uk)\b/.test(email) || /\b(london|manchester|uk|united kingdom)\b/.test(company)) {
@@ -56,7 +56,7 @@ export function buildMeetingSchedulingPromptBlock(
   research?: ResearchOutput | null,
   outreachEmailExcerpt?: string | null,
 ): string {
-  const tz = inferLeadTimezoneHint(lead, research);
+  const tz = inferLeadTimezoneHint(lead);
   const pattern = inferResponsePatternFromOutreach(outreachEmailExcerpt ?? undefined);
   const region = research?.industry_inference?.slice(0, 120) ?? "";
   return `=== MEETING_SCHEDULING_CONTEXT (Prompt 89) ===

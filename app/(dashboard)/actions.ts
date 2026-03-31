@@ -138,11 +138,7 @@ import {
   buildCampaignPdfExportOptionsFromWhiteLabel,
   fetchWhiteLabelSettings,
 } from "@/lib/white-label";
-import {
-  ensurePersonalWorkspaceMembership,
-  resolveWorkspaceContext,
-  type WorkspaceRole,
-} from "@/lib/workspace";
+import { ensurePersonalWorkspaceMembership, resolveWorkspaceContext } from "@/lib/workspace";
 import {
   notifyBatchFinishedPush,
   notifyNewReplySavedPush,
@@ -4481,7 +4477,7 @@ export async function getSalesCoachingPayloadAction(
     console.warn("[AgentForge] getSalesCoachingPayloadAction profiles", ext.error.message);
   }
 
-  let parsed = parseCoachingNotesPayload(coachingNotes);
+  const parsed = parseCoachingNotesPayload(coachingNotes);
   let ai = parsed.ai;
   let cachedAt = parsed.cachedAt;
 

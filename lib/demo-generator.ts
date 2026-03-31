@@ -36,10 +36,10 @@ export function formatDemoScriptForCalendarDescription(script: PersonalizedDemoS
     ...script.agenda.map((a, i) => `${i + 1}. ${a}`),
     "",
     "Discovery:",
-    ...script.discovery_questions.map((q, i) => `• ${q}`),
+    ...script.discovery_questions.map((q) => `• ${q}`),
     "",
     "Proof:",
-    ...script.proof_points.map((p, i) => `• ${p}`),
+    ...script.proof_points.map((p) => `• ${p}`),
     "",
     script.closing,
   ];
