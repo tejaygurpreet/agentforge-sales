@@ -15,7 +15,7 @@ import { Gauge, ListChecks, Sparkles } from "lucide-react";
 function confidenceBadgeClass(c: string): string {
   switch (c) {
     case "high":
-      return "border-emerald-500/45 bg-emerald-500/20 text-emerald-950 dark:text-emerald-50";
+      return "border-primary/45 bg-primary/20 text-foreground dark:text-primary-foreground";
     case "medium":
       return "border-amber-500/45 bg-amber-500/18 text-amber-950 dark:text-amber-50";
     default:
@@ -90,7 +90,7 @@ export function DealClosePanel({ rows, avgCloseProbability }: Props) {
                       <span
                         className={cn(
                           "shrink-0 font-mono text-[10px]",
-                          f.impact >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400",
+                          f.impact >= 0 ? "text-primary dark:text-primary" : "text-amber-700 dark:text-amber-400",
                         )}
                       >
                         {f.impact >= 0 ? "+" : ""}

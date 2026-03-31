@@ -38,9 +38,9 @@ function priorityBadgeClass(tier: LeadPriorityTier | null): string {
     case "high":
       return "border-amber-500/45 bg-amber-500/[0.12] text-amber-950 dark:border-amber-400/40 dark:bg-amber-500/15 dark:text-amber-50";
     case "medium":
-      return "border-sky-500/40 bg-sky-500/[0.1] text-sky-950 dark:border-sky-400/40 dark:bg-sky-500/14 dark:text-sky-50";
+      return "border-primary/40 bg-primary/[0.1] text-foreground dark:border-primary/40 dark:bg-primary/14 dark:text-primary-foreground";
     default:
-      return "border-emerald-500/35 bg-emerald-500/[0.08] text-emerald-950 dark:border-emerald-400/35 dark:bg-emerald-500/12 dark:text-emerald-50";
+      return "border-primary/35 bg-primary/[0.08] text-foreground dark:border-primary/35 dark:bg-primary/12 dark:text-primary-foreground";
   }
 }
 
@@ -49,7 +49,7 @@ function parseTier(v: unknown): LeadPriorityTier | null {
 }
 
 function statusAccentClass(status: string): string {
-  if (status === "completed") return "border-l-emerald-500";
+  if (status === "completed") return "border-l-primary";
   if (status === "failed" || status === "completed_with_errors") return "border-l-amber-500";
   return "border-l-primary/50";
 }
@@ -60,8 +60,8 @@ function StatusBadge({ status }: { status: string }) {
     return (
       <Badge
         className={cn(
-          "border-emerald-600/35 bg-emerald-600/12 text-emerald-900 hover:bg-emerald-600/18",
-          "dark:text-emerald-100",
+          "border-primary/35 bg-primary/12 text-foreground hover:bg-primary/18",
+          "dark:text-primary-foreground",
         )}
       >
         {label}
@@ -171,7 +171,7 @@ export function RecentCampaigns({
                     {c.ab_variant && c.ab_test_id ? (
                       <Badge
                         variant="outline"
-                        className="gap-1 border-teal-500/45 bg-teal-500/[0.12] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-950 dark:border-teal-400/45 dark:bg-teal-500/16 dark:text-teal-50"
+                        className="gap-1 border-primary/45 bg-primary/[0.12] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground dark:border-primary/45 dark:bg-primary/16 dark:text-primary-foreground"
                         title={`A/B experiment ${c.ab_test_id}`}
                       >
                         <GitCompare className="h-3 w-3" aria-hidden />
@@ -199,7 +199,7 @@ export function RecentCampaigns({
                     {c.sdr_voice_label ? (
                       <Badge
                         variant="outline"
-                        className="max-w-[min(100%,320px)] truncate border-violet-500/45 bg-violet-500/[0.14] px-2.5 py-1 text-xs font-semibold tracking-tight text-violet-950 shadow-sm ring-1 ring-violet-500/15 dark:border-violet-400/45 dark:bg-violet-500/18 dark:text-violet-50 dark:ring-violet-400/20"
+                        className="max-w-[min(100%,320px)] truncate border-accent/45 bg-accent/[0.14] px-2.5 py-1 text-xs font-semibold tracking-tight text-accent-foreground shadow-sm ring-1 ring-accent/15 dark:border-accent/45 dark:bg-accent/18 dark:text-accent-foreground dark:ring-accent/50/20"
                         title={`SDR voice: ${c.sdr_voice_label}`}
                       >
                         Voice: {c.sdr_voice_label}
@@ -208,7 +208,7 @@ export function RecentCampaigns({
                     {c.spam_score != null ? (
                       <Badge
                         variant="outline"
-                        className="gap-1 border-sky-500/40 bg-sky-500/[0.1] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-950 dark:border-sky-400/40 dark:bg-sky-500/15 dark:text-sky-50"
+                        className="gap-1 border-primary/40 bg-primary/[0.1] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-foreground dark:border-primary/40 dark:bg-primary/15 dark:text-primary-foreground"
                         title="Inbox health after send (Prompt 80)"
                       >
                         <Shield className="h-3 w-3" aria-hidden />
@@ -219,7 +219,7 @@ export function RecentCampaigns({
                     {c.close_probability != null ? (
                       <Badge
                         variant="outline"
-                        className="gap-1 border-teal-500/45 bg-teal-500/[0.12] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-teal-950 dark:border-teal-400/45 dark:bg-teal-500/16 dark:text-teal-50"
+                        className="gap-1 border-primary/45 bg-primary/[0.12] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-foreground dark:border-primary/45 dark:bg-primary/16 dark:text-primary-foreground"
                         title="Deal close probability (Prompt 93)"
                       >
                         <Percent className="h-3 w-3" aria-hidden />

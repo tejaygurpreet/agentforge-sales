@@ -16,3 +16,12 @@ export const INBOX_SEARCH_DEBOUNCE_MS = 320;
  * Slightly tight for snappier new-reply handling while avoiding duplicate refetches.
  */
 export const INBOX_REALTIME_DEBOUNCE_MS = 100;
+
+/**
+ * Prompt 124 — Lightweight client-side check before calling compose actions (full validation on server).
+ */
+export function isLikelyValidRecipientEmail(email: string): boolean {
+  const e = email.trim();
+  if (e.length < 3 || e.length > 320) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+}

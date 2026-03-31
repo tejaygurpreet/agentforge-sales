@@ -79,11 +79,11 @@ export function MeetingSchedulerPanel({
   const connected = calendarStatus.google || calendarStatus.microsoft;
 
   return (
-    <Card className="rounded-2xl border-violet-500/25 bg-violet-500/[0.04] shadow-md ring-1 ring-violet-500/15 dark:border-violet-400/20 dark:bg-violet-950/25">
+    <Card className="rounded-2xl border-accent/25 bg-accent/[0.04] shadow-md ring-1 ring-accent/15 dark:border-accent/35 dark:bg-accent/25">
       <CardHeader className="pb-2">
         <div className="flex flex-wrap items-start gap-3">
-          <div className="rounded-lg border border-violet-500/30 bg-background/90 p-2 shadow-sm">
-            <Video className="h-5 w-5 text-violet-600 dark:text-violet-300" aria-hidden />
+          <div className="rounded-lg border border-accent/30 bg-background/90 p-2 shadow-sm">
+            <Video className="h-5 w-5 text-accent-foreground dark:text-accent-foreground/80" aria-hidden />
           </div>
           <div className="min-w-0 flex-1">
             <CardTitle className="text-base font-semibold tracking-tight">
@@ -152,7 +152,7 @@ export function MeetingSchedulerPanel({
               >
                 <div className="min-w-0 space-y-1">
                   <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                    <CalendarClock className="h-4 w-4 shrink-0 text-violet-600" aria-hidden />
+                    <CalendarClock className="h-4 w-4 shrink-0 text-accent-foreground" aria-hidden />
                     {s.label}
                   </p>
                   <p className="text-xs text-muted-foreground">

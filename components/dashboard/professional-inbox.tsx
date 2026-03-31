@@ -10,6 +10,7 @@ import {
   setInboxThreadLabelsAction,
   snoozeInboxThreadAction,
 } from "@/app/(dashboard)/actions";
+import { ComposeNewEmailDialog } from "@/components/dashboard/compose-new-email-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,6 +54,7 @@ import {
   RefreshCw,
   Search,
   Send,
+  SquarePen,
   Sparkles,
   User,
 } from "lucide-react";
@@ -82,7 +84,7 @@ function InboxAnalysisInline({
 }) {
   return (
     <div
-      className="animate-in fade-in slide-in-from-bottom-2 space-y-4 rounded-2xl border border-border/45 bg-gradient-to-b from-violet-500/[0.06] via-card to-emerald-500/[0.04] p-4 shadow-inner duration-300 sm:p-5"
+      className="animate-in fade-in slide-in-from-bottom-2 space-y-4 rounded-2xl border border-border/45 bg-gradient-to-b from-accent/[0.06] via-card to-primary/[0.04] p-4 shadow-inner duration-300 sm:p-5"
       role="region"
       aria-label="AI analysis"
     >
@@ -102,12 +104,12 @@ function InboxAnalysisInline({
         <Badge variant="secondary" className="font-medium capitalize shadow-sm">
           Sentiment · {analysis.sentiment}
         </Badge>
-        <Badge className="border border-emerald-600/20 bg-emerald-600 font-medium text-white shadow-sm hover:bg-emerald-600">
+        <Badge className="border border-primary/20 bg-primary font-medium text-white shadow-sm hover:bg-primary">
           Interest · {analysis.interest_level_0_to_10}/10
         </Badge>
         <Badge
           variant="outline"
-          className="border-violet-400/45 bg-violet-500/[0.1] font-medium text-violet-900"
+          className="border-accent/45 bg-accent/[0.1] font-medium text-accent-foreground"
         >
           Voice · {analysis.suggested_voice_label}
         </Badge>
@@ -265,6 +267,7 @@ export function ProfessionalInbox({
   const [pending, startTransition] = useTransition();
   const [sendPending, startSend] = useTransition();
   const [, startThreadMutation] = useTransition();
+  const [composeOpen, setComposeOpen] = useState(false);
   const [replyDraft, setReplyDraft] = useState("");
   const [analyzeId, setAnalyzeId] = useState<string | null>(null);
   const [localAnalysis, setLocalAnalysis] = useState<
@@ -383,7 +386,7 @@ export function ProfessionalInbox({
             hours == null
               ? "Thread is back in your main list."
               : "We’ll surface it again when it’s time.",
-          className: "border-border/50 bg-gradient-to-r from-sky-50/90 via-card to-violet-50/35 shadow-soft",
+          className: "border-border/50 bg-gradient-to-r from-muted/90 via-card to-accent/25 shadow-soft",
         });
         if (hours != null && selectedId === t.id) setSelectedId(null);
         afterThreadSettings();
@@ -588,7 +591,7 @@ export function ProfessionalInbox({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-border/50 bg-gradient-to-br from-card via-[hsl(var(--card))] to-sky-500/[0.03] px-5 py-5 shadow-soft ring-1 ring-border/25 sm:px-7 sm:py-6">
+      <div className="rounded-2xl border border-border/50 bg-gradient-to-br from-card via-[hsl(var(--card))] to-primary/[0.03] px-5 py-5 shadow-soft ring-1 ring-border/25 sm:px-7 sm:py-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.12] to-primary/[0.05] text-primary shadow-sm ring-1 ring-primary/12">
@@ -609,17 +612,28 @@ export function ProfessionalInbox({
               </p>
             </div>
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="gap-2 rounded-xl"
-            disabled={loadingList}
-            onClick={() => void loadThreads(search.trim() || debouncedSearch || undefined)}
-          >
-            <RefreshCw className={cn("h-4 w-4", loadingList && "animate-spin")} aria-hidden />
-            Refresh
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              className="gap-2 rounded-xl shadow-soft"
+              onClick={() => setComposeOpen(true)}
+            >
+              <SquarePen className="h-4 w-4" aria-hidden />
+              Compose
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2 rounded-xl"
+              disabled={loadingList}
+              onClick={() => void loadThreads(search.trim() || debouncedSearch || undefined)}
+            >
+              <RefreshCw className={cn("h-4 w-4", loadingList && "animate-spin")} aria-hidden />
+              Refresh
+            </Button>
+          </div>
         </div>
 
         <form onSubmit={onSearchSubmit} className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -701,7 +715,7 @@ export function ProfessionalInbox({
               </div>
             ) : filteredThreads.length === 0 ? (
               <div className="animate-in fade-in zoom-in-95 flex flex-col items-center justify-center px-4 py-14 text-center duration-300">
-                <div className="mb-4 rounded-2xl border border-border/40 bg-gradient-to-br from-sky-500/[0.08] via-card to-violet-500/[0.06] p-5 shadow-inner ring-1 ring-black/[0.04]">
+                <div className="mb-4 rounded-2xl border border-border/40 bg-gradient-to-br from-primary/[0.08] via-card to-accent/[0.06] p-5 shadow-inner ring-1 ring-black/[0.04]">
                   <Mail className="mx-auto h-9 w-9 text-primary/70" aria-hidden />
                 </div>
                 <p className="text-sm font-medium text-foreground/90">
@@ -728,7 +742,7 @@ export function ProfessionalInbox({
                       className={cn(
                         "flex gap-0.5 rounded-xl transition-all duration-200",
                         active ? "bg-gradient-to-r from-primary/[0.12] to-transparent shadow-sm ring-1 ring-primary/25" : "hover:bg-muted/45",
-                        !active && t.campaign_thread_id ? "ring-1 ring-violet-400/15" : null,
+                        !active && t.campaign_thread_id ? "ring-1 ring-accent/50/15" : null,
                       )}
                     >
                       <button
@@ -740,7 +754,7 @@ export function ProfessionalInbox({
                           <div className="flex min-w-0 items-center gap-2">
                             {t.has_unread ? (
                               <span
-                                className="h-2 w-2 shrink-0 rounded-full bg-sky-500 shadow-[0_0_0_3px_rgba(14,165,233,0.2)]"
+                                className="h-2 w-2 shrink-0 rounded-full bg-primary shadow-[0_0_0_3px_rgba(14,165,233,0.2)]"
                                 aria-label="Unread"
                               />
                             ) : (
@@ -760,7 +774,7 @@ export function ProfessionalInbox({
                             {t.campaign_thread_id ? (
                               <span
                                 title="Linked to a Workspace campaign run"
-                                className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-900 ring-1 ring-violet-400/25"
+                                className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent-foreground ring-1 ring-accent/25"
                               >
                                 Campaign
                               </span>
@@ -828,7 +842,7 @@ export function ProfessionalInbox({
             </div>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="shrink-0 border-b border-border/40 bg-gradient-to-r from-sky-500/[0.07] via-muted/15 to-transparent px-4 py-4 sm:px-5">
+              <div className="shrink-0 border-b border-border/40 bg-gradient-to-r from-primary/[0.07] via-muted/15 to-transparent px-4 py-4 sm:px-5">
                 <div className="flex items-start gap-2 sm:gap-3">
                   <Button
                     type="button"
@@ -859,9 +873,9 @@ export function ProfessionalInbox({
                       </div>
                     ) : null}
                     {selectedThread?.campaign_thread_id ? (
-                      <p className="mt-2 text-[11px] text-violet-800/90">
+                      <p className="mt-2 text-[11px] text-accent-foreground/90">
                         Linked to campaign thread{" "}
-                        <code className="rounded bg-violet-500/10 px-1 font-mono text-[10px]">
+                        <code className="rounded bg-accent/10 px-1 font-mono text-[10px]">
                           {selectedThread.campaign_thread_id.length > 36
                             ? `${selectedThread.campaign_thread_id.slice(0, 34)}…`
                             : selectedThread.campaign_thread_id}
@@ -934,7 +948,7 @@ export function ProfessionalInbox({
                                   Analyze with AI
                                 </Button>
                                 {m.reply_analysis_id || localAnalysis[m.id] ? (
-                                  <span className="rounded-full border border-emerald-300/50 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-900">
+                                  <span className="rounded-full border border-primary/50 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-foreground">
                                     Analyzed
                                   </span>
                                 ) : null}
@@ -1012,6 +1026,26 @@ export function ProfessionalInbox({
           )}
         </div>
       </div>
+
+      <ComposeNewEmailDialog
+        open={composeOpen}
+        onOpenChange={setComposeOpen}
+        onSent={(threadId) => {
+          setSelectedId(threadId);
+          void loadThreads(debouncedSearch || undefined);
+          router.refresh();
+        }}
+      />
+
+      <Button
+        type="button"
+        size="icon"
+        className="fixed bottom-6 right-5 z-40 h-14 w-14 rounded-full border border-primary/20 bg-gradient-to-br from-primary to-primary/90 text-primary-foreground shadow-[0_12px_40px_-8px_rgba(0,0,0,0.25)] ring-2 ring-primary/20 transition hover:scale-[1.03] hover:shadow-lg active:scale-[0.98] sm:bottom-8 sm:right-8"
+        onClick={() => setComposeOpen(true)}
+        aria-label="Compose new email"
+      >
+        <SquarePen className="h-6 w-6" aria-hidden />
+      </Button>
     </div>
   );
 }

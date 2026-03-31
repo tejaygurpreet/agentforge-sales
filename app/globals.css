@@ -3,57 +3,65 @@
 @tailwind utilities;
 
 /**
- * Prompt 103 — Super aesthetic light theme: warm cream canvas, soft indigo primary,
- * calm neutrals (Notion / Linear / Vercel-inspired). Dark `.dark` kept for optional future use.
+ * Prompt 125 — Warm cream canvas, sage primary, terracotta accents (no blue/purple).
+ * Premium SaaS-inspired light aesthetic; `.dark` uses warm neutrals + soft sage (optional).
  */
 @layer base {
   :root {
-    --background: 42 38% 96%;
-    --foreground: 224 28% 11%;
-    --card: 40 50% 99.5%;
-    --card-foreground: 224 28% 11%;
-    --popover: 40 50% 99.5%;
-    --popover-foreground: 224 28% 11%;
-    --primary: 231 52% 48%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 215 22% 91%;
-    --secondary-foreground: 224 25% 14%;
-    --muted: 40 22% 93%;
-    --muted-foreground: 220 11% 40%;
-    --accent: 225 38% 92%;
-    --accent-foreground: 231 40% 26%;
-    --destructive: 0 72% 52%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 38 16% 86%;
-    --input: 38 18% 88%;
-    --ring: 231 52% 48%;
+    /* #F8F5F0 cream */
+    --background: 40 33% 97%;
+    /* #3F3F3F warm charcoal */
+    --foreground: 0 0% 25%;
+    /* #FAF7F2 card */
+    --card: 40 38% 98%;
+    --card-foreground: 0 0% 25%;
+    --popover: 40 38% 98%;
+    --popover-foreground: 0 0% 25%;
+    /* #9CA88B sage — CTAs */
+    --primary: 82 14% 60%;
+    /* warm paper on sage buttons */
+    --primary-foreground: 40 42% 98%;
+    /* terracotta-tinted secondary surfaces #C8A48A family */
+    --secondary: 24 32% 93%;
+    --secondary-foreground: 24 28% 28%;
+    --muted: 38 22% 93%;
+    /* #6B6B6B soft gray */
+    --muted-foreground: 0 0% 42%;
+    /* gentle terracotta wash */
+    --accent: 24 38% 94%;
+    --accent-foreground: 24 32% 30%;
+    --destructive: 0 65% 48%;
+    --destructive-foreground: 40 40% 98%;
+    --border: 36 18% 88%;
+    --input: 36 20% 90%;
+    --ring: 82 14% 60%;
     --radius: 0.8125rem;
-    --canvas-mid: 210 38% 97%;
-    --canvas-btm: 215 30% 95%;
+    --canvas-mid: 38 28% 96%;
+    --canvas-btm: 34 22% 94%;
   }
 
   .dark {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 98%;
-    --card: 222 41% 8%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 41% 9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 47% 6%;
-    --secondary: 217 19% 18%;
-    --secondary-foreground: 210 40% 96%;
-    --muted: 217 19% 16%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 25% 20%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 40%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217 19% 18%;
-    --input: 217 19% 18%;
-    --ring: 217 91% 60%;
-    --canvas-mid: 222 42% 8%;
-    --canvas-btm: 222 47% 5%;
+    --background: 30 12% 9%;
+    --foreground: 40 25% 96%;
+    --card: 28 10% 11%;
+    --card-foreground: 40 25% 96%;
+    --popover: 28 10% 12%;
+    --popover-foreground: 40 25% 96%;
+    --primary: 82 18% 52%;
+    --primary-foreground: 30 15% 10%;
+    --secondary: 24 14% 18%;
+    --secondary-foreground: 40 30% 92%;
+    --muted: 24 12% 16%;
+    --muted-foreground: 40 12% 68%;
+    --accent: 24 18% 20%;
+    --accent-foreground: 40 30% 95%;
+    --destructive: 0 55% 42%;
+    --destructive-foreground: 40 40% 98%;
+    --border: 24 12% 20%;
+    --input: 24 12% 20%;
+    --ring: 82 18% 52%;
+    --canvas-mid: 28 11% 10%;
+    --canvas-btm: 30 12% 8%;
   }
 }
 
@@ -112,12 +120,12 @@
   .dark .ux-inline-warning {
     @apply border-amber-500/40 bg-gradient-to-br from-amber-500/10 via-card to-amber-950/30 text-amber-50 ring-amber-500/25;
   }
-  /** Positive feedback banners. */
+  /** Positive feedback banners — sage-tinted, no emerald/blue. */
   .ux-inline-success {
-    @apply rounded-xl border border-emerald-300/50 bg-gradient-to-br from-emerald-50/90 via-card to-teal-50/30 px-3.5 py-2.5 text-sm leading-relaxed text-emerald-950 shadow-sm ring-1 ring-emerald-200/35;
+    @apply rounded-xl border border-primary/35 bg-gradient-to-br from-primary/[0.1] via-card to-muted/30 px-3.5 py-2.5 text-sm leading-relaxed text-foreground shadow-sm ring-1 ring-primary/25;
   }
   .dark .ux-inline-success {
-    @apply border-emerald-500/35 bg-gradient-to-br from-emerald-500/10 via-card to-emerald-950/25 text-emerald-100 ring-emerald-500/20;
+    @apply border-primary/35 bg-gradient-to-br from-primary/[0.12] via-card to-muted/15 text-primary-foreground ring-primary/25;
   }
   /** Full-view loading shell (matches body gradient). */
   .ux-loading-canvas {

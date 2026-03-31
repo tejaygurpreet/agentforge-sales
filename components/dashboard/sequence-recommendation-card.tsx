@@ -63,12 +63,12 @@ export function SequenceRecommendationCard({ form, onApplyRecommendation }: Prop
   return (
     <Card
       className={cn(
-        "rounded-xl border border-violet-500/25 bg-violet-500/[0.04] shadow-sm dark:border-violet-400/20 dark:bg-violet-500/[0.07]",
+        "rounded-xl border border-accent/25 bg-accent/[0.04] shadow-sm dark:border-accent/50/20 dark:bg-accent/[0.07]",
       )}
     >
       <CardHeader className="pb-2">
         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-          <Route className="h-5 w-5 text-violet-600 dark:text-violet-300" aria-hidden />
+          <Route className="h-5 w-5 text-accent-foreground dark:text-accent-foreground/80" aria-hidden />
           Intelligent sequence recommendation
         </CardTitle>
         <CardDescription>
@@ -99,7 +99,7 @@ export function SequenceRecommendationCard({ form, onApplyRecommendation }: Prop
           <div className="space-y-3 rounded-lg border border-border/60 bg-background/80 px-3 py-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-semibold text-foreground">Confidence</span>
-              <span className="rounded-full border border-violet-500/35 bg-violet-500/10 px-2 py-0.5 text-xs font-medium tabular-nums text-violet-950 dark:text-violet-100">
+              <span className="rounded-full border border-accent/35 bg-accent/10 px-2 py-0.5 text-xs font-medium tabular-nums text-accent-foreground dark:text-accent-foreground">
                 {rec.confidence_0_to_100}/100
               </span>
             </div>

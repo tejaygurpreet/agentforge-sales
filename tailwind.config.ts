@@ -14,8 +14,8 @@ const config: Config = {
         mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
       boxShadow: {
-        soft: "0 1px 2px hsl(220 15% 15% / 0.04), 0 4px 16px hsl(220 15% 15% / 0.06)",
-        lift: "0 8px 30px -8px hsl(231 35% 25% / 0.12)",
+        soft: "0 1px 2px hsl(35 18% 12% / 0.05), 0 4px 16px hsl(35 15% 12% / 0.07)",
+        lift: "0 8px 30px -8px hsl(35 20% 12% / 0.12)",
       },
       colors: {
         border: "hsl(var(--border))",

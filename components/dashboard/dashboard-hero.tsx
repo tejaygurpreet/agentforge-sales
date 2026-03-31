@@ -62,7 +62,7 @@ export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
               <TooltipTrigger asChild>
                 <Badge
                   variant="secondary"
-                  className="cursor-default gap-1 border border-violet-200/80 bg-violet-500/[0.1] px-2.5 py-1 text-[11px] font-medium text-violet-800 shadow-sm"
+                  className="cursor-default gap-1 border border-accent/40 bg-accent/[0.1] px-2.5 py-1 text-[11px] font-medium text-accent-foreground shadow-sm"
                 >
                   <Sparkles className="h-3 w-3" aria-hidden />
                   5 SDR voices
@@ -77,7 +77,7 @@ export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
               <TooltipTrigger asChild>
                 <Badge
                   variant="secondary"
-                  className="cursor-default gap-1 border border-sky-200/80 bg-sky-500/[0.1] px-2.5 py-1 text-[11px] font-medium text-sky-800 shadow-sm"
+                  className="cursor-default gap-1 border border-primary/35 bg-primary/[0.1] px-2.5 py-1 text-[11px] font-medium text-muted-foreground shadow-sm"
                 >
                   <FileText className="h-3 w-3" aria-hidden />
                   Branded PDF dossier
@@ -92,7 +92,7 @@ export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
               <TooltipTrigger asChild>
                 <Badge
                   variant="secondary"
-                  className="cursor-default gap-1 border border-emerald-200/80 bg-emerald-500/[0.1] px-2.5 py-1 text-[11px] font-medium text-emerald-800 shadow-sm"
+                  className="cursor-default gap-1 border border-primary/25 bg-primary/[0.1] px-2.5 py-1 text-[11px] font-medium text-primary shadow-sm"
                 >
                   <Layers className="h-3 w-3" aria-hidden />
                   Batch + analytics

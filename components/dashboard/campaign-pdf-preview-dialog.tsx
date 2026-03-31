@@ -121,7 +121,7 @@ export function CampaignPdfPreviewDialog({
           "border-border/60 bg-gradient-to-b from-[#fffdfb] to-card shadow-lift",
         )}
       >
-        <div className="border-b border-border/35 bg-gradient-to-r from-sky-500/[0.06] via-violet-500/[0.05] to-amber-500/[0.05] px-6 py-5">
+        <div className="border-b border-border/35 bg-gradient-to-r from-primary/[0.06] via-accent/[0.05] to-amber-500/[0.05] px-6 py-5">
           <DialogHeader className="space-y-1.5 text-left">
             <DialogTitle className="flex items-center gap-3 text-xl font-semibold tracking-tight text-foreground">
               <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/12 text-primary shadow-sm ring-1 ring-primary/15">
@@ -208,7 +208,7 @@ export function CampaignPdfPreviewDialog({
           <div className="flex flex-wrap items-center justify-end gap-3">
             <span
               className={cn(
-                "inline-flex items-center gap-1.5 text-sm font-medium text-emerald-600 transition-opacity duration-300 dark:text-emerald-400",
+                "inline-flex items-center gap-1.5 text-sm font-medium text-primary transition-opacity duration-300 dark:text-primary",
                 downloadSuccess ? "opacity-100" : "pointer-events-none opacity-0",
               )}
               aria-hidden={!downloadSuccess}

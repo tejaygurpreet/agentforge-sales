@@ -41,7 +41,7 @@ export function CompetitiveEdgePanel({ className }: { className?: string }) {
       <div className="space-y-4 border-t border-border/40 px-5 pb-5 pt-4 text-sm leading-relaxed text-muted-foreground sm:px-6">
         <ul className="space-y-3">
           <li className="flex gap-3">
-            <Lock className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500 dark:text-emerald-400" />
+            <Lock className="mt-0.5 h-4 w-4 shrink-0 text-primary dark:text-primary" />
             <span>
               <strong className="font-medium text-foreground">Self-hosted ownership</strong> — your
               campaigns, data, and branding stay in your Supabase workspace; no black-box SaaS lock-in
@@ -49,7 +49,7 @@ export function CompetitiveEdgePanel({ className }: { className?: string }) {
             </span>
           </li>
           <li className="flex gap-3">
-            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-500 dark:text-violet-400" />
+            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary dark:text-primary/90" />
             <span>
               <strong className="font-medium text-foreground">Consultant-grade dossier</strong> — up
               to six pages with composite scores, reasoning trace, BANT hypotheses, nurture playbook,

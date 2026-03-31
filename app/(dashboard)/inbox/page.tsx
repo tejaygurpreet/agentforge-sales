@@ -12,6 +12,7 @@ export async function generateMetadata(): Promise<Metadata> {
 /**
  * Prompt 123 — Dedicated Professional Inbox (`/inbox`). Unread badge is seeded in `(dashboard)/layout`
  * via `getInboxUnreadCountAction` and updated from the header bridge + this page.
+ * Prompt 124 — “Compose” opens `ComposeNewEmailDialog` inside `ProfessionalInbox` (header + FAB).
  */
 export default async function InboxPage() {
   const initialThreads = await listInboxThreadsAction();

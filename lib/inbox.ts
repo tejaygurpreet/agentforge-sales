@@ -71,6 +71,15 @@ export function normalizeEmail(email: string): string {
 }
 
 /**
+ * Prompt 124 — Normalize the “To” field for compose (single address).
+ */
+export function normalizeComposeRecipientEmail(raw: string): string {
+  return normalizeEmail(raw);
+}
+
+export { isLikelyValidRecipientEmail } from "@/lib/inbox-shared";
+
+/**
  * Computes a unique `inbox_local_part` and persists to `profiles` (Prompt 115).
  * Uses service role for cross-user uniqueness check when available.
  */
@@ -401,6 +410,134 @@ export async function upsertInboxThreadAfterOutreachSend(
   }
 
   return { ok: true };
+}
+
+export type RecordNewComposeMessageParams = {
+  userId: string;
+  prospectEmail: string;
+  subject: string;
+  bodyText: string;
+  /** Bare mailbox for `inbox_messages.from_email` (matches reply composer). */
+  fromBareForStorage: string;
+  now: string;
+};
+
+/**
+ * Prompt 124 — After Resend accepts a net-new compose, upsert the thread row and insert the outbound message.
+ * Visibility remains per-user via RLS on `inbox_threads` / `inbox_messages`.
+ */
+export async function recordNewComposeMessageInInbox(
+  supabase: SupabaseClient,
+  params: RecordNewComposeMessageParams,
+): Promise<{ ok: true; threadId: string } | { ok: false; error: string }> {
+  const email = normalizeEmail(params.prospectEmail);
+  if (!email.includes("@")) return { ok: false, error: "Invalid recipient address." };
+
+  const snippet = snippetFromBodyText(params.bodyText, 220);
+  const subj = params.subject.trim() || "(no subject)";
+
+  const { data: existing, error: lookErr } = await supabase
+    .from("inbox_threads")
+    .select("id")
+    .eq("user_id", params.userId)
+    .eq("prospect_email", email)
+    .maybeSingle();
+
+  if (lookErr && !isMissingInboxColumnMessage(lookErr.message)) {
+    return { ok: false, error: lookErr.message };
+  }
+
+  let threadId: string;
+  const ex = existing as { id?: string } | null;
+  if (ex?.id) {
+    threadId = ex.id;
+  } else {
+    const ins = await supabase
+      .from("inbox_threads")
+      .insert({
+        user_id: params.userId,
+        prospect_email: email,
+        subject: subj,
+        snippet,
+        last_message_at: params.now,
+        user_last_read_at: params.now,
+      })
+      .select("id")
+      .single();
+
+    let row = ins;
+    if (ins.error && isMissingInboxColumnMessage(ins.error.message)) {
+      row = await supabase
+        .from("inbox_threads")
+        .insert({
+          user_id: params.userId,
+          prospect_email: email,
+          subject: subj,
+          snippet,
+          last_message_at: params.now,
+        })
+        .select("id")
+        .single();
+    }
+    if (row.error || !row.data) {
+      return { ok: false, error: row.error?.message ?? "Could not create inbox thread." };
+    }
+    threadId = String((row.data as { id: string }).id);
+  }
+
+  const { error: insErr } = await supabase.from("inbox_messages").insert({
+    thread_id: threadId,
+    user_id: params.userId,
+    direction: "outbound",
+    from_email: params.fromBareForStorage,
+    to_email: email,
+    subject: subj,
+    body_text: params.bodyText.slice(0, 50_000),
+    body_html: null,
+    received_at: params.now,
+    raw: { source: "inbox_compose_new" },
+  });
+
+  if (insErr) {
+    if (isMissingInboxColumnMessage(insErr.message)) {
+      return { ok: false, error: "Inbox tables missing — run supabase/inbox_p115.sql" };
+    }
+    console.error("[AgentForge] recordNewComposeMessageInInbox insert", insErr.message);
+    return { ok: false, error: "Email sent but failed to save to inbox." };
+  }
+
+  let upErr = (
+    await supabase
+      .from("inbox_threads")
+      .update({
+        last_message_at: params.now,
+        snippet,
+        subject: subj,
+        updated_at: params.now,
+        user_last_read_at: params.now,
+      })
+      .eq("id", threadId)
+      .eq("user_id", params.userId)
+  ).error;
+  if (upErr && isMissingInboxColumnMessage(upErr.message)) {
+    upErr = (
+      await supabase
+        .from("inbox_threads")
+        .update({
+          last_message_at: params.now,
+          snippet,
+          subject: subj,
+          updated_at: params.now,
+        })
+        .eq("id", threadId)
+        .eq("user_id", params.userId)
+    ).error;
+  }
+  if (upErr) {
+    console.error("[AgentForge] recordNewComposeMessageInInbox thread update", upErr.message);
+  }
+
+  return { ok: true, threadId };
 }
 
 export function parseToAddresses(payload: unknown): string[] {

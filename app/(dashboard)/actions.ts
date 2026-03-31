@@ -126,8 +126,10 @@ import {
 } from "@/lib/resend";
 import {
   getOrSyncInboxLocalPart,
+  normalizeComposeRecipientEmail,
   normalizeEmail,
   plainTextToEmailHtml,
+  recordNewComposeMessageInInbox,
   snippetFromBodyText,
   linkInboxThreadToCampaignIfKnown,
   upsertInboxThreadAfterOutreachSend,
@@ -4298,6 +4300,113 @@ export async function sendInboxReplyAction(
   revalidatePath("/");
   revalidatePath("/replies");
   return { ok: true };
+}
+
+const sendNewInboxEmailSchema = z.object({
+  to: z.string().trim().min(3).max(320).email(),
+  subject: z.string().trim().min(1).max(500),
+  body: z.string().min(1).max(50_000),
+});
+
+/**
+ * Prompt 124 — Send a brand-new message from the inbox composer (dynamic From + same Reply-To as replies).
+ */
+export async function sendNewInboxEmailAction(
+  raw: z.input<typeof sendNewInboxEmailSchema>,
+): Promise<{ ok: true; threadId: string } | { ok: false; error: string }> {
+  const parsed = sendNewInboxEmailSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Enter a valid recipient, subject, and message (up to ~50k characters)." };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+
+  const prospectEmail = normalizeComposeRecipientEmail(parsed.data.to);
+  if (!prospectEmail.includes("@")) {
+    return { ok: false, error: "Invalid recipient address." };
+  }
+
+  const subjectLine = parsed.data.subject.trim();
+
+  let senderName = "";
+  if (typeof user.user_metadata?.full_name === "string") {
+    senderName = user.user_metadata.full_name.trim();
+  }
+  const { data: profileForSignoff } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profileForSignoff?.full_name?.trim()) {
+    senderName = profileForSignoff.full_name.trim();
+  }
+
+  await getOrSyncInboxLocalPart(supabase, user.id, senderName || "User");
+  const { data: profInbox } = await supabase
+    .from("profiles")
+    .select("inbox_local_part")
+    .eq("id", user.id)
+    .maybeSingle();
+  const inboxPart =
+    profInbox &&
+    typeof (profInbox as { inbox_local_part?: string }).inbox_local_part === "string" &&
+    (profInbox as { inbox_local_part: string }).inbox_local_part.trim()
+      ? (profInbox as { inbox_local_part: string }).inbox_local_part.trim()
+      : null;
+
+  const fromHeader = buildDynamicFromEmail(senderName || null, inboxPart);
+  const replyBare = extractBareEmailFromFromHeader(fromHeader);
+  const userSignupEmail =
+    typeof user.email === "string" && user.email.trim().length > 0 ? user.email.trim() : null;
+  if (!replyBare && !userSignupEmail) {
+    return { ok: false, error: "Account email missing — cannot set Reply-To." };
+  }
+
+  warnIfResendNotConfigured();
+  const html = plainTextToEmailHtml(parsed.data.body);
+  const send = await sendTransactionalEmail({
+    to: prospectEmail,
+    subject: subjectLine,
+    html,
+    from: fromHeader,
+    reply_to: replyBare ?? userSignupEmail!,
+  });
+  if (!send.ok) {
+    return { ok: false, error: send.error };
+  }
+
+  const now = new Date().toISOString();
+  const fromAddr = replyBare ?? userSignupEmail ?? "";
+
+  const rec = await recordNewComposeMessageInInbox(supabase, {
+    userId: user.id,
+    prospectEmail,
+    subject: subjectLine,
+    bodyText: parsed.data.body,
+    fromBareForStorage: fromAddr,
+    now,
+  });
+  if (!rec.ok) {
+    return { ok: false, error: rec.error };
+  }
+
+  await linkInboxThreadToCampaignIfKnown(supabase, {
+    userId: user.id,
+    inboxThreadId: rec.threadId,
+    prospectEmail,
+  });
+
+  revalidatePath("/");
+  revalidatePath("/inbox");
+  revalidatePath("/replies");
+  return { ok: true, threadId: rec.threadId };
 }
 
 function buildAbTestComparisonsFromRows(

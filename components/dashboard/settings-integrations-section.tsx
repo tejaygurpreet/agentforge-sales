@@ -27,7 +27,7 @@ export function SettingsIntegrationsSection({ children }: { children: ReactNode 
     >
       <div
         className={cn(
-          "rounded-[1.75rem] border border-border/45 bg-gradient-to-br from-[#fffdfb] via-[#faf8f5] to-sky-50/35",
+          "rounded-[1.75rem] border border-border/45 bg-gradient-to-br from-[#fffdfb] via-[#faf8f5] to-muted/40",
           "p-6 shadow-lift ring-1 ring-black/[0.04] sm:p-8 lg:p-10",
           "animate-in fade-in slide-in-from-bottom-1 duration-500",
         )}
@@ -77,11 +77,11 @@ export function CalendarIntegrationCard({ calendarStatus, onGoToWorkspace }: Cal
         "transition-all duration-300 hover:-translate-y-0.5 hover:shadow-soft",
       )}
     >
-      <CardHeader className="space-y-3 border-b border-border/40 bg-gradient-to-br from-violet-500/[0.07] via-card to-sky-500/[0.04] px-6 pb-6 pt-7 sm:px-8 sm:pt-8">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-800/80">Scheduling</p>
+      <CardHeader className="space-y-3 border-b border-border/40 bg-gradient-to-br from-accent/[0.07] via-card to-primary/[0.04] px-6 pb-6 pt-7 sm:px-8 sm:pt-8">
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent-foreground/80">Scheduling</p>
         <div className="flex gap-4">
-          <div className="mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-violet-400/35 bg-card shadow-sm">
-            <CalendarClock className="h-6 w-6 text-violet-700" aria-hidden />
+          <div className="mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-accent/35 bg-card shadow-sm">
+            <CalendarClock className="h-6 w-6 text-accent-foreground" aria-hidden />
           </div>
           <div className="min-w-0 space-y-2">
             <CardTitle className="text-xl font-semibold tracking-tight">Calendar OAuth</CardTitle>
@@ -99,7 +99,7 @@ export function CalendarIntegrationCard({ calendarStatus, onGoToWorkspace }: Cal
             className={cn(
               "font-medium",
               googleOn
-                ? "border-emerald-500/40 bg-emerald-600/10 text-emerald-900 shadow-sm"
+                ? "border-primary/40 bg-primary/10 text-foreground shadow-sm"
                 : "border-border/60 text-muted-foreground",
             )}
           >
@@ -110,7 +110,7 @@ export function CalendarIntegrationCard({ calendarStatus, onGoToWorkspace }: Cal
             className={cn(
               "font-medium",
               microsoftOn
-                ? "border-sky-500/40 bg-sky-600/10 text-sky-950 shadow-sm"
+                ? "border-primary/40 bg-primary/12 text-foreground shadow-sm"
                 : "border-border/60 text-muted-foreground",
             )}
           >

@@ -20,8 +20,9 @@ export type CampaignPdfExportOptions = {
   reportTitle?: string | null;
 };
 
-const DEFAULT_PRIMARY: CampaignPdfRgb = { r: 59, g: 130, b: 246 };
-const DEFAULT_SECONDARY: CampaignPdfRgb = { r: 15, g: 23, b: 42 };
+/** Prompt 125 — Sage + warm charcoal (matches app light palette; no blue). */
+const DEFAULT_PRIMARY: CampaignPdfRgb = { r: 156, g: 168, b: 139 };
+const DEFAULT_SECONDARY: CampaignPdfRgb = { r: 63, g: 63, b: 63 };
 
 function mixRgb(a: CampaignPdfRgb, b: CampaignPdfRgb, t: number): CampaignPdfRgb {
   return {
@@ -95,25 +96,25 @@ async function renderCampaignPdfDocument(
   const logoDataUrl = options?.logoDataUrl?.trim() || undefined;
   const bandAccent = mixRgb(primary, secondary, 0.35);
 
-  /** Light mode: warm paper + ink tuned for long-form reading (Prompt 109). */
+  /** Light mode: warm cream + charcoal (Prompt 125). */
   const pageBg: CampaignPdfRgb = dark
     ? { r: 18, g: 22, b: 30 }
-    : { r: 255, g: 252, b: 246 };
+    : { r: 248, g: 245, b: 240 };
   const ink: CampaignPdfRgb = dark
     ? { r: 241, g: 245, b: 249 }
-    : { r: 30, g: 41, b: 59 };
+    : { r: 63, g: 63, b: 63 };
   const muted: CampaignPdfRgb = dark
     ? { r: 148, g: 163, b: 184 }
-    : { r: 91, g: 103, b: 122 };
+    : { r: 107, g: 107, b: 107 };
   const cardBg: CampaignPdfRgb = dark
     ? { r: 28, g: 34, b: 44 }
-    : { r: 255, g: 255, b: 252 };
+    : { r: 250, g: 247, b: 242 };
   const rule: CampaignPdfRgb = dark
     ? { r: 51, g: 65, b: 85 }
-    : { r: 228, g: 232, b: 239 };
+    : { r: 230, g: 224, b: 216 };
   const subtleLine: CampaignPdfRgb = dark
     ? { r: 60, g: 74, b: 94 }
-    : { r: 243, g: 246, b: 250 };
+    : { r: 242, g: 238, b: 232 };
 
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   doc.setProperties({
@@ -149,10 +150,12 @@ async function renderCampaignPdfDocument(
         doc.setFillColor(bandAccent.r, bandAccent.g, bandAccent.b);
         doc.rect(0, 0, pageW * 0.42, bandBottom, "F");
       } else {
-        const base = mixRgb(secondary, { r: 15, g: 23, b: 42 }, 0.88);
+        const warmDeep: CampaignPdfRgb = { r: 92, g: 88, b: 82 };
+        const base = mixRgb(secondary, warmDeep, 0.88);
         doc.setFillColor(base.r, base.g, base.b);
         doc.rect(0, 0, pageW, bandBottom, "F");
-        const sweep = mixRgb(primary, secondary, 0.55);
+        const terracotta: CampaignPdfRgb = { r: 200, g: 164, b: 138 };
+        const sweep = mixRgb(primary, terracotta, 0.45);
         doc.setFillColor(sweep.r, sweep.g, sweep.b);
         doc.rect(0, 0, pageW * 0.5, bandBottom, "F");
         doc.setFillColor(bandAccent.r, bandAccent.g, bandAccent.b);
@@ -182,7 +185,7 @@ async function renderCampaignPdfDocument(
       doc.text(forPdf(orgLine), titleX, 56);
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
-      doc.setTextColor(226, 232, 240);
+      doc.setTextColor(245, 242, 236);
       doc.text(forPdf("Consultant-grade intelligence dossier"), titleX, 78);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7.5);
@@ -893,7 +896,7 @@ export function renderProposalQuotePdfBytes(
   doc.setFontSize(22);
   doc.text(forPdf(input.org_line), margin, 48);
   doc.setFontSize(10);
-  doc.setTextColor(230, 235, 245);
+  doc.setTextColor(244, 240, 234);
   doc.text(forPdf("Proposal & commercial quote"), margin, 72);
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");

@@ -32,7 +32,7 @@ const STEPS = [
     headline: `You're in — let's make ${DEFAULT_BRAND_DISPLAY_NAME} yours`,
     body: "This short guide points you to the right places on your dashboard: branding, CRM, and your first AI campaign. You can leave anytime and come back from **Setup** in the top bar.",
     icon: Sparkles,
-    accent: "from-violet-500/[0.12] via-card to-sky-500/[0.08]",
+    accent: "from-accent/[0.12] via-card to-primary/[0.08]",
   },
   {
     key: "brand",
@@ -58,7 +58,7 @@ const STEPS = [
     headline: "Run research → outreach → qualification → nurture",
     body: "Add a lead, pick a voice, and start. Results land in the Workspace tab — review every step before you send email or LinkedIn.",
     icon: Play,
-    accent: "from-emerald-500/[0.1] via-card to-teal-500/[0.06]",
+    accent: "from-primary/[0.1] via-card to-muted0/[0.06]",
     cta: { label: "Go to campaign workspace", href: "/#campaign-workspace" },
   },
 ] as const;
@@ -93,7 +93,7 @@ export function OnboardingWizard() {
               i === step
                 ? "border-primary bg-primary/[0.12] text-foreground shadow-sm ring-1 ring-primary/25"
                 : i < step
-                  ? "border-emerald-400/50 bg-emerald-500/[0.1] text-emerald-900"
+                  ? "border-primary/50 bg-primary/[0.1] text-foreground"
                   : "border-border/60 bg-muted/30 text-muted-foreground hover:bg-muted/50",
             )}
             aria-label={`Step ${i + 1}: ${s.title}`}

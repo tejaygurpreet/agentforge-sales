@@ -89,7 +89,7 @@ export function HubSpotConnectSection({ connected: initialConnected }: Props) {
             <div className="flex flex-wrap items-center gap-2">
               <CardTitle className="text-xl font-semibold tracking-tight">HubSpot CRM</CardTitle>
               {connected ? (
-                <Badge className="border-emerald-500/35 bg-emerald-600/12 font-semibold text-emerald-900 shadow-sm">
+                <Badge className="border-primary/35 bg-primary/12 font-semibold text-foreground shadow-sm">
                   Connected
                 </Badge>
               ) : (
@@ -141,7 +141,7 @@ export function HubSpotConnectSection({ connected: initialConnected }: Props) {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-3 rounded-2xl border border-emerald-400/30 bg-emerald-500/[0.06] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 rounded-2xl border border-primary/30 bg-primary/[0.06] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <Button
               type="button"
               variant="outline"

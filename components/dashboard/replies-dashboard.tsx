@@ -48,7 +48,7 @@ export function RepliesDashboard({ rows }: Props) {
 
   return (
     <div className="space-y-10">
-      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-emerald-500/[0.06] via-card to-card px-5 py-6 shadow-sm ring-1 ring-border/10 dark:from-emerald-500/[0.08] dark:via-card sm:px-7 sm:py-7">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-primary/[0.06] via-card to-card px-5 py-6 shadow-sm ring-1 ring-border/10 dark:from-primary/[0.08] dark:via-card sm:px-7 sm:py-7">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Reply intelligence</h1>
           <Badge variant="outline" className="text-[10px] uppercase tracking-widest text-muted-foreground">
@@ -136,10 +136,10 @@ export function RepliesDashboard({ rows }: Props) {
                         <Badge variant="secondary" className="capitalize">
                           {a.sentiment}
                         </Badge>
-                        <Badge className="bg-emerald-600/90 text-white hover:bg-emerald-600">
+                        <Badge className="bg-primary/90 text-white hover:bg-primary">
                           Interest {a.interest_level_0_to_10}/10
                         </Badge>
-                        <Badge variant="outline" className="border-violet-500/35 text-violet-950 dark:text-violet-100">
+                        <Badge variant="outline" className="border-accent/35 text-accent-foreground dark:text-accent-foreground">
                           {a.suggested_voice_label}
                         </Badge>
                       </div>
@@ -223,7 +223,7 @@ export function RepliesDashboard({ rows }: Props) {
 
       <Card className="rounded-xl border-border/60 bg-muted/10">
         <CardHeader className="flex flex-row items-center gap-3 space-y-0 pb-2">
-          <MessageSquareText className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-hidden />
+          <MessageSquareText className="h-5 w-5 text-primary dark:text-primary" aria-hidden />
           <CardTitle className="text-base">Tip</CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">

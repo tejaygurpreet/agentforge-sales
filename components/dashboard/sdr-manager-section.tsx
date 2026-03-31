@@ -32,7 +32,7 @@ type Props = {
 };
 
 function healthBadgeClass(overall: SdrManagerPayloadDTO["health"]["overall"]) {
-  if (overall === "healthy") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100";
+  if (overall === "healthy") return "border-primary/40 bg-primary/10 text-foreground dark:text-primary-foreground";
   if (overall === "degraded") return "border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-50";
   return "border-rose-500/40 bg-rose-500/10 text-rose-950 dark:text-rose-50";
 }
@@ -160,7 +160,7 @@ export function SdrManagerSection({ initial, onOpenDeliverability, onOpenCoachin
               key={c.id}
               className={cn(
                 "rounded-xl border px-4 py-3 text-sm",
-                c.status === "ok" && "border-emerald-500/25 bg-emerald-500/[0.06]",
+                c.status === "ok" && "border-primary/25 bg-primary/[0.06]",
                 c.status === "warn" && "border-amber-500/25 bg-amber-500/[0.06]",
                 c.status === "critical" && "border-rose-500/25 bg-rose-500/[0.06]",
               )}

@@ -91,7 +91,7 @@ export function QualificationObjectionPanel({
                           className={cn(
                             "font-mono text-[11px]",
                             row.qualification_refined >= 70
-                              ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-950 dark:text-emerald-50"
+                              ? "border-primary/40 bg-primary/15 text-foreground dark:text-primary-foreground"
                               : row.qualification_refined >= 45
                                 ? "border-amber-500/40 bg-amber-500/15 text-amber-950 dark:text-amber-50"
                                 : "border-border/50 bg-muted/50",

@@ -134,7 +134,7 @@ export function AnalyticsDashboard({
     <div className="space-y-10">
       <div
         className={cn(
-          "premium-surface relative overflow-hidden rounded-2xl border border-border/55 bg-gradient-to-br from-primary/[0.07] via-card to-violet-500/[0.04] px-5 py-6 shadow-lift ring-1 ring-border/30 dark:from-primary/[0.1] sm:px-7 sm:py-8",
+          "premium-surface relative overflow-hidden rounded-2xl border border-border/55 bg-gradient-to-br from-primary/[0.07] via-card to-accent/[0.04] px-5 py-6 shadow-lift ring-1 ring-border/30 dark:from-primary/[0.1] sm:px-7 sm:py-8",
         )}
       >
         <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-primary/[0.06] blur-3xl" aria-hidden />
@@ -145,7 +145,7 @@ export function AnalyticsDashboard({
             </h1>
             <Badge
               variant="outline"
-              className="border-emerald-400/40 bg-emerald-500/[0.1] text-[10px] font-semibold uppercase tracking-widest text-emerald-900 shadow-sm"
+              className="border-primary/40 bg-primary/[0.1] text-[10px] font-semibold uppercase tracking-widest text-foreground shadow-sm"
             >
               Live data
             </Badge>
@@ -177,10 +177,10 @@ export function AnalyticsDashboard({
       </div>
 
       {coachingPreview ? (
-        <Card className="rounded-2xl border-violet-500/25 bg-violet-500/[0.04] shadow-sm ring-1 ring-violet-500/10">
+        <Card className="rounded-2xl border-accent/25 bg-accent/[0.04] shadow-sm ring-1 ring-accent/10">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Sparkles className="h-4 w-4 text-violet-500" aria-hidden />
+              <Sparkles className="h-4 w-4 text-primary" aria-hidden />
               AI coaching (Prompt 101)
             </CardTitle>
             <CardDescription>
@@ -215,10 +215,10 @@ export function AnalyticsDashboard({
       ) : null}
 
       {onOpenSdrManagerTab ? (
-        <Card className="rounded-2xl border-sky-500/25 bg-sky-500/[0.04] shadow-sm ring-1 ring-sky-500/10">
+        <Card className="rounded-2xl border-primary/25 bg-primary/[0.04] shadow-sm ring-1 ring-primary/10">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Briefcase className="h-4 w-4 text-sky-600" aria-hidden />
+              <Briefcase className="h-4 w-4 text-primary" aria-hidden />
               AI SDR Manager (Prompt 102)
             </CardTitle>
             <CardDescription>

@@ -24,7 +24,7 @@ const agents = [
     description:
       "Deep account context: ICP score, sector read, 6–8-step reasoning trace, stakeholders, pains, angles, and BANT hypotheses tuned to this lead.",
     icon: Radar,
-    accent: "border-sky-200/90 bg-sky-500/[0.08] text-sky-800",
+    accent: "border-primary/20 bg-primary/[0.08] text-muted-foreground",
   },
   {
     id: "outreach",
@@ -33,7 +33,7 @@ const agents = [
     description:
       "Voice-matched email and LinkedIn — hooks from research, human cadence, and a frictionless reply path.",
     icon: Send,
-    accent: "border-violet-200/90 bg-violet-500/[0.08] text-violet-800",
+    accent: "border-accent/35/90 bg-accent/[0.08] text-accent-foreground",
   },
   {
     id: "qualification",
@@ -51,7 +51,7 @@ const agents = [
     description:
       "Three-step cadence with channel mix, value-add ideas, and timing rationale tied to objections.",
     icon: GitBranch,
-    accent: "border-emerald-200/90 bg-emerald-500/[0.08] text-emerald-800",
+    accent: "border-primary/25 bg-primary/[0.08] text-primary",
   },
 ] as const;
 
@@ -65,9 +65,9 @@ function batchStatusBadge(status: BatchRunItem["status"]) {
     case "queued":
       return "bg-muted text-muted-foreground";
     case "running":
-      return "border-sky-400/50 bg-sky-500/12 text-sky-900";
+      return "border-primary/50 bg-primary/12 text-foreground";
     case "done":
-      return "border-emerald-500/40 bg-emerald-500/12 text-emerald-950";
+      return "border-primary/40 bg-primary/12 text-foreground";
     case "error":
       return "border-red-500/40 bg-red-500/12 text-red-950";
     default:
@@ -102,7 +102,7 @@ export function ActiveAgents({ batchProgress }: ActiveAgentsProps) {
                 </span>
                 <span className="flex items-center gap-2">
                   {b.status === "running" ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-600" />
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
                   ) : null}
                   <Badge
                     variant="outline"

@@ -133,14 +133,14 @@ export function WorkspaceMembersCard({ members, currentRole }: Props) {
         "transition-shadow duration-300 hover:shadow-soft",
       )}
     >
-      <CardHeader className="space-y-3 border-b border-border/40 bg-gradient-to-br from-violet-500/[0.07] via-card to-sky-500/[0.05] px-6 pb-6 pt-7 sm:px-8 sm:pt-8">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-800/85">
+      <CardHeader className="space-y-3 border-b border-border/40 bg-gradient-to-br from-accent/[0.07] via-card to-primary/[0.05] px-6 pb-6 pt-7 sm:px-8 sm:pt-8">
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent-foreground/85">
           Collaboration
         </p>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 flex-1 gap-4">
-            <div className="mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-violet-400/30 bg-card shadow-sm">
-              <Users className="h-6 w-6 text-violet-700" aria-hidden />
+            <div className="mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-accent/30 bg-card shadow-sm">
+              <Users className="h-6 w-6 text-accent-foreground" aria-hidden />
             </div>
             <div className="min-w-0 space-y-2">
               <CardTitle className="text-xl font-semibold tracking-tight text-foreground">
@@ -258,7 +258,7 @@ export function WorkspaceMembersCard({ members, currentRole }: Props) {
                       className={cn(
                         "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm font-bold tabular-nums text-white shadow-sm",
                         m.is_self
-                          ? "bg-gradient-to-br from-violet-500 to-violet-600"
+                          ? "bg-gradient-to-br from-accent to-primary"
                           : "bg-gradient-to-br from-slate-500 to-slate-600",
                       )}
                       aria-hidden

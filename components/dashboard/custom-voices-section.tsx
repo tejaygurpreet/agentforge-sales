@@ -91,7 +91,7 @@ export function CustomVoicesSection({ initialVoices }: Props) {
       <Card className="border-border/80 shadow-sm">
         <CardHeader>
           <div className="flex flex-wrap items-center gap-2">
-            <Mic className="h-5 w-5 text-violet-600 dark:text-violet-300" aria-hidden />
+            <Mic className="h-5 w-5 text-accent-foreground dark:text-accent-foreground/80" aria-hidden />
             <CardTitle className="text-lg font-semibold tracking-tight">Create a custom voice</CardTitle>
           </div>
           <CardDescription>

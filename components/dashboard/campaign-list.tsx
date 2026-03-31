@@ -19,7 +19,7 @@ function tierOutlineClass(tier: LeadPriorityTier | null | undefined): string | u
     case "high":
       return "border-amber-500/45 bg-amber-500/[0.1] text-amber-950 dark:border-amber-400/40 dark:bg-amber-500/15 dark:text-amber-50";
     case "medium":
-      return "border-sky-500/40 bg-sky-500/[0.1] text-sky-950 dark:border-sky-400/40 dark:bg-sky-500/14 dark:text-sky-50";
+      return "border-primary/40 bg-primary/[0.1] text-foreground dark:border-primary/40 dark:bg-primary/14 dark:text-primary-foreground";
     default:
       return "border-muted-foreground/30 bg-muted/30 text-muted-foreground";
   }
@@ -92,7 +92,7 @@ export function CampaignList({ campaigns }: CampaignListProps) {
                   {c.deal_close_probability != null ? (
                     <Badge
                       variant="outline"
-                      className="gap-0.5 border-teal-500/40 bg-teal-500/[0.12] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-teal-950 dark:border-teal-400/40 dark:bg-teal-500/16 dark:text-teal-50"
+                      className="gap-0.5 border-primary/40 bg-primary/[0.12] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-foreground dark:border-primary/40 dark:bg-primary/16 dark:text-primary-foreground"
                       title={
                         c.deal_confidence
                           ? `Deal close estimate · ${c.deal_confidence} confidence`
@@ -107,7 +107,7 @@ export function CampaignList({ campaigns }: CampaignListProps) {
                   {c.sdr_voice_label ? (
                     <Badge
                       variant="outline"
-                      className="border-violet-500/40 bg-violet-500/[0.12] px-2.5 py-0.5 text-xs font-semibold tracking-tight text-violet-950 dark:border-violet-400/40 dark:bg-violet-500/16 dark:text-violet-50"
+                      className="border-accent/40 bg-accent/[0.12] px-2.5 py-0.5 text-xs font-semibold tracking-tight text-accent-foreground dark:border-accent/50/40 dark:bg-accent/16 dark:text-accent-foreground"
                       title={`SDR voice: ${c.sdr_voice_label}`}
                     >
                       Voice: {c.sdr_voice_label}

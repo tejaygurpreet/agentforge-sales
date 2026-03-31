@@ -158,9 +158,9 @@ const resultsCardContentClass = "space-y-7 px-6 pb-8 pt-7 text-[15px] leading-re
 function strengthTierBadgeClass(label: CampaignStrengthResult["label"]): string {
   switch (label) {
     case "Strong":
-      return "border-emerald-500/45 bg-emerald-500/[0.14] text-emerald-950 shadow-sm dark:border-emerald-400/40 dark:bg-emerald-500/18 dark:text-emerald-50";
+      return "border-primary/45 bg-primary/[0.14] text-foreground shadow-sm dark:border-primary/40 dark:bg-primary/18 dark:text-primary-foreground";
     case "Promising":
-      return "border-sky-500/40 bg-sky-500/[0.12] text-sky-950 shadow-sm dark:border-sky-400/35 dark:bg-sky-500/14 dark:text-sky-50";
+      return "border-primary/40 bg-primary/[0.12] text-foreground shadow-sm dark:border-primary/35 dark:bg-primary/14 dark:text-primary-foreground";
     case "Solid":
       return "border-border/70 bg-muted/45 text-foreground dark:bg-muted/30";
     case "Mixed":
@@ -271,7 +271,7 @@ function getQualificationDisplay(d: unknown): {
 
 function scoreTierClass(score: number): string {
   if (score > 70) {
-    return "border-emerald-600/45 bg-emerald-600/12 text-emerald-950 dark:border-emerald-500/40 dark:bg-emerald-500/12 dark:text-emerald-50";
+    return "border-primary/45 bg-primary/12 text-foreground dark:border-primary/40 dark:bg-primary/12 dark:text-primary-foreground";
   }
   if (score >= 40) {
     return "border-amber-500/50 bg-amber-500/12 text-amber-950 dark:border-amber-400/40 dark:bg-amber-400/10 dark:text-amber-50";
@@ -307,7 +307,7 @@ function ScoreTierBadge({
 
 function qualificationHeroShellClass(score: number): string {
   if (score > 70) {
-    return "border-emerald-500/45 bg-gradient-to-br from-emerald-500/[0.15] via-emerald-500/[0.07] to-transparent dark:from-emerald-500/18 dark:via-emerald-950/55";
+    return "border-primary/45 bg-gradient-to-br from-primary/[0.15] via-primary/[0.07] to-transparent dark:from-primary/18 dark:via-primary/15";
   }
   if (score >= 40) {
     return "border-amber-500/45 bg-gradient-to-br from-amber-500/[0.14] via-amber-500/[0.07] to-transparent dark:from-amber-500/15 dark:via-amber-950/45";
@@ -329,7 +329,7 @@ function OverallCampaignStrength({ snapshot }: { snapshot: CampaignClientSnapsho
   const s = computeCampaignStrength(snapshot);
   const barClass =
     s.composite >= 74
-      ? "bg-emerald-500 dark:bg-emerald-400"
+      ? "bg-primary dark:bg-primary"
       : s.composite >= 56
         ? "bg-amber-500 dark:bg-amber-400"
         : "bg-red-500 dark:bg-red-400";
@@ -403,7 +403,7 @@ function OverallCampaignStrength({ snapshot }: { snapshot: CampaignClientSnapsho
 function QualificationScoreVisual({ score }: { score: number }) {
   const tier =
     score > 70
-      ? { label: "Strong opportunity signal", barClass: "bg-emerald-500 dark:bg-emerald-400" }
+      ? { label: "Strong opportunity signal", barClass: "bg-primary dark:bg-primary" }
       : score >= 40
         ? {
             label: "Qualified with open threads",
@@ -1307,7 +1307,7 @@ export function CampaignWorkspace({
                 Lead intel → research → outreach → qualification → nurture. Most runs finish in under a
                 minute.
               </p>
-              <p className="mt-3 inline-flex items-center gap-2 rounded-xl border border-violet-200/80 bg-violet-500/[0.1] px-3 py-1.5 text-sm font-semibold text-violet-900 shadow-sm ring-1 ring-violet-200/40 dark:border-violet-400/35 dark:bg-violet-500/15 dark:text-violet-50">
+              <p className="mt-3 inline-flex items-center gap-2 rounded-xl border border-accent/40 bg-accent/[0.1] px-3 py-1.5 text-sm font-semibold text-accent-foreground shadow-sm ring-1 ring-accent/30 dark:border-accent/35 dark:bg-accent/15 dark:text-accent-foreground">
                 <Mic className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
                 Voice: {activeVoiceLabel}
               </p>
@@ -1336,16 +1336,16 @@ export function CampaignWorkspace({
             </CardDescription>
           </div>
           <div
-            className="rounded-xl border-2 border-violet-500/35 bg-gradient-to-br from-violet-500/[0.12] via-violet-500/[0.06] to-transparent px-4 py-4 shadow-md ring-2 ring-violet-500/10 dark:border-violet-400/35 dark:from-violet-500/[0.14] dark:via-violet-500/[0.08] dark:ring-violet-400/15"
+            className="rounded-xl border-2 border-accent/35 bg-gradient-to-br from-accent/[0.12] via-accent/[0.06] to-transparent px-4 py-4 shadow-md ring-2 ring-accent/10 dark:border-accent/35 dark:from-accent/[0.14] dark:via-accent/[0.08] dark:ring-accent/50/15"
             role="region"
             aria-label="Selected SDR voice for this campaign"
           >
             <div className="flex gap-3">
-              <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-violet-500/30 bg-background/90 shadow-sm dark:border-violet-400/25">
-                <Mic className="h-5 w-5 text-violet-600 dark:text-violet-300" aria-hidden />
+              <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-accent/30 bg-background/90 shadow-sm dark:border-accent/25">
+                <Mic className="h-5 w-5 text-accent-foreground dark:text-accent-foreground/80" aria-hidden />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-800/90 dark:text-violet-200/90">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent-foreground/90 dark:text-accent-foreground/90">
                   Active campaign voice — all agents
                 </p>
                 <p className="mt-1.5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">
@@ -1661,13 +1661,13 @@ export function CampaignWorkspace({
                 </p>
               </div>
               <div
-                className="space-y-3 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.06] px-4 py-4 dark:border-emerald-400/25 dark:bg-emerald-500/[0.09]"
+                className="space-y-3 rounded-xl border border-primary/30 bg-primary/[0.06] px-4 py-4 dark:border-primary/50/25 dark:bg-primary/[0.09]"
                 role="region"
                 aria-label="Lead enrichment preview"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <Radar className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
+                    <Radar className="h-5 w-5 shrink-0 text-primary dark:text-primary" aria-hidden />
                     <p className="text-sm font-semibold">Lead intel preview</p>
                   </div>
                   <Button
@@ -1768,7 +1768,7 @@ export function CampaignWorkspace({
         <DialogContent className="max-h-[min(90vh,720px)] max-w-lg overflow-y-auto border-border/80 shadow-2xl sm:max-w-xl">
           <DialogHeader>
             <DialogTitle className="flex flex-wrap items-center gap-2 text-lg">
-              <Mic className="h-5 w-5 text-violet-600 dark:text-violet-300" aria-hidden />
+              <Mic className="h-5 w-5 text-accent-foreground dark:text-accent-foreground/80" aria-hidden />
               Voice preview — {activeVoiceLabel}
             </DialogTitle>
             <DialogDescription className="text-left text-sm leading-relaxed">
@@ -1827,10 +1827,10 @@ export function CampaignWorkspace({
       {snapshot ? (
         <div className="space-y-6">
           {snapshot.lead_enrichment_preview ? (
-            <Card className="rounded-2xl border-emerald-500/35 bg-emerald-500/[0.05] dark:border-emerald-400/30">
+            <Card className="rounded-2xl border-primary/35 bg-primary/[0.05] dark:border-primary/30">
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <Radar className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-hidden />
+                  <Radar className="h-5 w-5 text-primary dark:text-primary" aria-hidden />
                   Saved lead intel (this run)
                 </CardTitle>
                 <CardDescription>
@@ -1878,7 +1878,7 @@ export function CampaignWorkspace({
                 </Badge>
                 <Badge
                   variant="outline"
-                  className="border-violet-500/45 bg-violet-500/[0.1] px-2.5 py-1 text-xs font-semibold tracking-tight text-violet-950 dark:border-violet-400/45 dark:bg-violet-500/15 dark:text-violet-50"
+                  className="border-accent/45 bg-accent/[0.1] px-2.5 py-1 text-xs font-semibold tracking-tight text-accent-foreground dark:border-accent/45 dark:bg-accent/15 dark:text-accent-foreground"
                 >
                   Voice: {voiceLabelForLead(snapshot.lead)}
                 </Badge>
@@ -2072,14 +2072,14 @@ export function CampaignWorkspace({
                       className={cn(
                         "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
                         done
-                          ? "border-emerald-500/45 bg-emerald-500/12 text-emerald-950 dark:text-emerald-50"
+                          ? "border-primary/45 bg-primary/12 text-foreground dark:text-primary-foreground"
                           : current
                             ? "border-primary/60 bg-primary/10 text-foreground shadow-sm"
                             : "border-border/70 bg-muted/30 text-muted-foreground",
                       )}
                     >
                       {done ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-primary dark:text-primary" />
                       ) : (
                         <Circle className="h-3.5 w-3.5 shrink-0 opacity-60" />
                       )}
@@ -2378,7 +2378,7 @@ export function CampaignWorkspace({
               <CardHeader
                 className={cn(
                   resultsCardHeaderClass,
-                  "flex flex-col gap-4 border-b border-border/45 bg-gradient-to-br from-sky-500/[0.08] via-card to-violet-500/[0.05] sm:flex-row sm:items-start sm:justify-between",
+                  "flex flex-col gap-4 border-b border-border/45 bg-gradient-to-br from-primary/[0.08] via-card to-accent/[0.05] sm:flex-row sm:items-start sm:justify-between",
                 )}
               >
                 <div className="min-w-0 flex-1 space-y-2">
@@ -2388,7 +2388,7 @@ export function CampaignWorkspace({
                     {outreach?.linkedin_message?.trim() ? (
                       <Badge
                         variant="outline"
-                        className="border-emerald-400/50 bg-emerald-500/[0.1] text-[11px] font-semibold uppercase tracking-wide text-emerald-900"
+                        className="border-primary/50 bg-primary/[0.1] text-[11px] font-semibold uppercase tracking-wide text-foreground"
                       >
                         LinkedIn ready
                       </Badge>
@@ -2397,12 +2397,12 @@ export function CampaignWorkspace({
                       isOutreachReadyToSend(outreach) ? (
                         <Badge
                           variant="outline"
-                          className="border-sky-400/50 bg-sky-500/10 text-[11px] font-semibold uppercase tracking-wide text-sky-900"
+                          className="border-primary/50 bg-primary/10 text-[11px] font-semibold uppercase tracking-wide text-foreground"
                         >
                           Ready to send
                         </Badge>
                       ) : outreach.email_sent ? (
-                        <Badge className="gap-1 border border-emerald-500/35 bg-emerald-500/10 text-emerald-900">
+                        <Badge className="gap-1 border border-primary/35 bg-primary/10 text-foreground">
                           <CheckCircle2 className="h-3 w-3" aria-hidden />
                           Delivered
                         </Badge>
@@ -2431,13 +2431,13 @@ export function CampaignWorkspace({
                   <>
                     {outreach.email_sent ? (
                       <div
-                        className="flex items-start gap-3 rounded-xl border border-emerald-400/40 bg-gradient-to-r from-emerald-500/[0.1] to-emerald-500/[0.04] px-4 py-3 shadow-sm"
+                        className="flex items-start gap-3 rounded-xl border border-primary/40 bg-gradient-to-r from-primary/[0.1] to-primary/[0.04] px-4 py-3 shadow-sm"
                         role="status"
                       >
-                        <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
+                        <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
                         <div>
-                          <p className="text-sm font-semibold text-emerald-950">Email sent successfully</p>
-                          <p className="mt-0.5 text-xs text-emerald-900/90">
+                          <p className="text-sm font-semibold text-foreground">Email sent successfully</p>
+                          <p className="mt-0.5 text-xs text-foreground/90">
                             First touch delivered through your connected sending domain.
                           </p>
                         </div>
@@ -2447,7 +2447,7 @@ export function CampaignWorkspace({
                         const { friendly, detail } = outreachNotice(outreach);
                         if (!friendly) return null;
                         return (
-                          <div className="space-y-2 rounded-xl border border-sky-400/35 bg-sky-500/[0.08] px-4 py-3 text-sm text-sky-950 shadow-sm">
+                          <div className="space-y-2 rounded-xl border border-primary/35 bg-primary/[0.08] px-4 py-3 text-sm text-foreground shadow-sm">
                             <p className="font-medium">{friendly}</p>
                             {detail && detail !== friendly ? (
                               <p className="text-xs leading-relaxed opacity-90">{detail}</p>
@@ -2498,7 +2498,7 @@ export function CampaignWorkspace({
                           <span className="flex gap-1.5" aria-hidden>
                             <span className="h-2.5 w-2.5 rounded-full bg-rose-400/80" />
                             <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
-                            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
+                            <span className="h-2.5 w-2.5 rounded-full bg-primary/80" />
                           </span>
                           <span className="text-[11px] font-medium text-muted-foreground">Plain-text preview</span>
                         </div>
@@ -2526,11 +2526,11 @@ export function CampaignWorkspace({
                         Copy full email
                       </Button>
                       {copyTip === "email" ? (
-                        <span className="self-center text-xs font-medium text-emerald-700">Copied</span>
+                        <span className="self-center text-xs font-medium text-primary">Copied</span>
                       ) : null}
                     </div>
-                    <div className="rounded-xl border border-emerald-400/35 bg-gradient-to-br from-emerald-500/[0.08] to-transparent p-4 shadow-sm ring-1 ring-emerald-500/15">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-900">
+                    <div className="rounded-xl border border-primary/35 bg-gradient-to-br from-primary/[0.08] to-transparent p-4 shadow-sm ring-1 ring-primary/15">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-foreground">
                         LinkedIn — safe handoff
                       </p>
                       <p className="mt-1 text-xs leading-relaxed text-muted-foreground">

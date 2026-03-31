@@ -106,18 +106,18 @@ export function ProductRoadmapSection({ analyticsPreview }: Props) {
 
         <Card
           className={cn(
-            "premium-card-interactive rounded-xl border-border/70 bg-card/90 shadow-md ring-1 ring-emerald-500/15 dark:ring-emerald-500/10",
+            "premium-card-interactive rounded-xl border-border/70 bg-card/90 shadow-md ring-1 ring-primary/15 dark:ring-primary/10",
           )}
         >
           <CardHeader className="space-y-3 pb-2">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="rounded-lg border border-emerald-500/35 bg-emerald-500/10 p-2 text-emerald-700 dark:text-emerald-400">
+                <span className="rounded-lg border border-primary/35 bg-primary/10 p-2 text-primary dark:text-primary">
                   <BarChart3 className="h-4 w-4" aria-hidden />
                 </span>
                 <CardTitle className="text-base font-semibold">Analytics</CardTitle>
               </div>
-              <Badge className="shrink-0 border-emerald-600/30 bg-emerald-600/15 text-[10px] text-emerald-950 dark:text-emerald-100">
+              <Badge className="shrink-0 border-primary/30 bg-primary/15 text-[10px] text-foreground dark:text-primary-foreground">
                 Live
               </Badge>
             </div>

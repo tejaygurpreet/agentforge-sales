@@ -32,7 +32,7 @@ export function HeaderInboxButton() {
           <Mail className="h-[1.125rem] w-[1.125rem]" aria-hidden />
           {count > 0 ? (
             <span
-              className="absolute -right-1 -top-1 flex min-h-[1.125rem] min-w-[1.125rem] animate-in zoom-in-95 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-violet-500 px-0.5 text-[9px] font-semibold tabular-nums text-white shadow-md ring-2 ring-background duration-300"
+              className="absolute -right-1 -top-1 flex min-h-[1.125rem] min-w-[1.125rem] animate-in zoom-in-95 items-center justify-center rounded-full bg-gradient-to-br from-primary to-accent px-0.5 text-[9px] font-semibold tabular-nums text-white shadow-md ring-2 ring-background duration-300"
               aria-hidden
             >
               {count > 99 ? "99+" : count}

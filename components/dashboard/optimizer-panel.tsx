@@ -17,14 +17,14 @@ import { Cpu, PauseCircle, Sparkles, SplitSquareHorizontal } from "lucide-react"
 function statusBadgeClass(status: string): string {
   switch (status) {
     case "healthy":
-      return "border-emerald-500/40 bg-emerald-500/12 text-emerald-950 dark:text-emerald-50";
+      return "border-primary/40 bg-primary/12 text-foreground dark:text-primary-foreground";
     case "at_risk":
     case "monitoring":
       return "border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-50";
     case "auto_pause_suggested":
       return "border-red-500/40 bg-red-500/10 text-red-950 dark:text-red-50";
     case "variant_switch_suggested":
-      return "border-sky-500/40 bg-sky-500/10 text-sky-950 dark:text-sky-50";
+      return "border-primary/40 bg-primary/10 text-foreground dark:text-primary-foreground";
     default:
       return "border-border/60 bg-muted/30";
   }
@@ -159,7 +159,7 @@ export function OptimizerPanel(props: OptimizerPanelProps) {
               Auto-pause follow-ups suggested
             </Badge>
           ) : (
-            <Badge variant="outline" className="text-emerald-700 dark:text-emerald-200">
+            <Badge variant="outline" className="text-primary dark:text-primary">
               Sequences active — monitor signals
             </Badge>
           )}

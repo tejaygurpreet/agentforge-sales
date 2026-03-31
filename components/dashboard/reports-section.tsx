@@ -152,11 +152,11 @@ export function ReportsSection({
 
   return (
     <div className="space-y-8">
-      <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-gradient-to-br from-sky-500/[0.07] via-card to-primary/[0.04] px-5 py-6 shadow-soft ring-1 ring-border/30 sm:px-8 sm:py-7">
+      <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-gradient-to-br from-primary/[0.07] via-card to-primary/[0.04] px-5 py-6 shadow-soft ring-1 ring-border/30 sm:px-8 sm:py-7">
         <div className="pointer-events-none absolute -left-10 top-0 h-40 w-40 rounded-full bg-primary/[0.07] blur-3xl" aria-hidden />
         <div className="relative flex flex-wrap items-start gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-sky-400/30 bg-card shadow-sm">
-            <FileText className="h-6 w-6 text-sky-700" aria-hidden />
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-primary/30 bg-card shadow-sm">
+            <FileText className="h-6 w-6 text-primary" aria-hidden />
           </div>
           <div className="min-w-0 flex-1 space-y-2">
             <h2 className="text-xl font-semibold tracking-tight text-foreground">Reports &amp; exports</h2>
@@ -169,7 +169,7 @@ export function ReportsSection({
       </div>
 
       {onOpenSdrManagerTab ? (
-        <Card className="rounded-2xl border-sky-500/25 bg-sky-500/[0.05] shadow-sm ring-1 ring-sky-500/15">
+        <Card className="rounded-2xl border-primary/25 bg-primary/[0.05] shadow-sm ring-1 ring-primary/15">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Executive narrative (Prompt 102)</CardTitle>
             <CardDescription>
@@ -283,7 +283,7 @@ export function ReportsSection({
       </Card>
 
       <Card className="overflow-hidden rounded-2xl border-border/60 bg-card shadow-lift ring-1 ring-border/25">
-        <CardHeader className="border-b border-border/40 bg-gradient-to-br from-violet-500/[0.06] via-card to-transparent">
+        <CardHeader className="border-b border-border/40 bg-gradient-to-br from-accent/[0.06] via-card to-transparent">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Mail className="h-5 w-5 text-primary" aria-hidden />
             Scheduled email reports

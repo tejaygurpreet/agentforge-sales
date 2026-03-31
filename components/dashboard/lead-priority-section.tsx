@@ -20,7 +20,7 @@ function tierBadgeClass(tier: LeadPriorityTier): string {
     case "high":
       return "border-amber-500/50 bg-amber-500/15 text-amber-950 dark:border-amber-400/45 dark:bg-amber-500/18 dark:text-amber-50";
     case "medium":
-      return "border-sky-500/45 bg-sky-500/12 text-sky-950 dark:border-sky-400/45 dark:bg-sky-500/16 dark:text-sky-50";
+      return "border-primary/45 bg-primary/12 text-foreground dark:border-primary/45 dark:bg-primary/16 dark:text-primary-foreground";
     default:
       return "border-muted-foreground/35 bg-muted/40 text-muted-foreground";
   }

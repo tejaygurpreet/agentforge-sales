@@ -36,7 +36,7 @@ export function FirstRunSetupBanner() {
       role="region"
       aria-label="First-time setup"
       className={cn(
-        "relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/[0.07] via-card to-violet-500/[0.06] p-5 shadow-soft ring-1 ring-primary/15",
+        "relative overflow-hidden rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/[0.07] via-card to-accent/[0.06] p-5 shadow-soft ring-1 ring-primary/15",
         "animate-in fade-in slide-in-from-top-2 duration-500",
       )}
     >

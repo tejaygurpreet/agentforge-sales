@@ -120,6 +120,7 @@ type Props = {
  * Prompt 115 — Inbox tab (`ProfessionalInbox`): threaded replies + Analyze with AI.
  * Prompt 116 — Inline AI analysis + filters + prefetched threads.
  * Prompt 119 — Inbox badge, `/?tab=inbox`, realtime toast bridge.
+ * Prompt 125 — Home stack inherits global sage/terracotta tokens; spacing unchanged (max-w-6xl rhythm).
  */
 export function DashboardHomeClient({
   envWarnings,

@@ -35,7 +35,7 @@ function ProgressBar({ pct }: { pct: number }) {
   return (
     <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
       <div
-        className="h-full rounded-full bg-gradient-to-r from-emerald-500/90 to-sky-500/90 transition-all duration-500"
+        className="h-full rounded-full bg-gradient-to-r from-primary/90 to-primary/90 transition-all duration-500"
         style={{ width: `${p}%` }}
       />
     </div>
@@ -43,8 +43,8 @@ function ProgressBar({ pct }: { pct: number }) {
 }
 
 function statusTone(s: string): string {
-  if (s === "excellent") return "text-emerald-500";
-  if (s === "good") return "text-sky-400";
+  if (s === "excellent") return "text-primary";
+  if (s === "good") return "text-primary/80";
   if (s === "fair") return "text-amber-400";
   return "text-rose-400";
 }
@@ -402,7 +402,7 @@ export function DeliverabilityPanel({ initial, analytics }: Props) {
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-xs text-emerald-600/90 dark:text-emerald-400">No major flags.</p>
+                  <p className="text-xs text-primary/90 dark:text-primary">No major flags.</p>
                 )}
               </div>
             ) : null}

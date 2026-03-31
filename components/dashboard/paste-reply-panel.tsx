@@ -101,14 +101,14 @@ export function PasteReplyPanel({
         "transition-shadow duration-300 hover:shadow-soft",
       )}
     >
-      <CardHeader className="space-y-4 border-b border-border/45 bg-gradient-to-br from-emerald-500/[0.09] via-card to-teal-500/[0.05] px-6 pb-6 pt-7 sm:px-8 sm:pt-8">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-800/90">
+      <CardHeader className="space-y-4 border-b border-border/45 bg-gradient-to-br from-primary/[0.09] via-card to-muted0/[0.05] px-6 pb-6 pt-7 sm:px-8 sm:pt-8">
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary/90">
           Reply intelligence
         </p>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 flex-1 gap-4">
-            <div className="mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-emerald-400/30 bg-card shadow-sm">
-              <MessageSquareText className="h-6 w-6 text-emerald-700" aria-hidden />
+            <div className="mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-primary/30 bg-card shadow-sm">
+              <MessageSquareText className="h-6 w-6 text-primary" aria-hidden />
             </div>
             <div className="min-w-0 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
@@ -119,7 +119,7 @@ export function PasteReplyPanel({
                   <TooltipTrigger asChild>
                     <Badge
                       variant="outline"
-                      className="cursor-default border-emerald-400/40 bg-emerald-500/[0.12] text-[10px] font-semibold uppercase tracking-wider text-emerald-900"
+                      className="cursor-default border-primary/40 bg-primary/[0.12] text-[10px] font-semibold uppercase tracking-wider text-foreground"
                     >
                       Always on
                     </Badge>
@@ -252,12 +252,12 @@ export function PasteReplyPanel({
               <Badge variant="secondary" className="font-medium capitalize shadow-sm">
                 Sentiment · {result.analysis.sentiment}
               </Badge>
-              <Badge className="border border-emerald-600/20 bg-emerald-600 font-medium text-white shadow-sm hover:bg-emerald-600">
+              <Badge className="border border-primary/20 bg-primary font-medium text-white shadow-sm hover:bg-primary">
                 Interest · {result.analysis.interest_level_0_to_10}/10
               </Badge>
               <Badge
                 variant="outline"
-                className="border-violet-400/45 bg-violet-500/[0.1] font-medium text-violet-900"
+                className="border-accent/45 bg-accent/[0.1] font-medium text-accent-foreground"
               >
                 Voice · {result.analysis.suggested_voice_label}
               </Badge>

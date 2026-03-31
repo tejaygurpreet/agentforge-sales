@@ -39,7 +39,7 @@ export function InboxNotificationsBridge({ inboxActive, onCount }: Props) {
         title: "New reply",
         description: "You have new activity in your Professional Inbox.",
         className:
-          "border-border/50 bg-gradient-to-r from-sky-50/95 via-card to-violet-50/40 text-foreground shadow-soft",
+          "border-border/50 bg-gradient-to-r from-muted/95 via-card to-accent/30 text-foreground shadow-soft",
       });
     }
     prevUnread.current = n;

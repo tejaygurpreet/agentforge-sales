@@ -142,10 +142,10 @@ export function PersonalizedDemoBookingCard({
   );
 
   return (
-    <Card className="rounded-2xl border-teal-500/25 bg-teal-500/[0.04] shadow-md ring-1 ring-teal-500/15 dark:border-teal-400/20 dark:bg-teal-950/20">
+    <Card className="rounded-2xl border-primary/25 bg-primary/[0.04] shadow-md ring-1 ring-primary/15 dark:border-primary/20 dark:bg-primary/20">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
-          <Video className="h-5 w-5 text-teal-600 dark:text-teal-400" aria-hidden />
+          <Video className="h-5 w-5 text-primary dark:text-primary" aria-hidden />
           Personalized demo
         </CardTitle>
         <CardDescription>

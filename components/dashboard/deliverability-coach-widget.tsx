@@ -28,7 +28,7 @@ function MiniBar({ pct, label }: { pct: number; label: string }) {
       </div>
       <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-emerald-500/90 to-sky-500/90 transition-all duration-500"
+          className="h-full rounded-full bg-gradient-to-r from-primary/90 to-primary/90 transition-all duration-500"
           style={{ width: `${p}%` }}
         />
       </div>

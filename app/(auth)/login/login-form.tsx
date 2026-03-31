@@ -92,7 +92,7 @@ export function LoginForm() {
         "animate-in fade-in zoom-in-95 duration-500",
       )}
     >
-      <CardHeader className="space-y-4 border-b border-border/40 bg-gradient-to-br from-primary/[0.08] via-card to-violet-500/[0.06] px-8 pb-8 pt-9 text-center sm:text-left">
+      <CardHeader className="space-y-4 border-b border-border/40 bg-gradient-to-br from-primary/[0.08] via-card to-accent/[0.06] px-8 pb-8 pt-9 text-center sm:text-left">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/25 bg-card shadow-sm sm:mx-0">
           <Sparkles className="h-7 w-7 text-primary" aria-hidden />
         </div>

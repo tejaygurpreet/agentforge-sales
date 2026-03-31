@@ -45,7 +45,7 @@ function MomentumBadge({ m }: { m: string }) {
     m === "up" ? "Pipeline momentum ↑" : m === "down" ? "Pipeline momentum ↓" : m === "flat" ? "Steady" : "—";
   const cls =
     m === "up"
-      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-950 dark:text-emerald-50"
+      ? "border-primary/40 bg-primary/10 text-foreground dark:text-primary-foreground"
       : m === "down"
         ? "border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-50"
         : "border-border/60 bg-muted/30 text-muted-foreground";
@@ -108,11 +108,11 @@ export function SalesCoachingSection({ initial, analytics, workspaceMembers }: P
 
   return (
     <div className="space-y-8">
-      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-violet-500/[0.05] via-card to-card px-5 py-6 shadow-sm sm:px-7">
+      <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-accent/[0.05] via-card to-card px-5 py-6 shadow-sm sm:px-7">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="flex items-center gap-2 text-xl font-semibold tracking-tight sm:text-2xl">
-              <Sparkles className="h-6 w-6 text-violet-500" aria-hidden />
+              <Sparkles className="h-6 w-6 text-primary" aria-hidden />
               AI sales coaching
             </h2>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
@@ -220,7 +220,7 @@ export function SalesCoachingSection({ initial, analytics, workspaceMembers }: P
             )}
             {preview?.strengths?.length ? (
               <div>
-                <p className="mb-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">Strengths</p>
+                <p className="mb-1 text-xs font-medium text-primary dark:text-primary">Strengths</p>
                 <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
                   {preview.strengths.map((s) => (
                     <li key={s}>{s.replace(/\*\*/g, "")}</li>
@@ -241,10 +241,10 @@ export function SalesCoachingSection({ initial, analytics, workspaceMembers }: P
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl border-border/80 border-violet-500/20 bg-violet-500/[0.03]">
+        <Card className="rounded-2xl border-border/80 border-accent/20 bg-accent/[0.03]">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Sparkles className="h-5 w-5 text-violet-500" aria-hidden />
+              <Sparkles className="h-5 w-5 text-primary" aria-hidden />
               AI recommendations
             </CardTitle>
             <CardDescription>

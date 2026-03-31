@@ -76,12 +76,12 @@ export function SignupForm() {
         "animate-in fade-in zoom-in-95 duration-500",
       )}
     >
-      <CardHeader className="space-y-4 border-b border-border/40 bg-gradient-to-br from-emerald-500/[0.07] via-card to-sky-500/[0.05] px-8 pb-8 pt-9 text-center sm:text-left">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-400/30 bg-card shadow-sm sm:mx-0">
-          <Rocket className="h-7 w-7 text-emerald-700" aria-hidden />
+      <CardHeader className="space-y-4 border-b border-border/40 bg-gradient-to-br from-primary/[0.07] via-card to-primary/[0.05] px-8 pb-8 pt-9 text-center sm:text-left">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/30 bg-card shadow-sm sm:mx-0">
+          <Rocket className="h-7 w-7 text-primary" aria-hidden />
         </div>
         <div className="space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-emerald-800/85">Get started</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary/85">Get started</p>
           <CardTitle className="text-2xl font-semibold tracking-tight">Create your account</CardTitle>
           <CardDescription className="text-[15px] leading-relaxed">
             Join {DEFAULT_BRAND_DISPLAY_NAME} — your name is saved to your profile. You&apos;re signed in
