@@ -279,6 +279,7 @@ export function ProfessionalInbox({
   const [sendPending, startSend] = useTransition();
   const [, startThreadMutation] = useTransition();
   const [composeOpen, setComposeOpen] = useState(false);
+  const [composeIntent, setComposeIntent] = useState<"new" | "edit">("new");
   const [composeDraftIdToLoad, setComposeDraftIdToLoad] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<InboxDraftRow[]>(initialDrafts);
   const [loadingDrafts, setLoadingDrafts] = useState(false);
@@ -684,6 +685,7 @@ export function ProfessionalInbox({
               size="sm"
               className="relative gap-2 rounded-xl bg-[#9CA88B] text-[#F8F5F0] shadow-[0_4px_18px_-6px_rgba(85,95,72,0.4)] transition-all duration-300 hover:bg-[color-mix(in_srgb,#9CA88B_90%,#6f7a5e)] hover:shadow-md"
               onClick={() => {
+                setComposeIntent("new");
                 setComposeDraftIdToLoad(null);
                 setComposeOpen(true);
               }}
@@ -692,6 +694,28 @@ export function ProfessionalInbox({
               Compose
               {draftCount > 0 ? (
                 <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-[#C8A48A] px-1 text-[10px] font-bold tabular-nums text-[#3a322c] shadow-md ring-2 ring-[#F8F5F0]">
+                  {draftCount > 99 ? "99+" : draftCount}
+                </span>
+              ) : null}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={cn(
+                "relative gap-2 rounded-xl border-[color-mix(in_srgb,#C8A48A_45%,hsl(var(--border)))] bg-[hsl(var(--card))]/95 shadow-sm transition-all duration-300 hover:border-[#C8A48A]/55 hover:bg-[color-mix(in_srgb,#C8A48A_10%,hsl(var(--card)))]",
+                threadFilter === "drafts" &&
+                  "border-[#C8A48A]/60 bg-[color-mix(in_srgb,#C8A48A_14%,transparent)] ring-1 ring-[#C8A48A]/25",
+              )}
+              onClick={() => {
+                setThreadFilter("drafts");
+                void loadDrafts();
+              }}
+            >
+              <FileText className="h-4 w-4 text-[#9CA88B]" aria-hidden />
+              Drafts
+              {draftCount > 0 ? (
+                <span className="ml-0.5 rounded-full bg-[#C8A48A]/90 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-[#3a322c]">
                   {draftCount > 99 ? "99+" : draftCount}
                 </span>
               ) : null}
@@ -810,6 +834,7 @@ export function ProfessionalInbox({
                       <button
                         type="button"
                         onClick={() => {
+                          setComposeIntent("edit");
                           setComposeDraftIdToLoad(d.id);
                           setComposeOpen(true);
                         }}
@@ -1170,9 +1195,13 @@ export function ProfessionalInbox({
 
       <ComposeNewEmailDialog
         open={composeOpen}
+        composeIntent={composeIntent}
         onOpenChange={(o) => {
           setComposeOpen(o);
-          if (!o) setComposeDraftIdToLoad(null);
+          if (!o) {
+            setComposeDraftIdToLoad(null);
+            setComposeIntent("new");
+          }
         }}
         draftIdToLoad={composeDraftIdToLoad}
         onDraftLoadConsumed={() => setComposeDraftIdToLoad(null)}
@@ -1190,6 +1219,7 @@ export function ProfessionalInbox({
         size="icon"
         className="fixed bottom-6 right-5 z-40 h-14 w-14 rounded-full border border-[color-mix(in_srgb,#9CA88B_40%,hsl(var(--border)))] bg-gradient-to-br from-[#9CA88B] to-[color-mix(in_srgb,#9CA88B_88%,#7d8a6c)] text-[#F8F5F0] shadow-[0_12px_40px_-8px_rgba(55,48,40,0.35)] ring-2 ring-[#9CA88B]/25 transition-all duration-300 hover:scale-[1.03] hover:shadow-xl active:scale-[0.98] sm:bottom-8 sm:right-8 relative"
         onClick={() => {
+          setComposeIntent("new");
           setComposeDraftIdToLoad(null);
           setComposeOpen(true);
         }}

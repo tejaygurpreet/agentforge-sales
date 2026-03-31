@@ -297,6 +297,82 @@ export function isOptionalInboxThreadColumnMissingError(message: string): boolea
 }
 
 /**
+ * Prompt 130 — Optional `inbox_messages` columns older schemas may lack.
+ */
+export function isOptionalInboxMessageColumnMissingError(message: string): boolean {
+  const m = (message || "").toLowerCase();
+  if (!m.includes("does not exist") && !m.includes("could not find")) return false;
+  const cols = ["body_html", "raw", "provider_message_id", "reply_analysis_id", "analyzed_at", "created_at"];
+  return cols.some((c) => m.includes(c));
+}
+
+function isInboxMessageInsertRetryable(message: string): boolean {
+  if (isInboxOptionalColumnOrSchemaError(message)) return true;
+  if (isOptionalInboxMessageColumnMissingError(message)) return true;
+  return false;
+}
+
+/**
+ * Prompt 130 — Insert outbound (or inbound) row with fallbacks so sends always persist when RLS allows.
+ */
+async function insertInboxMessageReliable(
+  supabase: SupabaseClient,
+  payload: {
+    thread_id: string;
+    user_id: string;
+    direction: "inbound" | "outbound";
+    from_email: string;
+    to_email: string;
+    subject: string;
+    body_text: string;
+    body_html?: string | null;
+    received_at: string;
+    raw?: Record<string, unknown>;
+    provider_message_id?: string | null;
+  },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const full: Record<string, unknown> = {
+    thread_id: payload.thread_id,
+    user_id: payload.user_id,
+    direction: payload.direction,
+    from_email: payload.from_email,
+    to_email: payload.to_email,
+    subject: payload.subject,
+    body_text: payload.body_text,
+    received_at: payload.received_at,
+    raw: payload.raw ?? {},
+  };
+  if (payload.body_html !== undefined) full.body_html = payload.body_html;
+  if (payload.provider_message_id !== undefined && payload.provider_message_id !== null) {
+    full.provider_message_id = payload.provider_message_id;
+  }
+
+  let res = await supabase.from("inbox_messages").insert(full as never);
+  if (!res.error) return { ok: true };
+
+  if (!isInboxMessageInsertRetryable(res.error.message)) {
+    return { ok: false, error: res.error.message };
+  }
+
+  const minimal: Record<string, unknown> = {
+    thread_id: payload.thread_id,
+    user_id: payload.user_id,
+    direction: payload.direction,
+    from_email: payload.from_email,
+    to_email: payload.to_email,
+    subject: payload.subject,
+    body_text: payload.body_text,
+    received_at: payload.received_at,
+    raw: {},
+  };
+  res = await supabase.from("inbox_messages").insert(minimal as never);
+  if (!res.error) return { ok: true };
+
+  console.warn("[AgentForge] insertInboxMessageReliable minimal failed", res.error.message);
+  return { ok: false, error: res.error.message };
+}
+
+/**
  * List/query fallbacks: optional columns, PostgREST schema cache, or missing relation.
  */
 export function isInboxOptionalColumnOrSchemaError(message: string): boolean {
@@ -304,6 +380,7 @@ export function isInboxOptionalColumnOrSchemaError(message: string): boolean {
   if (m.includes("schema cache")) return true;
   if (/pgrst204|42703|undefined column/i.test(m)) return true;
   if (isInboxRelationMissingError(message)) return true;
+  if (isOptionalInboxMessageColumnMissingError(message)) return true;
   return isOptionalInboxThreadColumnMissingError(message);
 }
 
@@ -479,7 +556,7 @@ export async function upsertInboxThreadAfterOutreachSend(
     threadId = String((row.data as { id: string }).id);
   }
 
-  const msgIns = await params.supabase.from("inbox_messages").insert({
+  const msgIns = await insertInboxMessageReliable(params.supabase, {
     thread_id: threadId,
     user_id: params.userId,
     direction: "outbound",
@@ -492,8 +569,9 @@ export async function upsertInboxThreadAfterOutreachSend(
     raw: { source: "campaign_outreach_send", campaign_thread_id: params.campaignThreadId },
   });
 
-  if (msgIns.error) {
-    return { ok: false, error: msgIns.error.message };
+  if (!msgIns.ok) {
+    console.error("[AgentForge] upsertInboxThreadAfterOutreachSend message insert", msgIns.error);
+    return { ok: false, error: msgIns.error };
   }
 
   return { ok: true };
@@ -573,7 +651,7 @@ export async function recordNewComposeMessageInInbox(
     threadId = String((row.data as { id: string }).id);
   }
 
-  const { error: insErr } = await supabase.from("inbox_messages").insert({
+  const ins = await insertInboxMessageReliable(supabase, {
     thread_id: threadId,
     user_id: params.userId,
     direction: "outbound",
@@ -586,8 +664,8 @@ export async function recordNewComposeMessageInInbox(
     raw: { source: "inbox_compose_new" },
   });
 
-  if (insErr) {
-    console.error("[AgentForge] recordNewComposeMessageInInbox insert", insErr.message);
+  if (!ins.ok) {
+    console.error("[AgentForge] recordNewComposeMessageInInbox insert", ins.error);
     return { ok: false, error: "Email sent but failed to save to inbox." };
   }
 

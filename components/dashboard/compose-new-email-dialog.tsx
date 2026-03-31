@@ -20,10 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
-import {
-  INBOX_COMPOSE_LOCAL_STORAGE_KEY,
-  INBOX_DRAFT_AUTOSAVE_MS,
-} from "@/lib/inbox-shared";
+import { INBOX_COMPOSE_LOCAL_STORAGE_KEY, INBOX_DRAFT_AUTOSAVE_MS } from "@/lib/inbox-shared";
 import { isLikelyValidRecipientEmail } from "@/lib/inbox-shared";
 import { Loader2, Save, Send } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
@@ -35,25 +32,6 @@ type LocalCompose = {
   body: string;
   savedAt: string;
 };
-
-function readLocalCompose(): LocalCompose | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(INBOX_COMPOSE_LOCAL_STORAGE_KEY);
-    if (!raw) return null;
-    const o = JSON.parse(raw) as LocalCompose;
-    if (typeof o !== "object" || o === null) return null;
-    return {
-      draftId: typeof o.draftId === "string" ? o.draftId : undefined,
-      to: typeof o.to === "string" ? o.to : "",
-      subject: typeof o.subject === "string" ? o.subject : "",
-      body: typeof o.body === "string" ? o.body : "",
-      savedAt: typeof o.savedAt === "string" ? o.savedAt : new Date().toISOString(),
-    };
-  } catch {
-    return null;
-  }
-}
 
 function writeLocalCompose(p: LocalCompose) {
   if (typeof window === "undefined") return;
@@ -73,26 +51,28 @@ function clearLocalCompose() {
   }
 }
 
+export type ComposeIntent = "new" | "edit";
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Called after a successful send with the thread id so the parent can focus it. */
+  /** `new` = blank composer (never restore local/server draft). `edit` = load `draftIdToLoad`. */
+  composeIntent: ComposeIntent;
   onSent?: (threadId: string) => void;
-  /** When set, opening loads this server draft (from Drafts list). */
   draftIdToLoad?: string | null;
-  /** Parent clears `draftIdToLoad` after consumption. */
   onDraftLoadConsumed?: () => void;
-  /** Refresh header / FAB draft totals. */
   onDraftCountChange?: (count: number) => void;
 };
 
 /**
  * Prompt 124 — Net-new email composer.
- * Prompt 129 — Auto-save every 3s (localStorage + Supabase), draft restore, delete after send.
+ * Prompt 129 — Auto-save every 3s to Supabase + localStorage while typing.
+ * Prompt 130 — New compose never auto-loads a draft; only opening from Drafts loads `draftIdToLoad`.
  */
 export function ComposeNewEmailDialog({
   open,
   onOpenChange,
+  composeIntent,
   onSent,
   draftIdToLoad,
   onDraftLoadConsumed,
@@ -105,11 +85,7 @@ export function ComposeNewEmailDialog({
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [savePending, startSave] = useTransition();
-  const loadedKey = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!open) loadedKey.current = null;
-  }, [open]);
+  const initRef = useRef<string | null>(null);
 
   const refreshDraftCount = useCallback(async () => {
     const n = await getInboxDraftCountAction();
@@ -132,14 +108,17 @@ export function ComposeNewEmailDialog({
   }, [open, to, subject, body, serverDraftId, persistToLocal]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      initRef.current = null;
+      return;
+    }
 
-    const key = `${draftIdToLoad ?? "local"}:${open}`;
-    if (loadedKey.current === key) return;
-    loadedKey.current = key;
+    const sessionKey = `${composeIntent}:${draftIdToLoad ?? ""}`;
+    if (initRef.current === sessionKey) return;
+    initRef.current = sessionKey;
 
     void (async () => {
-      if (draftIdToLoad) {
+      if (composeIntent === "edit" && draftIdToLoad) {
         const r = await getInboxDraftByIdAction({ id: draftIdToLoad });
         onDraftLoadConsumed?.();
         if (r.ok) {
@@ -155,26 +134,25 @@ export function ComposeNewEmailDialog({
             body: r.draft.body_text,
             savedAt: r.draft.updated_at,
           });
-          return;
+        } else {
+          setTo("");
+          setSubject("");
+          setBody("");
+          setServerDraftId(null);
+          setLastSavedAt(null);
+          clearLocalCompose();
         }
+        return;
       }
 
-      const local = readLocalCompose();
-      if (local) {
-        setTo(local.to);
-        setSubject(local.subject);
-        setBody(local.body);
-        setServerDraftId(local.draftId ?? null);
-        setLastSavedAt(local.savedAt);
-      } else {
-        setTo("");
-        setSubject("");
-        setBody("");
-        setServerDraftId(null);
-        setLastSavedAt(null);
-      }
+      clearLocalCompose();
+      setTo("");
+      setSubject("");
+      setBody("");
+      setServerDraftId(null);
+      setLastSavedAt(null);
     })();
-  }, [open, draftIdToLoad, onDraftLoadConsumed]);
+  }, [open, composeIntent, draftIdToLoad, onDraftLoadConsumed]);
 
   const runUpsert = useCallback(async () => {
     const hasContent = [to, subject, body].some((x) => x.trim().length > 0);
@@ -293,11 +271,11 @@ export function ComposeNewEmailDialog({
       <DialogContent className="max-h-[90vh] overflow-y-auto border-[color-mix(in_srgb,#9CA88B_22%,hsl(var(--border)))] bg-gradient-to-b from-[hsl(var(--card))] via-[#FAF7F2] to-[color-mix(in_srgb,#C8A48A_08%,hsl(var(--card)))] sm:max-w-lg">
         <DialogHeader className="space-y-1 text-left">
           <DialogTitle className="text-lg font-semibold tracking-[-0.02em] text-[color-mix(in_srgb,hsl(var(--foreground))_95%,#4a4238)]">
-            New message
+            {composeIntent === "edit" ? "Edit draft" : "New message"}
           </DialogTitle>
           <DialogDescription className="text-sm leading-relaxed text-muted-foreground">
-            Sends from your branded inbox address; replies use the same routing as campaign and reply sends.
-            Drafts save automatically every few seconds.
+            Sends from your branded inbox address. While you write, drafts sync every few seconds — open{" "}
+            <span className="font-medium text-foreground/90">Drafts</span> anytime to resume a saved draft.
           </DialogDescription>
         </DialogHeader>
 

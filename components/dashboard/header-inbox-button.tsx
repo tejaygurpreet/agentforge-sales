@@ -11,6 +11,7 @@ import { usePathname } from "next/navigation";
 /**
  * Prompt 123 — Mail icon in dashboard header with unread badge; links to `/inbox`.
  * Prompt 126 — Aligned with shell toolbar (h-9, shared outline + hover ring).
+ * Prompt 130 — Sage badge = unread; terracotta = draft count (both from `InboxUnreadProvider`).
  */
 export function HeaderInboxButton() {
   const pathname = usePathname();
