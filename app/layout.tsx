@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
@@ -7,7 +7,8 @@ import "./globals.css";
 
 export { viewport } from "./viewport";
 
-const fontSans = Plus_Jakarta_Sans({
+/** Prompt 132 — Inter + system-ui per design spec. */
+const fontSans = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],

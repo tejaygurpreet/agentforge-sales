@@ -34,9 +34,9 @@ export function HeaderInboxButton() {
         variant="outline"
         size="icon"
         className={cn(
-          "relative h-9 w-9 shrink-0 rounded-xl border-[color-mix(in_srgb,#9CA88B_28%,hsl(var(--border)))] bg-[hsl(var(--card))]/90 shadow-sm transition-all duration-300 ease-out hover:border-[#9CA88B]/45 hover:bg-[color-mix(in_srgb,#9CA88B_10%,hsl(var(--card)))] hover:shadow-md",
+          "relative h-9 w-9 shrink-0 rounded-[var(--card-radius)] border border-sage/28 bg-card/90 shadow-soft transition-[transform,box-shadow,border-color,background-color] duration-200 ease-in-out hover:border-sage/45 hover:bg-sage/10 hover:shadow-card hover:scale-[1.02]",
           inboxActive &&
-            "border-[#9CA88B]/45 bg-[color-mix(in_srgb,#9CA88B_12%,transparent)] ring-1 ring-[#9CA88B]/22",
+            "border-sage/45 bg-sage/12 ring-1 ring-sage/22",
         )}
         asChild
       >
@@ -44,7 +44,7 @@ export function HeaderInboxButton() {
           <Mail className="h-[1.125rem] w-[1.125rem] text-[color-mix(in_srgb,hsl(var(--foreground))_88%,#6b6358)]" aria-hidden />
           {count > 0 ? (
             <span
-              className="absolute -right-1 -top-1 flex min-h-[1.125rem] min-w-[1.125rem] animate-in zoom-in-95 items-center justify-center rounded-full bg-[#9CA88B] px-0.5 text-[9px] font-semibold tabular-nums text-[#F8F5F0] shadow-md ring-2 ring-[#F8F5F0] duration-300"
+              className="absolute -right-1 -top-1 flex min-h-[1.125rem] min-w-[1.125rem] animate-in zoom-in-95 items-center justify-center rounded-full bg-sage px-0.5 text-[9px] font-semibold tabular-nums text-[#F8F5F0] shadow-md ring-2 ring-[#F8F5F0] duration-300"
               aria-hidden
             >
               {count > 99 ? "99+" : count}
@@ -53,7 +53,7 @@ export function HeaderInboxButton() {
           {draftCount > 0 ? (
             <span
               className={cn(
-                "absolute -bottom-1 -right-1 flex min-h-[1.125rem] min-w-[1.125rem] animate-in zoom-in-95 items-center justify-center rounded-full bg-[#C8A48A] px-0.5 text-[9px] font-semibold tabular-nums text-[#3a322c] shadow-md ring-2 ring-[#F8F5F0] duration-300",
+                "absolute -bottom-1 -right-1 flex min-h-[1.125rem] min-w-[1.125rem] animate-in zoom-in-95 items-center justify-center rounded-full bg-terracotta px-0.5 text-[9px] font-semibold tabular-nums text-[#3a322c] shadow-md ring-2 ring-[#F8F5F0] duration-300",
                 count > 0 && "-translate-x-0.5",
               )}
               aria-hidden

@@ -3786,6 +3786,8 @@ export async function listProspectReplies(): Promise<PersistedReplyAnalysisRow[]
 export type ListInboxThreadsOptions = {
   /** Prompt 119 — list only archived threads (otherwise archived are excluded). */
   includeArchived?: boolean;
+  /** Prompt 132 — `sent` = threads whose latest message is outbound. */
+  folder?: "inbox" | "sent";
 };
 
 /**
@@ -3883,6 +3885,25 @@ export async function listInboxThreadsAction(
     const wantArchived = opts?.includeArchived === true;
     threads = threads.filter((t) => (wantArchived ? threadIsArchived(t) : !threadIsArchived(t)));
     threads = threads.filter((t) => !threadIsSnoozed(t));
+  }
+
+  if (opts?.folder === "sent" && threads.length > 0) {
+    const { data: msgRows } = await supabase
+      .from("inbox_messages")
+      .select("thread_id, direction, received_at")
+      .eq("user_id", user.id)
+      .order("received_at", { ascending: false })
+      .limit(1000);
+    const seen = new Set<string>();
+    const sentIds = new Set<string>();
+    for (const r of msgRows ?? []) {
+      const row = r as { thread_id?: string; direction?: string };
+      const tid = row.thread_id;
+      if (!tid || seen.has(tid)) continue;
+      seen.add(tid);
+      if (row.direction === "outbound") sentIds.add(tid);
+    }
+    threads = threads.filter((t) => sentIds.has(t.id));
   }
 
   return threads;

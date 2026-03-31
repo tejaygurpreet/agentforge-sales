@@ -33,6 +33,7 @@ import { CustomVoicesSection } from "@/components/dashboard/custom-voices-sectio
 import { HubSpotConnectSection } from "@/components/dashboard/hubspot-connect-section";
 import { CompetitiveEdgePanel } from "@/components/dashboard/competitive-edge-panel";
 import { DashboardHero } from "@/components/dashboard/dashboard-hero";
+import { DashboardStatsBanner } from "@/components/dashboard/dashboard-stats-banner";
 import { ProductRoadmapSection } from "@/components/dashboard/product-roadmap-section";
 import { ReportsSection } from "@/components/dashboard/reports-section";
 import { AbTestingSection } from "@/components/dashboard/ab-testing-section";
@@ -53,6 +54,8 @@ import { SdrManagerSection } from "@/components/dashboard/sdr-manager-section";
 import { FirstRunSetupBanner } from "@/components/onboarding/first-run-setup-banner";
 import { PwaBanner } from "@/components/pwa/pwa-banner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BarChart3, Inbox, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type { DeliverabilitySuitePayload, WhiteLabelClientSettingsDTO } from "@/types";
@@ -194,11 +197,15 @@ export function DashboardHomeClient({
   }, []);
 
   return (
-    <div className="w-full animate-in fade-in slide-in-from-bottom-2 space-y-10 duration-500 ease-out sm:space-y-12">
+    <div className="w-full animate-in fade-in slide-in-from-bottom-2 space-y-8 duration-500 ease-out sm:space-y-10">
       <PwaBanner />
       <FirstRunSetupBanner />
       <DashboardHero outboundFromPreview={outboundFromPreview} whiteLabel={whiteLabel} />
 
+      <DashboardStatsBanner analytics={analytics} />
+
+      <div className="grid items-start gap-8 xl:grid-cols-[1fr_300px] xl:gap-10">
+        <div className="min-w-0 space-y-10 sm:space-y-12">
       <SettingsIntegrationsSection>
         <WorkspaceMembersCard members={workspaceMembers} currentRole={workspaceRole} />
         <div className="space-y-5">
@@ -420,6 +427,41 @@ export function DashboardHomeClient({
           <CustomVoicesSection initialVoices={customVoices} />
         </TabsContent>
       </Tabs>
+        </div>
+
+        <aside
+          className="premium-card-spec sticky top-28 hidden h-fit flex-col gap-4 rounded-[var(--card-radius)] border border-border/45 bg-card p-8 shadow-soft xl:flex"
+          aria-label="Quick navigation"
+        >
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Jump to
+          </p>
+          <nav className="flex flex-col gap-3">
+            <Link
+              href="/inbox"
+              className="group flex items-center gap-3 rounded-[12px] px-3 py-2.5 text-sm font-medium text-foreground transition-[transform,box-shadow] duration-200 ease-in-out hover:scale-[1.02] hover:bg-muted/50 hover:shadow-sm"
+            >
+              <Inbox className="h-4 w-4 text-sage" aria-hidden />
+              Inbox
+            </Link>
+            <Link
+              href="/analytics"
+              className="group flex items-center gap-3 rounded-[12px] px-3 py-2.5 text-sm font-medium text-foreground transition-[transform,box-shadow] duration-200 ease-in-out hover:scale-[1.02] hover:bg-muted/50 hover:shadow-sm"
+            >
+              <BarChart3 className="h-4 w-4 text-terracotta" aria-hidden />
+              Analytics
+            </Link>
+            <button
+              type="button"
+              onClick={() => setMainTab("workspace")}
+              className="flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left text-sm font-medium text-foreground transition-[transform,box-shadow] duration-200 ease-in-out hover:scale-[1.02] hover:bg-muted/50 hover:shadow-sm"
+            >
+              <Sparkles className="h-4 w-4 text-sage" aria-hidden />
+              Workspace
+            </button>
+          </nav>
+        </aside>
+      </div>
     </div>
   );
 }

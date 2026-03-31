@@ -3,39 +3,38 @@
 @tailwind utilities;
 
 /**
- * Prompt 125 — Warm cream canvas, sage primary, terracotta accents (no blue/purple).
- * Premium SaaS-inspired light aesthetic; `.dark` uses warm neutrals + soft sage (optional).
+ * Prompt 132 — World-class light redesign (exact spec):
+ * Background #F8F5F0 · Cards #FAF7F2 · 16px radius · 8px soft shadow
+ * Sage #8F9E7E · Terracotta #D4A373 · Inter / system-ui
  */
 @layer base {
   :root {
-    /* #F8F5F0 cream */
-    --background: 40 33% 97%;
-    /* #3F3F3F warm charcoal */
-    --foreground: 0 0% 25%;
-    /* #FAF7F2 card */
-    --card: 40 38% 98%;
-    --card-foreground: 0 0% 25%;
-    --popover: 40 38% 98%;
-    --popover-foreground: 0 0% 25%;
-    /* #9CA88B sage — CTAs */
-    --primary: 82 14% 60%;
-    /* warm paper on sage buttons */
-    --primary-foreground: 40 42% 98%;
-    /* terracotta-tinted secondary surfaces #C8A48A family */
-    --secondary: 24 32% 93%;
-    --secondary-foreground: 24 28% 28%;
+    --background: 40 33% 96%;
+    --foreground: 30 8% 22%;
+    --card: 40 38% 97%;
+    --card-foreground: 30 8% 22%;
+    --popover: 40 38% 97%;
+    --popover-foreground: 30 8% 22%;
+    /* Sage #8F9E7E */
+    --primary: 82 14% 56%;
+    --primary-foreground: 40 40% 98%;
+    --sage: 82 14% 56%;
+    /* Terracotta #D4A373 */
+    --secondary: 28 52% 94%;
+    --secondary-foreground: 28 35% 28%;
+    --terracotta: 28 52% 62%;
     --muted: 38 22% 93%;
-    /* #6B6B6B soft gray */
-    --muted-foreground: 0 0% 42%;
-    /* gentle terracotta wash */
-    --accent: 24 38% 94%;
-    --accent-foreground: 24 32% 30%;
-    --destructive: 0 65% 48%;
+    --muted-foreground: 30 6% 42%;
+    --accent: 28 45% 94%;
+    --accent-foreground: 28 32% 30%;
+    --destructive: 0 58% 46%;
     --destructive-foreground: 40 40% 98%;
-    --border: 36 18% 88%;
-    --input: 36 20% 90%;
-    --ring: 82 14% 60%;
-    --radius: 0.8125rem;
+    --border: 36 16% 86%;
+    --input: 36 18% 88%;
+    --ring: 82 14% 56%;
+    --radius: 1rem;
+    --card-radius: 16px;
+    --card-shadow-spec: 0 8px 24px -4px hsl(30 12% 18% / 0.08), 0 2px 8px hsl(30 10% 15% / 0.04);
     --canvas-mid: 38 28% 96%;
     --canvas-btm: 34 22% 94%;
   }
@@ -47,10 +46,12 @@
     --card-foreground: 40 25% 96%;
     --popover: 28 10% 12%;
     --popover-foreground: 40 25% 96%;
-    --primary: 82 18% 52%;
+    --primary: 82 16% 52%;
     --primary-foreground: 30 15% 10%;
+    --sage: 82 16% 52%;
     --secondary: 24 14% 18%;
     --secondary-foreground: 40 30% 92%;
+    --terracotta: 28 45% 58%;
     --muted: 24 12% 16%;
     --muted-foreground: 40 12% 68%;
     --accent: 24 18% 20%;
@@ -73,69 +74,57 @@
     @apply text-foreground antialiased;
     font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
-    background-color: hsl(var(--background));
-    background-image: linear-gradient(
-      180deg,
-      hsl(var(--background)) 0%,
-      hsl(var(--canvas-mid)) 42%,
-      hsl(var(--canvas-btm)) 100%
-    );
+    background-color: #f8f5f0;
+    background-image: linear-gradient(180deg, #f8f5f0 0%, hsl(var(--canvas-mid)) 48%, hsl(var(--canvas-btm)) 100%);
     background-attachment: fixed;
   }
 }
 
-/* Prompt 71 + 103 — premium surfaces & motion */
-/* Prompt 111 — micro-interaction helpers (use with interactive cards / lists). */
-/* Prompt 112 — DashboardShell sets --brand-primary / --brand-secondary for signed-in white-label users. */
-/* Prompt 113 — friendly inline alerts & field errors (light-first, soft gradients). */
-/* Prompt 114 — premium loading overlays & page rhythm (delight, light-first). */
 @layer utilities {
+  .premium-card-spec {
+    box-shadow: var(--card-shadow-spec);
+    border-radius: var(--card-radius);
+  }
   .premium-surface {
-    @apply transition-[box-shadow,transform,border-color] duration-300 ease-out;
+    @apply transition-[box-shadow,transform,border-color] duration-200 ease-in-out;
   }
   .premium-card-interactive {
-    @apply transition-[box-shadow,transform,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:ring-primary/15 active:translate-y-0;
+    @apply transition-[box-shadow,transform] duration-200 ease-in-out hover:scale-[1.02] hover:shadow-[var(--card-shadow-spec)];
   }
   .text-balance-safe {
     text-wrap: balance;
   }
   .motion-tap {
-    @apply transition-transform duration-150 ease-out active:scale-[0.98];
+    @apply transition-transform duration-200 ease-in-out active:scale-[0.98];
   }
   .focus-ring-calm {
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background;
   }
-  /** Compact validation copy under inputs (forms). */
   .ux-field-error {
-    @apply mt-1.5 rounded-lg border border-destructive/20 bg-gradient-to-r from-destructive/[0.07] to-destructive/[0.04] px-2.5 py-1.5 text-[0.8rem] font-medium leading-snug text-destructive shadow-sm ring-1 ring-destructive/10;
+    @apply mt-1.5 rounded-[var(--card-radius)] border border-destructive/20 bg-gradient-to-r from-destructive/[0.07] to-destructive/[0.04] px-2.5 py-1.5 text-[0.8rem] font-medium leading-snug text-destructive shadow-sm ring-1 ring-destructive/10;
   }
-  /** Block-level errors (cards, integrations, batch). */
   .ux-inline-error {
-    @apply rounded-xl border border-destructive/25 bg-gradient-to-br from-destructive/[0.08] via-card to-muted/35 px-3.5 py-2.5 text-sm leading-relaxed text-destructive shadow-sm ring-1 ring-destructive/10;
+    @apply rounded-[var(--card-radius)] border border-destructive/25 bg-gradient-to-br from-destructive/[0.08] via-card to-muted/35 px-3.5 py-2.5 text-sm leading-relaxed text-destructive shadow-sm ring-1 ring-destructive/10;
   }
-  /** Warnings (partial success, step errors). */
   .ux-inline-warning {
-    @apply rounded-xl border border-amber-300/60 bg-gradient-to-br from-amber-50/95 via-card to-orange-50/40 px-3.5 py-2.5 text-sm leading-relaxed text-amber-950 shadow-sm ring-1 ring-amber-200/40;
+    @apply rounded-[var(--card-radius)] border border-amber-300/60 bg-gradient-to-br from-amber-50/95 via-card to-orange-50/40 px-3.5 py-2.5 text-sm leading-relaxed text-amber-950 shadow-sm ring-1 ring-amber-200/40;
   }
   .dark .ux-inline-warning {
     @apply border-amber-500/40 bg-gradient-to-br from-amber-500/10 via-card to-amber-950/30 text-amber-50 ring-amber-500/25;
   }
-  /** Positive feedback banners — sage-tinted, no emerald/blue. */
   .ux-inline-success {
-    @apply rounded-xl border border-primary/35 bg-gradient-to-br from-primary/[0.1] via-card to-muted/30 px-3.5 py-2.5 text-sm leading-relaxed text-foreground shadow-sm ring-1 ring-primary/25;
+    @apply rounded-[var(--card-radius)] border border-primary/35 bg-gradient-to-br from-primary/[0.1] via-card to-muted/30 px-3.5 py-2.5 text-sm leading-relaxed text-foreground shadow-sm ring-1 ring-primary/25;
   }
   .dark .ux-inline-success {
     @apply border-primary/35 bg-gradient-to-br from-primary/[0.12] via-card to-muted/15 text-primary-foreground ring-primary/25;
   }
-  /** Full-view loading shell (matches body gradient). */
   .ux-loading-canvas {
-    @apply min-h-screen min-h-[100dvh] bg-background bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--canvas-mid))_42%,hsl(var(--canvas-btm))_100%)] bg-fixed;
+    @apply min-h-screen min-h-[100dvh] bg-[#f8f5f0] bg-[linear-gradient(180deg,#f8f5f0_0%,hsl(var(--canvas-mid))_42%,hsl(var(--canvas-btm))_100%)] bg-fixed;
   }
-  /** Dimmed backdrop + centered panel (campaign run, heavy operations). */
   .ux-loading-overlay {
     @apply fixed inset-0 z-40 flex items-center justify-center bg-background/80 backdrop-blur-[3px];
   }
   .ux-loading-panel {
-    @apply flex max-w-md flex-col items-center gap-4 rounded-2xl border border-border/55 bg-gradient-to-b from-card via-card to-muted/25 px-8 py-7 text-center shadow-lift ring-1 ring-primary/15 backdrop-blur-sm motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-300;
+    @apply flex max-w-md flex-col items-center gap-4 rounded-[var(--card-radius)] border border-border/55 bg-gradient-to-b from-card via-card to-muted/25 px-8 py-7 text-center shadow-[var(--card-shadow-spec)] ring-1 ring-primary/15 backdrop-blur-sm motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-300;
   }
 }

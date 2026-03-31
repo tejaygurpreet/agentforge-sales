@@ -158,7 +158,7 @@ export function DashboardShell({
         style={brandCssVars}
       >
         <header className="sticky top-0 z-30 border-b border-[color-mix(in_srgb,hsl(var(--foreground))_6%,hsl(var(--border)))] bg-[#F8F5F0]/95 bg-gradient-to-b from-[#F8F5F0] via-[#F8F5F0]/92 to-[color-mix(in_srgb,#F8F5F0_88%,#EDE8E0)] shadow-[0_1px_0_0_rgba(60,48,36,0.06),0_10px_40px_-18px_rgba(55,45,35,0.12)] backdrop-blur-xl supports-[backdrop-filter]:bg-[#F8F5F0]/80">
-          <div className="mx-auto flex min-h-[3.5rem] max-w-6xl flex-wrap items-center justify-between gap-x-3 gap-y-2.5 px-3 py-2.5 sm:h-[3.75rem] sm:px-6 sm:py-0">
+          <div className="mx-auto flex min-h-[3.5rem] max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-3 sm:h-[3.75rem] sm:px-8 sm:py-0">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-5 md:gap-x-7">
             <Link
               href="/"
@@ -170,7 +170,7 @@ export function DashboardShell({
               }
             >
               {whiteLabel?.logoUrl?.trim() ? (
-                <span className="relative h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-[color-mix(in_srgb,#9CA88B_35%,hsl(var(--border)))] bg-[hsl(var(--card))] shadow-[0_2px_8px_-2px_rgba(55,48,40,0.12)] ring-1 ring-black/[0.04] transition-all duration-300 group-hover:scale-[1.03] group-hover:shadow-md group-hover:ring-[#9CA88B]/25">
+                <span className="relative h-9 w-9 shrink-0 overflow-hidden rounded-[var(--card-radius)] border border-sage/35 bg-card shadow-soft ring-1 ring-black/[0.04] transition-[transform,box-shadow] duration-200 ease-in-out group-hover:scale-[1.02] group-hover:shadow-card group-hover:ring-sage/25">
                   <Image
                     src={whiteLabel.logoUrl.trim()}
                     alt=""
@@ -239,7 +239,7 @@ export function DashboardShell({
             </div>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-3 py-7 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 sm:px-6 sm:py-11">
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 sm:px-8 sm:py-10">
           <ReplyIntelProvider>{children}</ReplyIntelProvider>
         </main>
         <footer

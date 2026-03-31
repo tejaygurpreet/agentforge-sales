@@ -9,13 +9,18 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      transitionDuration: {
+        premium: "200ms",
+      },
       fontFamily: {
         sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
       boxShadow: {
-        soft: "0 1px 2px hsl(35 18% 12% / 0.05), 0 4px 16px hsl(35 15% 12% / 0.07)",
-        lift: "0 8px 30px -8px hsl(35 20% 12% / 0.12)",
+        /** Prompt 132 — 8px soft spec */
+        soft: "0 8px 24px -4px hsl(30 12% 18% / 0.08), 0 2px 8px hsl(30 10% 15% / 0.04)",
+        card: "0 8px 24px -4px hsl(30 12% 18% / 0.08), 0 2px 8px hsl(30 10% 15% / 0.04)",
+        lift: "0 12px 40px -12px hsl(30 14% 15% / 0.14)",
       },
       colors: {
         border: "hsl(var(--border))",
@@ -51,6 +56,9 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        /** Prompt 132 — spec accents */
+        sage: "hsl(var(--sage) / <alpha-value>)",
+        terracotta: "hsl(var(--terracotta) / <alpha-value>)",
       },
       borderRadius: {
         lg: "var(--radius)",
