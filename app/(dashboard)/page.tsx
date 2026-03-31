@@ -182,6 +182,7 @@ export const dynamic = "force-dynamic";
  * Prompt 123 — Inbox UI lives at `/inbox`; dashboard home no longer prefetches inbox rows (layout seeds unread for header).
  * Prompt 124 — Compose new email from `/inbox` (`sendNewInboxEmailAction`, `ComposeNewEmailDialog`).
  * Prompt 125 — Global warm cream + sage + terracotta palette (`globals.css`); PDF export colors; component class cleanup (no blue/purple accents).
+ * Prompt 126 — Dashboard shell + home stack spacing cohesion (`DashboardShell`, `DashboardHomeClient`); shared tab chrome (`tabs.tsx`).
  */
 export default async function DashboardPage() {
   const envWarnings = getDashboardEnvWarnings();

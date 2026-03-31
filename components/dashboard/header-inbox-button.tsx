@@ -10,6 +10,7 @@ import { usePathname } from "next/navigation";
 
 /**
  * Prompt 123 — Mail icon in dashboard header with unread badge; links to `/inbox`.
+ * Prompt 126 — Aligned with shell toolbar (h-9, shared outline + hover ring).
  */
 export function HeaderInboxButton() {
   const pathname = usePathname();
@@ -23,8 +24,8 @@ export function HeaderInboxButton() {
         variant="outline"
         size="icon"
         className={cn(
-          "relative h-9 w-9 shrink-0 rounded-xl border-border/60 shadow-sm transition-all duration-200",
-          inboxActive && "border-primary/35 bg-primary/[0.08] ring-1 ring-primary/20",
+          "relative h-9 w-9 shrink-0 rounded-xl border-border/60 shadow-sm transition-all duration-200 ease-out hover:border-primary/35 hover:bg-primary/[0.06]",
+          inboxActive && "border-primary/40 bg-primary/[0.1] ring-1 ring-primary/22",
         )}
         asChild
       >

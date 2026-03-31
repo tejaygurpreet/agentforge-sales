@@ -77,7 +77,7 @@ function NavLinkList({
   return (
     <ul
       className={cn(
-        stacked ? "flex flex-col gap-1.5" : "flex flex-row flex-wrap items-center gap-1",
+        stacked ? "flex flex-col gap-1.5" : "flex flex-row flex-wrap items-center gap-0.5 md:gap-1.5",
       )}
     >
       {links.map((l) => {
@@ -154,9 +154,9 @@ export function DashboardShell({
         className="flex min-h-screen min-h-[100dvh] flex-col text-foreground antialiased selection:bg-primary/15 selection:text-foreground"
         style={brandCssVars}
       >
-        <header className="sticky top-0 z-30 border-b border-border/45 bg-gradient-to-b from-[#fffdfb]/95 via-card/90 to-card/75 shadow-soft backdrop-blur-xl supports-[backdrop-filter]:bg-card/65 [border-bottom-color:color-mix(in_srgb,var(--brand-primary,transparent)_8%,hsl(var(--border)))]">
-        <div className="mx-auto flex min-h-14 max-w-6xl flex-wrap items-center justify-between gap-2 px-3 py-2 sm:h-[3.75rem] sm:px-5 sm:py-0">
-          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-6 md:gap-8">
+        <header className="sticky top-0 z-30 border-b border-border/40 bg-gradient-to-b from-background/95 via-card/88 to-muted/25 shadow-soft backdrop-blur-xl supports-[backdrop-filter]:bg-card/70 [border-bottom-color:color-mix(in_srgb,var(--brand-primary,transparent)_8%,hsl(var(--border)))]">
+          <div className="mx-auto flex min-h-[3.5rem] max-w-6xl flex-wrap items-center justify-between gap-x-2 gap-y-2 px-3 py-2.5 sm:h-[3.75rem] sm:px-6 sm:py-0">
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-5 md:gap-7">
             <Link
               href="/"
               className="group flex min-w-0 items-center gap-2.5 text-sm font-semibold tracking-tight text-foreground transition-all duration-200 ease-out hover:opacity-90 active:scale-[0.99]"
@@ -181,7 +181,7 @@ export function DashboardShell({
               <span className="truncate">{whiteLabel?.appName?.trim() || DEFAULT_BRAND_DISPLAY_NAME}</span>
             </Link>
 
-            <nav className="hidden md:block" aria-label="Main">
+            <nav className="hidden min-w-0 md:block" aria-label="Main">
               <NavLinkList links={navLinks} stacked={false} />
             </nav>
 
@@ -211,12 +211,12 @@ export function DashboardShell({
                 </nav>
               </DialogContent>
             </Dialog>
-          </div>
+            </div>
 
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3 md:pl-1">
             <HeaderInboxButton />
             <span
-              className="hidden max-w-[200px] truncate text-xs text-muted-foreground md:inline lg:max-w-[240px]"
+              className="hidden max-w-[min(200px,28vw)] truncate text-xs leading-tight text-muted-foreground md:inline lg:max-w-[min(260px,32vw)]"
               title={email}
             >
               {displayName ? `${displayName} · ${email}` : email}
@@ -224,24 +224,24 @@ export function DashboardShell({
             <Button
               variant="outline"
               size="sm"
-              className="rounded-xl border-border/60 shadow-sm transition-all duration-200 hover:border-primary/30 hover:bg-primary/[0.06]"
+              className="shrink-0 rounded-xl border-border/60 shadow-sm transition-all duration-200 hover:border-primary/35 hover:bg-primary/[0.07]"
               onClick={handleSignOut}
               disabled={pending}
             >
               <LogOut className="mr-1 h-4 w-4 sm:mr-1" />
               <span className="hidden sm:inline">Sign out</span>
             </Button>
+            </div>
           </div>
-        </div>
-      </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-3 py-8 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 sm:px-6 sm:py-12">
-        <ReplyIntelProvider>{children}</ReplyIntelProvider>
-      </main>
+        </header>
+        <main className="mx-auto w-full max-w-6xl flex-1 px-3 py-7 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 sm:px-6 sm:py-11">
+          <ReplyIntelProvider>{children}</ReplyIntelProvider>
+        </main>
         <footer
-          className="mt-auto border-t border-border/40 bg-gradient-to-t from-muted/25 via-transparent to-transparent [border-top-color:color-mix(in_srgb,var(--brand-primary,transparent)_6%,hsl(var(--border)))]"
+          className="mt-auto border-t border-border/35 bg-gradient-to-t from-muted/30 via-transparent to-transparent [border-top-color:color-mix(in_srgb,var(--brand-primary,transparent)_6%,hsl(var(--border)))]"
           role="contentinfo"
         >
-          <div className="mx-auto max-w-6xl px-3 py-5 sm:px-6">
+          <div className="mx-auto max-w-6xl px-3 py-5 sm:px-6 sm:py-6">
             <p className="text-center text-[11px] leading-relaxed tracking-wide text-muted-foreground/90">
               <span className="font-medium text-foreground/80">{brandLabel}</span>
               <span className="mx-2 inline-block h-0.5 w-0.5 rounded-full bg-border align-middle opacity-70" aria-hidden />

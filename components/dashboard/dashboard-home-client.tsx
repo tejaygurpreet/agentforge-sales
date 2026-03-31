@@ -121,6 +121,7 @@ type Props = {
  * Prompt 116 — Inline AI analysis + filters + prefetched threads.
  * Prompt 119 — Inbox badge, `/?tab=inbox`, realtime toast bridge.
  * Prompt 125 — Home stack inherits global sage/terracotta tokens; spacing unchanged (max-w-6xl rhythm).
+ * Prompt 126 — Single-width column inside `layout` main (no nested max-w), tuned vertical rhythm + tab chrome.
  */
 export function DashboardHomeClient({
   envWarnings,
@@ -193,7 +194,7 @@ export function DashboardHomeClient({
   }, []);
 
   return (
-    <div className="mx-auto max-w-6xl animate-in fade-in slide-in-from-bottom-2 space-y-11 px-4 py-2 duration-500 ease-out sm:space-y-14 sm:px-5 sm:py-4 lg:px-6">
+    <div className="w-full animate-in fade-in slide-in-from-bottom-2 space-y-10 duration-500 ease-out sm:space-y-12">
       <PwaBanner />
       <FirstRunSetupBanner />
       <DashboardHero outboundFromPreview={outboundFromPreview} whiteLabel={whiteLabel} />
@@ -263,7 +264,7 @@ export function DashboardHomeClient({
       />
 
       <Tabs value={mainTab} onValueChange={setMainTab} className="w-full">
-        <TabsList className="flex h-auto w-full max-w-6xl flex-nowrap justify-start gap-1 overflow-x-auto border-border/40 bg-muted/50 p-1.5 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:grid sm:grid-cols-10 sm:overflow-visible sm:pb-1.5 [&::-webkit-scrollbar]:hidden">
+        <TabsList className="flex h-auto w-full flex-nowrap justify-start gap-0.5 overflow-x-auto rounded-2xl border-border/35 bg-gradient-to-b from-muted/55 via-muted/40 to-muted/25 p-1.5 pb-1 shadow-sm ring-1 ring-border/20 [-ms-overflow-style:none] [scrollbar-width:none] sm:grid sm:grid-cols-10 sm:gap-1 sm:overflow-visible sm:pb-1.5 [&::-webkit-scrollbar]:hidden">
           <TabsTrigger
             value="workspace"
             className="shrink-0 transition-all duration-200 data-[state=active]:shadow-soft"
