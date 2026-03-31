@@ -17,10 +17,10 @@ const config: Config = {
         mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
       boxShadow: {
-        /** Prompt 132 — 8px soft spec */
-        soft: "0 8px 24px -4px hsl(30 12% 18% / 0.08), 0 2px 8px hsl(30 10% 15% / 0.04)",
-        card: "0 8px 24px -4px hsl(30 12% 18% / 0.08), 0 2px 8px hsl(30 10% 15% / 0.04)",
-        lift: "0 12px 40px -12px hsl(30 14% 15% / 0.14)",
+        /** Prompt 133 — 12px soft card spec (matches `--card-shadow-spec`) */
+        soft: "0 12px 36px -8px hsl(30 12% 18% / 0.1), 0 4px 14px hsl(30 10% 15% / 0.06)",
+        card: "0 12px 36px -8px hsl(30 12% 18% / 0.1), 0 4px 14px hsl(30 10% 15% / 0.06)",
+        lift: "0 16px 44px -12px hsl(30 14% 15% / 0.16)",
       },
       colors: {
         border: "hsl(var(--border))",
@@ -56,7 +56,7 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        /** Prompt 132 — spec accents */
+        /** Prompt 133 — spec accents */
         sage: "hsl(var(--sage) / <alpha-value>)",
         terracotta: "hsl(var(--terracotta) / <alpha-value>)",
       },

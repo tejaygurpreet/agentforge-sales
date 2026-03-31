@@ -68,6 +68,7 @@ type Props = {
  * Prompt 124 — Net-new email composer.
  * Prompt 129 — Auto-save every 3s to Supabase + localStorage while typing.
  * Prompt 130 — New compose never auto-loads a draft; only opening from Drafts loads `draftIdToLoad`.
+ * Prompt 133 — Clean modal on card surface (#FAF7F2), sage actions, 20px radius.
  */
 export function ComposeNewEmailDialog({
   open,
@@ -268,18 +269,18 @@ export function ComposeNewEmailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto border-[color-mix(in_srgb,#9CA88B_22%,hsl(var(--border)))] bg-gradient-to-b from-[hsl(var(--card))] via-[#FAF7F2] to-[color-mix(in_srgb,#C8A48A_08%,hsl(var(--card)))] sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto rounded-[var(--card-radius)] border-border/55 bg-card p-6 shadow-soft ring-1 ring-black/[0.04] sm:max-w-lg">
         <DialogHeader className="space-y-1 text-left">
-          <DialogTitle className="text-lg font-semibold tracking-[-0.02em] text-[color-mix(in_srgb,hsl(var(--foreground))_95%,#4a4238)]">
+          <DialogTitle className="text-lg font-semibold tracking-[-0.02em] text-foreground">
             {composeIntent === "edit" ? "Edit draft" : "New message"}
           </DialogTitle>
           <DialogDescription className="text-sm leading-relaxed text-muted-foreground">
-            Sends from your branded inbox address. While you write, drafts sync every few seconds — open{" "}
-            <span className="font-medium text-foreground/90">Drafts</span> anytime to resume a saved draft.
+            Sends from your branded inbox address. Drafts sync every 3 seconds — open{" "}
+            <span className="font-medium text-foreground/90">Drafts</span> anytime to resume.
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={submit} className="space-y-4 pt-1">
+        <form onSubmit={submit} className="space-y-5 pt-1">
           <div className="space-y-2">
             <Label
               htmlFor="compose-to"
@@ -295,7 +296,7 @@ export function ComposeNewEmailDialog({
               value={to}
               onChange={(e) => setTo(e.target.value)}
               disabled={pending}
-              className="h-11 rounded-xl border-[color-mix(in_srgb,hsl(var(--border))_90%,#9CA88B_15%)] bg-[hsl(var(--card))]/95 shadow-inner transition-shadow duration-300 focus-visible:ring-[#9CA88B]/30"
+              className="h-11 rounded-[var(--card-radius)] border-border/60 bg-card shadow-inner transition-[box-shadow] duration-200 ease-in-out focus-visible:ring-sage/35"
             />
           </div>
           <div className="space-y-2">
@@ -312,7 +313,7 @@ export function ComposeNewEmailDialog({
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               disabled={pending}
-              className="h-11 rounded-xl border-[color-mix(in_srgb,hsl(var(--border))_90%,#9CA88B_15%)] bg-[hsl(var(--card))]/95 shadow-inner transition-shadow duration-300 focus-visible:ring-[#9CA88B]/30"
+              className="h-11 rounded-[var(--card-radius)] border-border/60 bg-card shadow-inner transition-[box-shadow] duration-200 ease-in-out focus-visible:ring-sage/35"
             />
           </div>
           <div className="space-y-2">
@@ -334,11 +335,11 @@ export function ComposeNewEmailDialog({
               value={body}
               onChange={(e) => setBody(e.target.value)}
               disabled={pending}
-              className="min-h-[200px] resize-y rounded-2xl border-[color-mix(in_srgb,hsl(var(--border))_90%,#9CA88B_15%)] bg-[hsl(var(--card))]/95 text-[15px] leading-relaxed shadow-inner transition-shadow duration-300 focus-visible:ring-[#9CA88B]/30"
+              className="min-h-[200px] resize-y rounded-[var(--card-radius)] border-border/60 bg-card text-[15px] leading-relaxed shadow-inner transition-[box-shadow] duration-200 ease-in-out focus-visible:ring-sage/35"
             />
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-4">
             <div className="flex min-h-[1.25rem] items-center gap-2 text-[11px] text-muted-foreground">
               {savePending ? (
                 <span className="inline-flex items-center gap-1.5">
@@ -346,8 +347,8 @@ export function ComposeNewEmailDialog({
                   Saving…
                 </span>
               ) : lastSavedAt ? (
-                <span className="inline-flex items-center gap-1.5 text-[#6b6358]">
-                  <Save className="h-3.5 w-3.5 text-[#9CA88B]" aria-hidden />
+                <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                  <Save className="h-3.5 w-3.5 text-sage" aria-hidden />
                   Saved {new Date(lastSavedAt).toLocaleTimeString()}
                 </span>
               ) : (
@@ -360,7 +361,7 @@ export function ComposeNewEmailDialog({
             <Button
               type="button"
               variant="outline"
-              className="rounded-xl border-[color-mix(in_srgb,#C8A48A_35%,hsl(var(--border)))] text-[color-mix(in_srgb,hsl(var(--foreground))_85%,#5c4f45)] hover:bg-[color-mix(in_srgb,#C8A48A_12%,transparent)]"
+              className="rounded-[var(--card-radius)] border-terracotta/35 text-foreground hover:bg-terracotta/10"
               disabled={pending || savePending}
               onClick={() => void handleDeleteDraft()}
             >
@@ -369,7 +370,7 @@ export function ComposeNewEmailDialog({
             <Button
               type="button"
               variant="outline"
-              className="rounded-xl"
+              className="rounded-[var(--card-radius)]"
               disabled={pending}
               onClick={() => onOpenChange(false)}
             >
@@ -377,7 +378,7 @@ export function ComposeNewEmailDialog({
             </Button>
             <Button
               type="submit"
-              className="gap-2 rounded-xl bg-[#9CA88B] text-[#F8F5F0] shadow-[0_4px_20px_-6px_rgba(90,100,75,0.45)] transition-all duration-300 hover:bg-[color-mix(in_srgb,#9CA88B_92%,#7a8568)] hover:shadow-md"
+              className="gap-2 rounded-[var(--card-radius)] bg-sage text-[#F8F5F0] shadow-soft transition-[transform,box-shadow] duration-200 ease-in-out hover:-translate-y-0.5 hover:bg-sage/92 hover:shadow-lift"
               disabled={pending}
             >
               {pending ? (

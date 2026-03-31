@@ -91,12 +91,12 @@ function NavLinkList({
               href={l.href}
               onClick={onNavigate}
               className={cn(
-                "group/nav flex items-center gap-2 rounded-xl text-sm font-medium outline-none transition-all duration-200 ease-out",
+                "group/nav flex items-center gap-2 rounded-[var(--card-radius)] text-sm font-medium outline-none transition-[transform,box-shadow,background-color,color] duration-200 ease-in-out",
                 "focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                 stacked ? "px-3 py-3" : "px-3 py-2",
                 active
                   ? "bg-primary/[0.12] text-foreground shadow-soft ring-1 ring-primary/22"
-                  : "text-muted-foreground hover:bg-primary/[0.08] hover:text-foreground hover:shadow-sm",
+                  : "text-muted-foreground hover:-translate-y-0.5 hover:bg-primary/[0.08] hover:text-foreground hover:shadow-soft",
                 "active:scale-[0.98]",
               )}
               aria-current={active ? "page" : undefined}
@@ -157,9 +157,9 @@ export function DashboardShell({
         className="flex min-h-screen min-h-[100dvh] flex-col text-foreground antialiased selection:bg-primary/15 selection:text-foreground"
         style={brandCssVars}
       >
-        <header className="sticky top-0 z-30 border-b border-[color-mix(in_srgb,hsl(var(--foreground))_6%,hsl(var(--border)))] bg-[#F8F5F0]/95 bg-gradient-to-b from-[#F8F5F0] via-[#F8F5F0]/92 to-[color-mix(in_srgb,#F8F5F0_88%,#EDE8E0)] shadow-[0_1px_0_0_rgba(60,48,36,0.06),0_10px_40px_-18px_rgba(55,45,35,0.12)] backdrop-blur-xl supports-[backdrop-filter]:bg-[#F8F5F0]/80">
-          <div className="mx-auto flex min-h-[3.5rem] max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-3 sm:h-[3.75rem] sm:px-8 sm:py-0">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-5 md:gap-x-7">
+        <header className="sticky top-0 z-30 border-b border-[color-mix(in_srgb,hsl(var(--foreground))_6%,hsl(var(--border)))] bg-[#F8F5F0]/95 bg-gradient-to-b from-[#F8F5F0] via-[#F8F5F0]/92 to-[color-mix(in_srgb,#F8F5F0_88%,#EDE8E0)] shadow-[0_1px_0_0_rgba(60,48,36,0.06),0_12px_40px_-18px_rgba(55,45,35,0.12)] backdrop-blur-xl supports-[backdrop-filter]:bg-[#F8F5F0]/80">
+          <div className="mx-auto flex min-h-[3.5rem] max-w-7xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-5 py-3 sm:h-[3.75rem] sm:px-8 sm:py-0">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 sm:gap-x-6 md:gap-x-8">
             <Link
               href="/"
               className="group flex shrink-0 items-center gap-2.5 text-[0.95rem] font-semibold tracking-[-0.02em] text-[color-mix(in_srgb,hsl(var(--foreground))_92%,#5c5348)] transition-all duration-300 ease-out hover:text-foreground hover:[text-shadow:0_1px_0_rgba(255,255,255,0.5)] active:scale-[0.995] sm:text-base"
@@ -218,13 +218,14 @@ export function DashboardShell({
             </Dialog>
             </div>
 
-            <div className="flex shrink-0 items-center gap-2 sm:gap-3 md:pl-1">
+            <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3 md:pl-1">
             <HeaderInboxButton />
-            <span
-              className="hidden max-w-[min(200px,28vw)] truncate text-xs leading-tight text-muted-foreground md:inline lg:max-w-[min(260px,32vw)]"
-              title={email}
-            >
-              {displayName ? `${displayName} · ${email}` : email}
+            <span className="hidden min-w-0 max-w-full text-right text-xs leading-snug text-muted-foreground md:block">
+              <span className="block break-all text-foreground/90">
+                {displayName ? <>{displayName}</> : null}
+                {displayName ? <span className="text-muted-foreground"> · </span> : null}
+                <span className="text-muted-foreground">{email}</span>
+              </span>
             </span>
             <Button
               variant="outline"
@@ -239,14 +240,14 @@ export function DashboardShell({
             </div>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 sm:px-8 sm:py-10">
+        <main className="mx-auto w-full max-w-7xl flex-1 px-5 py-9 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 sm:px-8 sm:py-10">
           <ReplyIntelProvider>{children}</ReplyIntelProvider>
         </main>
         <footer
           className="mt-auto border-t border-border/35 bg-gradient-to-t from-muted/30 via-transparent to-transparent [border-top-color:color-mix(in_srgb,var(--brand-primary,transparent)_6%,hsl(var(--border)))]"
           role="contentinfo"
         >
-          <div className="mx-auto max-w-6xl px-3 py-5 sm:px-6 sm:py-6">
+          <div className="mx-auto max-w-7xl px-5 py-6 sm:px-8">
             <p className="text-center text-[11px] leading-relaxed tracking-wide text-muted-foreground/90">
               <span className="font-medium text-foreground/80">{brandLabel}</span>
               <span className="mx-2 inline-block h-0.5 w-0.5 rounded-full bg-border align-middle opacity-70" aria-hidden />

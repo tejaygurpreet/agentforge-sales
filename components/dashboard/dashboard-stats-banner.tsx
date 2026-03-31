@@ -9,7 +9,7 @@ type Props = {
 };
 
 /**
- * Prompt 132 — Top stats strip: two-column dashboard companion, spec tokens (sage / terracotta).
+ * Prompt 133 — Top stats strip; sage / terracotta, 20px cards, 12px shadow, hover lift.
  */
 export function DashboardStatsBanner({ analytics }: Props) {
   const items = [
@@ -56,7 +56,7 @@ export function DashboardStatsBanner({ analytics }: Props) {
           key={it.label}
           className={cn(
             "premium-card-spec flex flex-col gap-1 rounded-[var(--card-radius)] border border-border/40 bg-card px-6 py-6 transition-[transform,box-shadow] duration-200 ease-in-out",
-            "hover:scale-[1.02] hover:shadow-[var(--card-shadow-spec)]",
+            "hover:-translate-y-0.5 hover:shadow-lift",
           )}
         >
           <div className="flex items-center justify-between gap-2">

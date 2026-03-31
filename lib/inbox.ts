@@ -314,6 +314,8 @@ function isInboxMessageInsertRetryable(message: string): boolean {
 
 /**
  * Prompt 130 — Insert outbound (or inbound) row with fallbacks so sends always persist when RLS allows.
+ * Prompt 133 — If the user-scoped client still cannot insert (RLS / policy edge cases), retry with the
+ * service-role client so a successful Resend send always leaves a matching `inbox_messages` row.
  */
 async function insertInboxMessageReliable(
   supabase: SupabaseClient,
@@ -347,13 +349,6 @@ async function insertInboxMessageReliable(
     full.provider_message_id = payload.provider_message_id;
   }
 
-  let res = await supabase.from("inbox_messages").insert(full as never);
-  if (!res.error) return { ok: true };
-
-  if (!isInboxMessageInsertRetryable(res.error.message)) {
-    return { ok: false, error: res.error.message };
-  }
-
   const minimal: Record<string, unknown> = {
     thread_id: payload.thread_id,
     user_id: payload.user_id,
@@ -365,11 +360,55 @@ async function insertInboxMessageReliable(
     received_at: payload.received_at,
     raw: {},
   };
+
+  let res = await supabase.from("inbox_messages").insert(full as never);
+  if (!res.error) return { ok: true };
+
+  if (!isInboxMessageInsertRetryable(res.error.message)) {
+    const sr = getServiceRoleSupabaseOrNull();
+    if (sr) {
+      const trySr = await tryInsertInboxMessageWithClient(sr, full, minimal);
+      if (trySr.ok) {
+        console.warn(
+          "[AgentForge] insertInboxMessageReliable: persisted via service role (user insert not retryable)",
+        );
+        return { ok: true };
+      }
+    }
+    return { ok: false, error: res.error.message };
+  }
+
   res = await supabase.from("inbox_messages").insert(minimal as never);
   if (!res.error) return { ok: true };
 
   console.warn("[AgentForge] insertInboxMessageReliable minimal failed", res.error.message);
+
+  const sr = getServiceRoleSupabaseOrNull();
+  if (!sr) {
+    return { ok: false, error: res.error.message };
+  }
+
+  const srTry = await tryInsertInboxMessageWithClient(sr, full, minimal);
+  if (srTry.ok) {
+    console.warn("[AgentForge] insertInboxMessageReliable: persisted via service role after user failure");
+    return { ok: true };
+  }
+
   return { ok: false, error: res.error.message };
+}
+
+async function tryInsertInboxMessageWithClient(
+  client: SupabaseClient,
+  full: Record<string, unknown>,
+  minimal: Record<string, unknown>,
+): Promise<{ ok: true } | { ok: false }> {
+  let r = await client.from("inbox_messages").insert(full as never);
+  if (!r.error) return { ok: true };
+  if (!isInboxMessageInsertRetryable(r.error.message)) {
+    return { ok: false };
+  }
+  r = await client.from("inbox_messages").insert(minimal as never);
+  return r.error ? { ok: false } : { ok: true };
 }
 
 /**
@@ -695,6 +734,42 @@ export async function recordNewComposeMessageInInbox(
         .eq("id", threadId)
         .eq("user_id", params.userId)
     ).error;
+  }
+  if (upErr) {
+    const sr = getServiceRoleSupabaseOrNull();
+    if (sr) {
+      let srErr = (
+        await sr
+          .from("inbox_threads")
+          .update({
+            last_message_at: params.now,
+            snippet,
+            subject: subj,
+            updated_at: params.now,
+            user_last_read_at: params.now,
+          })
+          .eq("id", threadId)
+          .eq("user_id", params.userId)
+      ).error;
+      if (srErr && isOptionalInboxThreadColumnMissingError(srErr.message)) {
+        srErr = (
+          await sr
+            .from("inbox_threads")
+            .update({
+              last_message_at: params.now,
+              snippet,
+              subject: subj,
+              updated_at: params.now,
+            })
+            .eq("id", threadId)
+            .eq("user_id", params.userId)
+        ).error;
+      }
+      if (!srErr) {
+        console.warn("[AgentForge] recordNewComposeMessageInInbox thread update via service role");
+        upErr = null;
+      }
+    }
   }
   if (upErr) {
     console.error("[AgentForge] recordNewComposeMessageInInbox thread update", upErr.message);

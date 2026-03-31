@@ -3,17 +3,18 @@
 @tailwind utilities;
 
 /**
- * Prompt 132 — World-class light redesign (exact spec):
- * Background #F8F5F0 · Cards #FAF7F2 · 16px radius · 8px soft shadow
- * Sage #8F9E7E · Terracotta #D4A373 · Inter / system-ui
+ * Prompt 133 — World-class light redesign (exact spec):
+ * Background #F8F5F0 · Cards #FAF7F2 · 20px radius · 12px soft shadow
+ * Sage #8F9E7E · Terracotta #D4A373 · Inter · 200ms hover lift
  */
 @layer base {
   :root {
     --background: 40 33% 96%;
     --foreground: 30 8% 22%;
-    --card: 40 38% 97%;
+    /* Card surface #FAF7F2 */
+    --card: 40 35% 97%;
     --card-foreground: 30 8% 22%;
-    --popover: 40 38% 97%;
+    --popover: 40 35% 97%;
     --popover-foreground: 30 8% 22%;
     /* Sage #8F9E7E */
     --primary: 82 14% 56%;
@@ -32,9 +33,9 @@
     --border: 36 16% 86%;
     --input: 36 18% 88%;
     --ring: 82 14% 56%;
-    --radius: 1rem;
-    --card-radius: 16px;
-    --card-shadow-spec: 0 8px 24px -4px hsl(30 12% 18% / 0.08), 0 2px 8px hsl(30 10% 15% / 0.04);
+    --radius: 1.25rem;
+    --card-radius: 20px;
+    --card-shadow-spec: 0 12px 36px -8px hsl(30 12% 18% / 0.1), 0 4px 14px hsl(30 10% 15% / 0.06);
     --canvas-mid: 38 28% 96%;
     --canvas-btm: 34 22% 94%;
   }
@@ -89,7 +90,7 @@
     @apply transition-[box-shadow,transform,border-color] duration-200 ease-in-out;
   }
   .premium-card-interactive {
-    @apply transition-[box-shadow,transform] duration-200 ease-in-out hover:scale-[1.02] hover:shadow-[var(--card-shadow-spec)];
+    @apply transition-[box-shadow,transform] duration-200 ease-in-out hover:-translate-y-0.5 hover:shadow-[var(--card-shadow-spec)];
   }
   .text-balance-safe {
     text-wrap: balance;

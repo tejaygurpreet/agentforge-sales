@@ -7,7 +7,7 @@ import "./globals.css";
 
 export { viewport } from "./viewport";
 
-/** Prompt 132 — Inter + system-ui per design spec. */
+/** Prompt 133 — Inter (premium spec). */
 const fontSans = Inter({
   variable: "--font-sans",
   subsets: ["latin"],

@@ -204,7 +204,7 @@ export function DashboardHomeClient({
 
       <DashboardStatsBanner analytics={analytics} />
 
-      <div className="grid items-start gap-8 xl:grid-cols-[1fr_300px] xl:gap-10">
+      <div className="grid items-start gap-10 xl:grid-cols-[1fr_minmax(280px,320px)] xl:gap-12">
         <div className="min-w-0 space-y-10 sm:space-y-12">
       <SettingsIntegrationsSection>
         <WorkspaceMembersCard members={workspaceMembers} currentRole={workspaceRole} />
@@ -430,7 +430,7 @@ export function DashboardHomeClient({
         </div>
 
         <aside
-          className="premium-card-spec sticky top-28 hidden h-fit flex-col gap-4 rounded-[var(--card-radius)] border border-border/45 bg-card p-8 shadow-soft xl:flex"
+          className="premium-card-spec sticky top-28 hidden h-fit flex-col gap-5 rounded-[var(--card-radius)] border border-border/45 bg-card p-8 shadow-soft xl:flex"
           aria-label="Quick navigation"
         >
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -439,14 +439,14 @@ export function DashboardHomeClient({
           <nav className="flex flex-col gap-3">
             <Link
               href="/inbox"
-              className="group flex items-center gap-3 rounded-[12px] px-3 py-2.5 text-sm font-medium text-foreground transition-[transform,box-shadow] duration-200 ease-in-out hover:scale-[1.02] hover:bg-muted/50 hover:shadow-sm"
+              className="group flex items-center gap-3 rounded-[var(--card-radius)] px-3 py-2.5 text-sm font-medium text-foreground transition-[transform,box-shadow] duration-200 ease-in-out hover:-translate-y-0.5 hover:bg-muted/50 hover:shadow-soft"
             >
               <Inbox className="h-4 w-4 text-sage" aria-hidden />
               Inbox
             </Link>
             <Link
               href="/analytics"
-              className="group flex items-center gap-3 rounded-[12px] px-3 py-2.5 text-sm font-medium text-foreground transition-[transform,box-shadow] duration-200 ease-in-out hover:scale-[1.02] hover:bg-muted/50 hover:shadow-sm"
+              className="group flex items-center gap-3 rounded-[var(--card-radius)] px-3 py-2.5 text-sm font-medium text-foreground transition-[transform,box-shadow] duration-200 ease-in-out hover:-translate-y-0.5 hover:bg-muted/50 hover:shadow-soft"
             >
               <BarChart3 className="h-4 w-4 text-terracotta" aria-hidden />
               Analytics
@@ -454,7 +454,7 @@ export function DashboardHomeClient({
             <button
               type="button"
               onClick={() => setMainTab("workspace")}
-              className="flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left text-sm font-medium text-foreground transition-[transform,box-shadow] duration-200 ease-in-out hover:scale-[1.02] hover:bg-muted/50 hover:shadow-sm"
+              className="flex w-full items-center gap-3 rounded-[var(--card-radius)] px-3 py-2.5 text-left text-sm font-medium text-foreground transition-[transform,box-shadow] duration-200 ease-in-out hover:-translate-y-0.5 hover:bg-muted/50 hover:shadow-soft"
             >
               <Sparkles className="h-4 w-4 text-sage" aria-hidden />
               Workspace
