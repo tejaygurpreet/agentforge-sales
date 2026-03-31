@@ -89,6 +89,11 @@ import type {
   SdrManagerPayloadDTO,
 } from "@/types";
 import { computeCampaignStrength } from "@/lib/campaign-strength";
+import {
+  computeThreadUnread,
+  threadIsArchived,
+  threadIsSnoozed,
+} from "@/lib/inbox-filters";
 import { mergeTemplatePayloadIntoLeadForm } from "@/lib/campaign-templates-merge";
 import { computeForecastFromSnapshot } from "@/lib/forecast";
 import { buildDashboardOptimizerFeedFromRows } from "@/lib/optimizer";
@@ -114,7 +119,21 @@ import {
   renderProposalPdfBytes,
 } from "@/lib/proposal-generator";
 import { syncCampaignToHubSpot } from "@/lib/hubspot";
-import { buildDynamicFromEmail, sendTransactionalEmail } from "@/lib/resend";
+import {
+  buildDynamicFromEmail,
+  extractBareEmailFromFromHeader,
+  sendTransactionalEmail,
+} from "@/lib/resend";
+import {
+  getOrSyncInboxLocalPart,
+  normalizeEmail,
+  plainTextToEmailHtml,
+  snippetFromBodyText,
+  linkInboxThreadToCampaignIfKnown,
+  upsertInboxThreadAfterOutreachSend,
+  type InboxMessageRow,
+  type InboxThreadRow,
+} from "@/lib/inbox";
 import {
   analyzeDeliverability,
   inboxPlacementFromWarmupVolume,
@@ -440,18 +459,22 @@ async function insertReplyAnalysisRow(
   userScoped: SupabaseClient,
   fullRow: Record<string, unknown>,
   minimalRow: Record<string, unknown>,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const sr = getServiceRoleSupabaseOrNull();
   const clients: SupabaseClient[] = sr ? [sr, userScoped] : [userScoped];
   let lastMessage = "Could not save reply analysis.";
   for (const client of clients) {
-    let { error } = await client.from("reply_analyses").insert(fullRow);
-    if (!error) return { ok: true };
-    lastMessage = error.message;
-    if (isMissingColumnOrSchemaError(error.message)) {
-      ({ error } = await client.from("reply_analyses").insert(minimalRow));
-      if (!error) return { ok: true };
-      lastMessage = error.message;
+    let ins = await client.from("reply_analyses").insert(fullRow).select("id").single();
+    if (!ins.error && ins.data && typeof (ins.data as { id?: string }).id === "string") {
+      return { ok: true, id: (ins.data as { id: string }).id };
+    }
+    lastMessage = ins.error?.message ?? lastMessage;
+    if (ins.error && isMissingColumnOrSchemaError(ins.error.message)) {
+      ins = await client.from("reply_analyses").insert(minimalRow).select("id").single();
+      if (!ins.error && ins.data && typeof (ins.data as { id?: string }).id === "string") {
+        return { ok: true, id: (ins.data as { id: string }).id };
+      }
+      lastMessage = ins.error?.message ?? lastMessage;
     }
   }
   console.error("[AgentForge] reply_analyses insert failed:", lastMessage);
@@ -2990,9 +3013,6 @@ export async function sendOutreachEmailAction(
     typeof user.email === "string" && user.email.trim().length > 0
       ? user.email.trim()
       : null;
-  if (!userSignupEmail) {
-    return { ok: false, error: "Account email missing — cannot set Reply-To." };
-  }
 
   await ensurePersonalWorkspaceMembership(supabase, user.id);
   const ws = await resolveWorkspaceContext(supabase, {
@@ -3046,12 +3066,29 @@ export async function sendOutreachEmailAction(
   const preSendDv = analyzeDeliverability(oo.subject, oo.email_body);
 
   warnIfResendNotConfigured();
+  await getOrSyncInboxLocalPart(supabase, user.id, senderName || "User");
+  const { data: profInbox } = await supabase
+    .from("profiles")
+    .select("inbox_local_part")
+    .eq("id", user.id)
+    .maybeSingle();
+  const inboxPart =
+    profInbox &&
+    typeof (profInbox as { inbox_local_part?: string }).inbox_local_part === "string" &&
+    (profInbox as { inbox_local_part: string }).inbox_local_part.trim()
+      ? (profInbox as { inbox_local_part: string }).inbox_local_part.trim()
+      : null;
+  const fromHeader = buildDynamicFromEmail(senderName || null, inboxPart);
+  const replyBare = extractBareEmailFromFromHeader(fromHeader);
+  if (!replyBare && !userSignupEmail) {
+    return { ok: false, error: "Account email missing — cannot set Reply-To." };
+  }
   const send = await sendTransactionalEmail({
     to: snap.lead.email,
     subject: oo.subject,
     html: oo.email_body,
-    from: buildDynamicFromEmail(senderName || null),
-    reply_to: userSignupEmail,
+    from: fromHeader,
+    reply_to: replyBare ?? userSignupEmail!,
   });
 
   if (!send.ok) {
@@ -3103,6 +3140,19 @@ export async function sendOutreachEmailAction(
       deliverability_status: preSendDv.deliverabilityStatus,
     },
   });
+
+  const inboxSync = await upsertInboxThreadAfterOutreachSend({
+    supabase,
+    userId: user.id,
+    campaignThreadId: parsed.data.thread_id,
+    prospectEmail: snap.lead.email,
+    subject: oo.subject,
+    htmlBody: oo.email_body,
+    fromEmail: replyBare ?? userSignupEmail!,
+  });
+  if (!inboxSync.ok) {
+    console.warn("[AgentForge] upsertInboxThreadAfterOutreachSend", inboxSync.error);
+  }
 
   revalidatePath("/");
   revalidatePath("/analytics");
@@ -3584,6 +3634,8 @@ const pasteReplySchema = z.object({
     .max(320)
     .optional()
     .transform((s) => (s && s.trim() ? s.trim() : undefined)),
+  /** Prompt 115 — link analysis row to inbox message after save. */
+  inbox_message_id: z.string().uuid().optional(),
 });
 
 export type AnalyzeProspectReplyResult =
@@ -3649,6 +3701,16 @@ export async function analyzeProspectReplyAction(
     };
     const inserted = await insertReplyAnalysisRow(supabase, fullRow, minimalRow);
     if (inserted.ok) {
+      if (parsed.data.inbox_message_id) {
+        await supabase
+          .from("inbox_messages")
+          .update({
+            reply_analysis_id: inserted.id,
+            analyzed_at: new Date().toISOString(),
+          })
+          .eq("id", parsed.data.inbox_message_id)
+          .eq("user_id", user.id);
+      }
       void notifyNewReplySavedPush(user.id, preview || fullText.slice(0, 200)).catch(() => {});
       revalidatePath("/");
       revalidatePath("/replies");
@@ -3712,6 +3774,530 @@ export async function listProspectReplies(): Promise<PersistedReplyAnalysisRow[]
     });
   }
   return out;
+}
+
+export type ListInboxThreadsOptions = {
+  /** Prompt 119 — list only archived threads (otherwise archived are excluded). */
+  includeArchived?: boolean;
+};
+
+/**
+ * Prompt 115 — Inbox threads for the signed-in user (newest activity first).
+ * Prompt 119 — Optional archive/snooze columns + view filter.
+ */
+export async function listInboxThreadsAction(
+  search?: string,
+  opts?: ListInboxThreadsOptions,
+): Promise<InboxThreadRow[]> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return [];
+  const baseSelect =
+    "id, user_id, prospect_email, subject, snippet, last_message_at, campaign_thread_id, created_at";
+  const extendedSelect = `${baseSelect}, user_last_read_at`;
+  const fullSelect = `${extendedSelect}, archived_at, snoozed_until, labels`;
+
+  const term = search?.trim();
+  const esc = term
+    ? term.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")
+    : "";
+
+  const runQuery = async (selectStr: string) => {
+    let qq = supabase
+      .from("inbox_threads")
+      .select(selectStr)
+      .eq("user_id", user.id)
+      .order("last_message_at", { ascending: false })
+      .limit(100);
+    if (term) {
+      qq = qq.or(`subject.ilike.%${esc}%,snippet.ilike.%${esc}%,prospect_email.ilike.%${esc}%`);
+    }
+    return qq;
+  };
+
+  let { data, error } = await runQuery(fullSelect);
+  let hasReadColumn = true;
+  let hasArchiveCols = true;
+  if (error && isMissingColumnOrSchemaError(error.message)) {
+    hasArchiveCols = false;
+    const second = await runQuery(extendedSelect);
+    data = second.data;
+    error = second.error;
+  }
+  if (error && isMissingColumnOrSchemaError(error.message)) {
+    hasReadColumn = false;
+    const third = await runQuery(baseSelect);
+    data = third.data;
+    error = third.error;
+  }
+  if (error) {
+    if (isMissingColumnOrSchemaError(error.message)) return [];
+    console.error("[AgentForge] listInboxThreadsAction", error.message);
+    return [];
+  }
+  let threads = (data ?? []) as unknown as InboxThreadRow[];
+  if (threads.length === 0) return threads;
+
+  const { data: pendingRows, error: pendErr } = await supabase
+    .from("inbox_messages")
+    .select("thread_id")
+    .eq("user_id", user.id)
+    .eq("direction", "inbound")
+    .is("reply_analysis_id", null);
+  if (pendErr) {
+    if (!isMissingColumnOrSchemaError(pendErr.message)) {
+      console.error("[AgentForge] listInboxThreadsAction needs_review", pendErr.message);
+    }
+    threads = threads.map((t) => ({
+      ...t,
+      has_unread: hasReadColumn ? computeThreadUnread(t.last_message_at, t.user_last_read_at ?? null) : false,
+      needs_review: false,
+    }));
+  } else {
+    const needsReview = new Set(
+      (pendingRows ?? [])
+        .map((r) => (r as { thread_id?: string }).thread_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    );
+    threads = threads.map((t) => ({
+      ...t,
+      has_unread: hasReadColumn ? computeThreadUnread(t.last_message_at, t.user_last_read_at ?? null) : false,
+      needs_review: needsReview.has(t.id),
+    }));
+  }
+
+  if (hasArchiveCols) {
+    const wantArchived = opts?.includeArchived === true;
+    threads = threads.filter((t) => (wantArchived ? threadIsArchived(t) : !threadIsArchived(t)));
+    threads = threads.filter((t) => !threadIsSnoozed(t));
+  }
+
+  return threads;
+}
+
+/**
+ * Prompt 119 — Unread count for tab badge + notifications (excludes snoozed threads).
+ */
+export async function getInboxUnreadCountAction(): Promise<number> {
+  const threads = await listInboxThreadsAction();
+  return threads.filter((t) => t.has_unread === true && !threadIsSnoozed(t)).length;
+}
+
+const archiveInboxThreadSchema = z.object({
+  thread_id: z.string().uuid(),
+  archived: z.boolean(),
+});
+
+/** Prompt 119 — Archive or restore a thread. */
+export async function archiveInboxThreadAction(
+  raw: z.input<typeof archiveInboxThreadSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = archiveInboxThreadSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid thread." };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("inbox_threads")
+    .update({
+      archived_at: parsed.data.archived ? now : null,
+      updated_at: now,
+    })
+    .eq("id", parsed.data.thread_id)
+    .eq("user_id", user.id);
+  if (error) {
+    if (isMissingColumnOrSchemaError(error.message)) {
+      return { ok: false, error: "Run supabase/inbox_p119.sql for archive support." };
+    }
+    return { ok: false, error: error.message };
+  }
+  revalidatePath("/");
+  return { ok: true };
+}
+
+const snoozeInboxThreadSchema = z.object({
+  thread_id: z.string().uuid(),
+  /** `null` clears snooze. */
+  hours: z.union([z.literal(1), z.literal(24), z.literal(168)]).nullable(),
+});
+
+/** Prompt 119 — Snooze thread (1h, 24h, 7d) or clear snooze. */
+export async function snoozeInboxThreadAction(
+  raw: z.input<typeof snoozeInboxThreadSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = snoozeInboxThreadSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid snooze." };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+  let until: string | null = null;
+  if (parsed.data.hours != null) {
+    until = new Date(Date.now() + parsed.data.hours * 3600 * 1000).toISOString();
+  }
+  const { error } = await supabase
+    .from("inbox_threads")
+    .update({
+      snoozed_until: until,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", parsed.data.thread_id)
+    .eq("user_id", user.id);
+  if (error) {
+    if (isMissingColumnOrSchemaError(error.message)) {
+      return { ok: false, error: "Run supabase/inbox_p119.sql for snooze support." };
+    }
+    return { ok: false, error: error.message };
+  }
+  revalidatePath("/");
+  return { ok: true };
+}
+
+const setInboxLabelsSchema = z.object({
+  thread_id: z.string().uuid(),
+  labels: z.array(z.string().max(48)).max(12),
+});
+
+/** Prompt 119 — Replace thread labels (normalized slugs). */
+export async function setInboxThreadLabelsAction(
+  raw: z.input<typeof setInboxLabelsSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = setInboxLabelsSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid labels." };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+  const normalized = [
+    ...new Set(
+      parsed.data.labels
+        .map((s) =>
+          s
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9\s_-]/g, "")
+            .replace(/\s+/g, "-")
+            .replace(/-+/g, "-")
+            .replace(/^-|-$/g, "")
+            .slice(0, 32),
+        )
+        .filter((s) => s.length > 0),
+    ),
+  ].slice(0, 8);
+  const { error } = await supabase
+    .from("inbox_threads")
+    .update({
+      labels: normalized,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", parsed.data.thread_id)
+    .eq("user_id", user.id);
+  if (error) {
+    if (isMissingColumnOrSchemaError(error.message)) {
+      return { ok: false, error: "Run supabase/inbox_p119.sql for labels." };
+    }
+    return { ok: false, error: error.message };
+  }
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/**
+ * Prompt 115 — Messages in a thread (oldest first for reading order).
+ */
+export async function listInboxMessagesAction(threadId: string): Promise<InboxMessageRow[]> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return [];
+  if (!threadId.trim()) return [];
+  const { data, error } = await supabase
+    .from("inbox_messages")
+    .select(
+      "id, thread_id, user_id, direction, from_email, to_email, subject, body_text, body_html, received_at, reply_analysis_id, analyzed_at, created_at",
+    )
+    .eq("user_id", user.id)
+    .eq("thread_id", threadId.trim())
+    .order("received_at", { ascending: true })
+    .limit(200);
+  if (error) {
+    if (isMissingColumnOrSchemaError(error.message)) return [];
+    console.error("[AgentForge] listInboxMessagesAction", error.message);
+    return [];
+  }
+  const messages = (data ?? []) as InboxMessageRow[];
+  const analysisIds = [
+    ...new Set(
+      messages.map((m) => m.reply_analysis_id).filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  ];
+  if (analysisIds.length === 0) return messages;
+
+  const { data: raRows, error: raErr } = await supabase
+    .from("reply_analyses")
+    .select("id, analysis, sentiment, interest_score, suggested_voice, next_step, objections")
+    .eq("user_id", user.id)
+    .in("id", analysisIds);
+  if (raErr || !raRows?.length) {
+    if (raErr && !isMissingColumnOrSchemaError(raErr.message)) {
+      console.error("[AgentForge] listInboxMessagesAction reply_analyses", raErr.message);
+    }
+    return messages;
+  }
+  const byId = new Map<string, ProspectReplyAnalysisPayload>();
+  for (const row of raRows) {
+    const id = (row as { id?: string }).id;
+    if (typeof id !== "string") continue;
+    const merged = mergeReplyRowIntoAnalysisPayload(row as Record<string, unknown>);
+    if (merged) byId.set(id, merged);
+  }
+  return messages.map((m) => ({
+    ...m,
+    analysis: m.reply_analysis_id ? (byId.get(m.reply_analysis_id) ?? null) : null,
+  }));
+}
+
+/**
+ * Prompt 115 — Run reply analyzer on an inbox message (links row on success).
+ */
+export async function analyzeInboxMessageAction(
+  messageId: string,
+): Promise<AnalyzeProspectReplyResult> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  if (!messageId.trim()) {
+    return { ok: false, error: "Missing message." };
+  }
+  const { data: msg, error: msgErr } = await supabase
+    .from("inbox_messages")
+    .select("id, thread_id, body_text, user_id")
+    .eq("id", messageId.trim())
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (msgErr || !msg) {
+    return { ok: false, error: "Message not found." };
+  }
+  const m = msg as { thread_id: string; body_text?: string };
+  const { data: th } = await supabase
+    .from("inbox_threads")
+    .select("prospect_email, campaign_thread_id")
+    .eq("id", m.thread_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const t = th as { prospect_email?: string; campaign_thread_id?: string | null } | null;
+  return analyzeProspectReplyAction({
+    text: String((m as { body_text?: string }).body_text ?? ""),
+    thread_id: t?.campaign_thread_id?.trim() || undefined,
+    prospect_email: t?.prospect_email?.trim() || undefined,
+    inbox_message_id: messageId.trim(),
+  });
+}
+
+/**
+ * Prompt 117 — Mark thread as read (sidebar unread dot + filter).
+ */
+export async function markInboxThreadReadAction(threadId: string): Promise<{ ok: boolean }> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false };
+  const tid = threadId.trim();
+  if (!tid) return { ok: false };
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("inbox_threads")
+    .update({ user_last_read_at: now, updated_at: now })
+    .eq("id", tid)
+    .eq("user_id", user.id);
+  if (error) {
+    if (isMissingColumnOrSchemaError(error.message)) return { ok: true };
+    console.error("[AgentForge] markInboxThreadReadAction", error.message);
+    return { ok: false };
+  }
+  revalidatePath("/");
+  return { ok: true };
+}
+
+const sendInboxReplySchema = z.object({
+  thread_id: z.string().uuid(),
+  body: z.string().min(1).max(50_000),
+  subject: z.string().max(500).optional(),
+});
+
+/**
+ * Prompt 118 — Send inbox reply via Resend; persist outbound row + refresh thread snippet.
+ * Prompt 122 — After send, `linkInboxThreadToCampaignIfKnown` syncs `campaign_thread_id` when a campaign exists.
+ */
+export async function sendInboxReplyAction(
+  raw: z.input<typeof sendInboxReplySchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = sendInboxReplySchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Enter a message (up to ~50k characters)." };
+  }
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { ok: false, error: "Unauthorized" };
+  }
+
+  const { data: th, error: thErr } = await supabase
+    .from("inbox_threads")
+    .select("id, prospect_email, subject, user_id")
+    .eq("id", parsed.data.thread_id.trim())
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (thErr || !th) {
+    return { ok: false, error: "Thread not found." };
+  }
+  const row = th as { id: string; prospect_email: string; subject: string };
+  const prospectEmail = normalizeEmail(row.prospect_email);
+  if (!prospectEmail.includes("@")) {
+    return { ok: false, error: "Invalid prospect address." };
+  }
+
+  const baseSubject = row.subject?.trim() || "(no subject)";
+  const subj = parsed.data.subject?.trim();
+  const subject =
+    subj && subj.length > 0
+      ? subj
+      : /^\s*re:/i.test(baseSubject)
+        ? baseSubject
+        : `Re: ${baseSubject}`;
+
+  let senderName = "";
+  if (typeof user.user_metadata?.full_name === "string") {
+    senderName = user.user_metadata.full_name.trim();
+  }
+  const { data: profileForSignoff } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profileForSignoff?.full_name?.trim()) {
+    senderName = profileForSignoff.full_name.trim();
+  }
+
+  await getOrSyncInboxLocalPart(supabase, user.id, senderName || "User");
+  const { data: profInbox } = await supabase
+    .from("profiles")
+    .select("inbox_local_part")
+    .eq("id", user.id)
+    .maybeSingle();
+  const inboxPart =
+    profInbox &&
+    typeof (profInbox as { inbox_local_part?: string }).inbox_local_part === "string" &&
+    (profInbox as { inbox_local_part: string }).inbox_local_part.trim()
+      ? (profInbox as { inbox_local_part: string }).inbox_local_part.trim()
+      : null;
+
+  const fromHeader = buildDynamicFromEmail(senderName || null, inboxPart);
+  const replyBare = extractBareEmailFromFromHeader(fromHeader);
+  const userSignupEmail =
+    typeof user.email === "string" && user.email.trim().length > 0 ? user.email.trim() : null;
+  if (!replyBare && !userSignupEmail) {
+    return { ok: false, error: "Account email missing — cannot set Reply-To." };
+  }
+
+  warnIfResendNotConfigured();
+  const html = plainTextToEmailHtml(parsed.data.body);
+  const send = await sendTransactionalEmail({
+    to: prospectEmail,
+    subject,
+    html,
+    from: fromHeader,
+    reply_to: replyBare ?? userSignupEmail!,
+  });
+  if (!send.ok) {
+    return { ok: false, error: send.error };
+  }
+
+  const now = new Date().toISOString();
+  const snippet = snippetFromBodyText(parsed.data.body, 220);
+  const fromAddr = replyBare ?? userSignupEmail ?? "";
+
+  const { error: insErr } = await supabase.from("inbox_messages").insert({
+    thread_id: row.id,
+    user_id: user.id,
+    direction: "outbound",
+    from_email: fromAddr,
+    to_email: prospectEmail,
+    subject,
+    body_text: parsed.data.body.slice(0, 50_000),
+    body_html: null,
+    received_at: now,
+    raw: { source: "inbox_reply_composer" },
+  });
+  if (insErr) {
+    if (isMissingColumnOrSchemaError(insErr.message)) {
+      return { ok: false, error: "Inbox tables missing — run supabase/inbox_p115.sql" };
+    }
+    console.error("[AgentForge] sendInboxReplyAction insert", insErr.message);
+    return { ok: false, error: "Email sent but failed to save to thread." };
+  }
+
+  let upErr = (
+    await supabase
+      .from("inbox_threads")
+      .update({
+        last_message_at: now,
+        snippet,
+        updated_at: now,
+        user_last_read_at: now,
+      })
+      .eq("id", row.id)
+      .eq("user_id", user.id)
+  ).error;
+  if (upErr && isMissingColumnOrSchemaError(upErr.message)) {
+    upErr = (
+      await supabase
+        .from("inbox_threads")
+        .update({
+          last_message_at: now,
+          snippet,
+          updated_at: now,
+        })
+        .eq("id", row.id)
+        .eq("user_id", user.id)
+    ).error;
+  }
+  if (upErr) {
+    console.error("[AgentForge] sendInboxReplyAction thread update", upErr.message);
+  }
+
+  await linkInboxThreadToCampaignIfKnown(supabase, {
+    userId: user.id,
+    inboxThreadId: row.id,
+    prospectEmail,
+  });
+
+  revalidatePath("/");
+  revalidatePath("/replies");
+  return { ok: true };
 }
 
 function buildAbTestComparisonsFromRows(
@@ -5674,12 +6260,22 @@ export async function runScheduledReportsCronJob(): Promise<{ processed: number;
           : "AgentForge";
       const title = `${appName} — Scheduled report`;
       const pdfBuf = buildAggregatePdfBuffer(bundle, metrics, title);
-      const { data: prof } = await sr.from("profiles").select("full_name").eq("id", userId).maybeSingle();
+      const { data: prof } = await sr
+        .from("profiles")
+        .select("full_name, inbox_local_part")
+        .eq("id", userId)
+        .maybeSingle();
       const fromName =
         prof && typeof (prof as { full_name?: unknown }).full_name === "string"
           ? (prof as { full_name: string }).full_name.trim()
           : null;
-      const from = buildDynamicFromEmail(fromName);
+      const inboxLp =
+        prof &&
+        typeof (prof as { inbox_local_part?: unknown }).inbox_local_part === "string" &&
+        (prof as { inbox_local_part: string }).inbox_local_part.trim()
+          ? (prof as { inbox_local_part: string }).inbox_local_part.trim()
+          : null;
+      const from = buildDynamicFromEmail(fromName, inboxLp);
       const html = buildScheduledReportEmailHtml(metrics, title);
       const subject = `${appName} — ${cadence === "daily" ? "Daily" : "Weekly"} report`;
 

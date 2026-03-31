@@ -17,7 +17,7 @@ export function getResendClient(): Resend | null {
  * Extract the domain from `RESEND_FROM_EMAIL` (e.g. `Name <local@agentforgesales.com>`).
  * Falls back to agentforgesales.com if parsing fails.
  */
-function domainFromResendFromHeader(header: string | undefined): string {
+export function domainFromResendFromHeader(header: string | undefined): string {
   if (!header?.trim()) return "agentforgesales.com";
   const inBrackets = header.match(/<([^>]+)>/);
   if (inBrackets?.[1]) {
@@ -46,8 +46,9 @@ function defaultLocalPartFromEnv(header: string | undefined): string {
 
 /**
  * Safe RFC 5322 local-part from the user's full name (e.g. "Gurpreet Singh" → "gurpreet.singh").
+ * Exported for Prompt 115 inbox routing (must match `profiles.inbox_local_part`).
  */
-function slugifyLocalPartFromName(name: string): string {
+export function slugifyLocalPartFromName(name: string): string {
   const raw = name
     .trim()
     .toLowerCase()
@@ -68,13 +69,27 @@ function escapeDisplayNameForFromHeader(name: string): string {
 }
 
 /**
+ * Bare `local@domain` from a full From header (Prompt 115 — Reply-To same as From for inbox).
+ */
+export function extractBareEmailFromFromHeader(fromHeader: string): string | null {
+  if (!fromHeader?.trim()) return null;
+  const inBrackets = fromHeader.match(/<([^>]+)>/);
+  const inner = (inBrackets?.[1] ?? fromHeader).trim();
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inner)) return inner.toLowerCase();
+  return null;
+}
+
+/**
  * Builds Resend `from` using the signed-in user's full name and the **same verified domain**
  * as `RESEND_FROM_EMAIL` (no new env vars).
  *
  * Format: `"Gurpreet Singh" <gurpreet.singh@your-verified-domain>` — display name matches the
- * profile; local-part is slugified for deliverability.
+ * profile; local-part is slugified for deliverability, or **`inboxLocalPart`** when set (Prompt 115).
  */
-export function buildDynamicFromEmail(senderFullName: string | undefined | null): string {
+export function buildDynamicFromEmail(
+  senderFullName: string | undefined | null,
+  inboxLocalPart?: string | null,
+): string {
   const env = getServerEnv();
   const baseHeader = env.RESEND_FROM_EMAIL;
   const domain = domainFromResendFromHeader(baseHeader);
@@ -88,9 +103,15 @@ export function buildDynamicFromEmail(senderFullName: string | undefined | null)
           return DEFAULT_BRAND_DISPLAY_NAME;
         })();
   const local =
-    typeof senderFullName === "string" && senderFullName.trim().length > 0
-      ? slugifyLocalPartFromName(senderFullName)
-      : defaultLocalPartFromEnv(baseHeader);
+    typeof inboxLocalPart === "string" && inboxLocalPart.trim().length > 0
+      ? inboxLocalPart
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9._+-]/g, "")
+          .slice(0, 64) || defaultLocalPartFromEnv(baseHeader)
+      : typeof senderFullName === "string" && senderFullName.trim().length > 0
+        ? slugifyLocalPartFromName(senderFullName)
+        : defaultLocalPartFromEnv(baseHeader);
   return `"${escapeDisplayNameForFromHeader(display)}" <${local}@${domain}>`;
 }
 

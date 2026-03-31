@@ -34,6 +34,7 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ComponentType, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -2414,6 +2415,15 @@ export function CampaignWorkspace({
                     Review the generated first touch, then send via Resend (your workspace From / Reply-To) or
                     copy anywhere. LinkedIn stays copy-only — never auto-posted.
                   </CardDescription>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    <Link
+                      href="/?tab=inbox"
+                      className="font-medium text-primary underline-offset-4 transition-colors hover:text-primary/90 hover:underline"
+                    >
+                      Professional Inbox
+                    </Link>{" "}
+                    threads replies to your sends in one calm view.
+                  </p>
                 </div>
               </CardHeader>
               <CardContent className={cn(resultsCardContentClass, "space-y-5")}>

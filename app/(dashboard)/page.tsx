@@ -12,16 +12,20 @@ import {
   listAbTestsAction,
   listKnowledgeBaseEntriesAction,
   listPlaybooksForWorkspaceAction,
+  listInboxThreadsAction,
+  getInboxUnreadCountAction,
   listRecentCampaigns,
   listScheduledReportsAction,
   loadObjectionLibraryForDashboard,
 } from "@/app/(dashboard)/actions";
 import { DashboardHomeClient } from "@/components/dashboard/dashboard-home-client";
 import { getDashboardEnvWarnings } from "@/lib/env";
+import { getOrSyncInboxLocalPart } from "@/lib/inbox";
 import { buildDynamicFromEmail } from "@/lib/resend";
 import { createServerSupabaseClient, getServiceRoleSupabaseOrNull } from "@/lib/supabase-server";
 import { ensurePersonalWorkspaceMembership, resolveWorkspaceContext } from "@/lib/workspace";
 import { fetchWhiteLabelSettings } from "@/lib/white-label";
+import type { InboxThreadRow } from "@/lib/inbox";
 import type {
   AbTestExperimentRow,
   CampaignSequenceRow,
@@ -168,6 +172,16 @@ export const dynamic = "force-dynamic";
  * Prompt 112 — Brand cohesion: `generateMetadata` + `secondaryColor` on dashboard layout / `DashboardShell` CSS vars;
  * root `metadata` template; `pdf-branding` report title + `brandSignoff`; `resend` + auth footer use `DEFAULT_BRAND_DISPLAY_NAME`;
  * dialog chrome polish.
+ *
+ * Prompt 116 — `listInboxThreadsAction` seeds `ProfessionalInbox` for fast first paint.
+ * Prompt 117 — Inbox: unread column (SQL), Realtime hook + filters in `ProfessionalInbox`.
+ * Prompt 118 — Inbox reply composer + bubble thread view (`sendInboxReplyAction`, `ProfessionalInbox`).
+ * Prompt 119 — Unread badge seed (`getInboxUnreadCountAction`) + notifications bridge on the client.
+ * Prompt 120 — Inbox threads prefetched here; campaign outreach sends sync via `upsertInboxThreadAfterOutreachSend`;
+ * inbound replies use `/api/inbound/resend` + Realtime/polling on the client.
+ * Prompt 121 — Inbox UX/performance finalized in `ProfessionalInbox` + shared `lib/inbox-shared` debounce constants.
+ * Prompt 122 — Campaign ↔ inbox: outreach sends call `upsertInboxThreadAfterOutreachSend`; inbox replies call
+ * `linkInboxThreadToCampaignIfKnown`; inbound webhook enriches threads via `findCampaignThreadIdForProspect`.
  */
 export default async function DashboardPage() {
   const envWarnings = getDashboardEnvWarnings();
@@ -199,7 +213,11 @@ export default async function DashboardPage() {
       senderSignoffName = profileForSignoff.full_name.trim();
     }
   }
-  const outboundFromPreview = buildDynamicFromEmail(senderSignoffName || null);
+  let inboxLocalPart: string | null = null;
+  if (user) {
+    inboxLocalPart = await getOrSyncInboxLocalPart(supabase, user.id, senderSignoffName);
+  }
+  const outboundFromPreview = buildDynamicFromEmail(senderSignoffName || null, inboxLocalPart);
 
   let hubspotConnected = false;
   if (user) {
@@ -290,6 +308,13 @@ export default async function DashboardPage() {
     ? await Promise.all([listPlaybooksForWorkspaceAction(), listKnowledgeBaseEntriesAction()])
     : [[], []];
 
+  let initialInboxThreads: InboxThreadRow[] = [];
+  let initialInboxUnreadCount = 0;
+  if (user) {
+    initialInboxThreads = await listInboxThreadsAction();
+    initialInboxUnreadCount = await getInboxUnreadCountAction();
+  }
+
   return (
     <DashboardHomeClient
       envWarnings={envWarnings}
@@ -315,6 +340,8 @@ export default async function DashboardPage() {
       knowledgeBaseEntries={knowledgeBaseEntries}
       coachingPayload={coachingPayload}
       sdrManagerPayload={sdrManagerPayload}
+      initialInboxThreads={initialInboxThreads}
+      initialInboxUnreadCount={initialInboxUnreadCount}
     />
   );
 }
