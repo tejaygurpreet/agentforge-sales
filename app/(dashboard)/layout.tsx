@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getInboxUnreadCountAction } from "@/app/(dashboard)/actions";
+import { getInboxDraftCountAction, getInboxUnreadCountAction } from "@/app/(dashboard)/actions";
 import type { DashboardNavLink } from "@/components/dashboard/dashboard-shell";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
@@ -74,7 +74,10 @@ export default async function DashboardLayout({
   }
 
   const wl = await fetchWhiteLabelSettings(supabase, user.id);
-  const initialInboxUnreadCount = await getInboxUnreadCountAction();
+  const [initialInboxUnreadCount, initialDraftCount] = await Promise.all([
+    getInboxUnreadCountAction(),
+    getInboxDraftCountAction(),
+  ]);
 
   return (
     <DashboardShell
@@ -88,6 +91,7 @@ export default async function DashboardLayout({
       }}
       navLinks={DASHBOARD_NAV}
       initialInboxUnreadCount={initialInboxUnreadCount}
+      initialDraftCount={initialDraftCount}
     >
       {children}
     </DashboardShell>

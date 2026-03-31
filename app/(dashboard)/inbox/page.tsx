@@ -1,4 +1,4 @@
-import { listInboxThreadsAction } from "@/app/(dashboard)/actions";
+import { listInboxDraftsAction, listInboxThreadsAction } from "@/app/(dashboard)/actions";
 import { InboxPageClient } from "@/components/dashboard/inbox-page-client";
 import type { Metadata } from "next";
 
@@ -15,6 +15,9 @@ export async function generateMetadata(): Promise<Metadata> {
  * Prompt 124 — “Compose” opens `ComposeNewEmailDialog` inside `ProfessionalInbox` (header + FAB).
  */
 export default async function InboxPage() {
-  const initialThreads = await listInboxThreadsAction();
-  return <InboxPageClient initialThreads={initialThreads} />;
+  const [initialThreads, initialDrafts] = await Promise.all([
+    listInboxThreadsAction(),
+    listInboxDraftsAction(),
+  ]);
+  return <InboxPageClient initialThreads={initialThreads} initialDrafts={initialDrafts} />;
 }

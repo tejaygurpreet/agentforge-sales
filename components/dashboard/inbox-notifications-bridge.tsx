@@ -1,6 +1,6 @@
 "use client";
 
-import { getInboxUnreadCountAction } from "@/app/(dashboard)/actions";
+import { getInboxDraftCountAction, getInboxUnreadCountAction } from "@/app/(dashboard)/actions";
 import { useInboxRealtime } from "@/hooks/use-inbox-realtime";
 import { toast } from "@/hooks/use-toast";
 import { INBOX_NOTIFICATIONS_POLL_MS } from "@/lib/inbox-shared";
@@ -10,12 +10,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type Props = {
   inboxActive: boolean;
   onCount: (n: number) => void;
+  onDraftCount: (n: number) => void;
 };
 
 /**
  * Prompt 119 — Realtime + polling unread badge; toast when new activity while user is elsewhere.
  */
-export function InboxNotificationsBridge({ inboxActive, onCount }: Props) {
+export function InboxNotificationsBridge({ inboxActive, onCount, onDraftCount }: Props) {
   const [userId, setUserId] = useState<string | null>(null);
   const prevUnread = useRef<number | null>(null);
   const boot = useRef(true);
@@ -27,8 +28,9 @@ export function InboxNotificationsBridge({ inboxActive, onCount }: Props) {
   }, []);
 
   const refresh = useCallback(async () => {
-    const n = await getInboxUnreadCountAction();
+    const [n, d] = await Promise.all([getInboxUnreadCountAction(), getInboxDraftCountAction()]);
     onCount(n);
+    onDraftCount(d);
     if (boot.current) {
       boot.current = false;
       prevUnread.current = n;
@@ -43,7 +45,7 @@ export function InboxNotificationsBridge({ inboxActive, onCount }: Props) {
       });
     }
     prevUnread.current = n;
-  }, [inboxActive, onCount]);
+  }, [inboxActive, onCount, onDraftCount]);
 
   useInboxRealtime(userId, refresh);
 

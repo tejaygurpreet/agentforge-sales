@@ -18,6 +18,9 @@ import "server-only";
  *   send so `campaign_thread_id` and the outbound message appear in the inbox before the first reply.
  * - **Prompt 122 — Composer parity:** `linkInboxThreadToCampaignIfKnown` attaches `campaign_thread_id` when
  *   the user replies from the inbox first but a matching `campaigns` row exists (same user + lead email).
+ * - **Prompt 128 — Narrow schema detection (no false “inbox missing” on unrelated `column` errors) +
+ *   `ensureInboxSchemaReady()` + `supabase/inbox_ensure_p128.sql` RPC when service role is available.
+ * - **Prompt 129 — `inbox_drafts` for compose auto-save (localStorage + Supabase every 3s).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { slugifyLocalPartFromName } from "@/lib/resend";
@@ -46,6 +49,17 @@ export type InboxThreadRow = {
   snoozed_until?: string | null;
   /** Prompt 119 — user labels (lowercase). */
   labels?: string[] | null;
+};
+
+/** Prompt 129 — Saved compose drafts (`inbox_drafts`). */
+export type InboxDraftRow = {
+  id: string;
+  user_id: string;
+  to_email: string;
+  subject: string;
+  body_text: string;
+  updated_at: string;
+  created_at: string;
 };
 
 export type InboxMessageRow = {
@@ -235,13 +249,88 @@ export async function linkInboxThreadToCampaignIfKnown(
     .eq("id", params.inboxThreadId)
     .eq("user_id", params.userId);
 
-  if (error && !isMissingInboxColumnMessage(error.message)) {
+  if (error && !isOptionalInboxThreadColumnMissingError(error.message)) {
     console.warn("[AgentForge] linkInboxThreadToCampaignIfKnown", error.message);
   }
 }
 
-function isMissingInboxColumnMessage(msg: string): boolean {
-  return /column|does not exist|schema cache/i.test(msg);
+/** True when `inbox_threads` / `inbox_messages` is absent (PostgREST / Postgres). */
+export function isInboxRelationMissingError(message: string): boolean {
+  const m = (message || "").toLowerCase();
+  if (m.includes("schema cache")) return true;
+  if (/42p01|undefined_table/.test(m)) return true;
+  if (
+    (m.includes("inbox_threads") || m.includes("inbox_messages") || m.includes("inbox_drafts")) &&
+    m.includes("does not exist")
+  ) {
+    return true;
+  }
+  if (
+    m.includes("could not find the table") &&
+    (m.includes("inbox_threads") || m.includes("inbox_messages") || m.includes("inbox_drafts"))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * True when a migration predates an optional column — safe to retry without it.
+ * Does not match generic constraint errors that mention "column" in other contexts.
+ */
+export function isOptionalInboxThreadColumnMissingError(message: string): boolean {
+  const m = (message || "").toLowerCase();
+  if (!m.includes("does not exist") && !m.includes("could not find")) return false;
+  const cols = [
+    "user_last_read_at",
+    "updated_at",
+    "campaign_thread_id",
+    "archived_at",
+    "snoozed_until",
+    "labels",
+    "reply_analysis_id",
+    "analyzed_at",
+    "body_html",
+    "snippet",
+  ];
+  return cols.some((c) => m.includes(c));
+}
+
+/**
+ * List/query fallbacks: optional columns, PostgREST schema cache, or missing relation.
+ */
+export function isInboxOptionalColumnOrSchemaError(message: string): boolean {
+  const m = (message || "").toLowerCase();
+  if (m.includes("schema cache")) return true;
+  if (/pgrst204|42703|undefined column/i.test(m)) return true;
+  if (isInboxRelationMissingError(message)) return true;
+  return isOptionalInboxThreadColumnMissingError(message);
+}
+
+let inboxSchemaEnsureState: "ok" | "no_rpc" | undefined = undefined;
+
+/**
+ * Prompt 128 — Best-effort `ensure_inbox_schema` RPC (service role). No-op if RPC is not deployed.
+ * Safe to call before inbox reads/writes; caches success / missing-RPC for the process lifetime.
+ */
+export async function ensureInboxSchemaReady(): Promise<void> {
+  if (inboxSchemaEnsureState === "ok" || inboxSchemaEnsureState === "no_rpc") return;
+  const sr = getServiceRoleSupabaseOrNull();
+  if (!sr) {
+    inboxSchemaEnsureState = "no_rpc";
+    return;
+  }
+  const { error } = await sr.rpc("ensure_inbox_schema");
+  if (!error) {
+    inboxSchemaEnsureState = "ok";
+    return;
+  }
+  const msg = error.message ?? "";
+  if (/function .* does not exist|could not find the function|pgrst202|404/i.test(msg)) {
+    inboxSchemaEnsureState = "no_rpc";
+    return;
+  }
+  console.warn("[AgentForge] ensureInboxSchemaReady", msg);
 }
 
 /**
@@ -305,6 +394,7 @@ export type UpsertInboxAfterOutreachParams = {
 export async function upsertInboxThreadAfterOutreachSend(
   params: UpsertInboxAfterOutreachParams,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  await ensureInboxSchemaReady();
   const email = normalizeEmail(params.prospectEmail);
   if (!email.includes("@")) return { ok: false, error: "Invalid prospect email." };
 
@@ -319,7 +409,7 @@ export async function upsertInboxThreadAfterOutreachSend(
     .eq("prospect_email", email)
     .maybeSingle();
 
-  if (lookErr && !isMissingInboxColumnMessage(lookErr.message)) {
+  if (lookErr && !isOptionalInboxThreadColumnMissingError(lookErr.message)) {
     return { ok: false, error: lookErr.message };
   }
 
@@ -339,7 +429,7 @@ export async function upsertInboxThreadAfterOutreachSend(
       })
       .eq("id", threadId)
       .eq("user_id", params.userId);
-    if (up.error && isMissingInboxColumnMessage(up.error.message)) {
+    if (up.error && isOptionalInboxThreadColumnMissingError(up.error.message)) {
       up = await params.supabase
         .from("inbox_threads")
         .update({
@@ -369,7 +459,7 @@ export async function upsertInboxThreadAfterOutreachSend(
       .single();
 
     let row = ins;
-    if (ins.error && isMissingInboxColumnMessage(ins.error.message)) {
+    if (ins.error && isOptionalInboxThreadColumnMissingError(ins.error.message)) {
       row = await params.supabase
         .from("inbox_threads")
         .insert({
@@ -403,9 +493,6 @@ export async function upsertInboxThreadAfterOutreachSend(
   });
 
   if (msgIns.error) {
-    if (isMissingInboxColumnMessage(msgIns.error.message)) {
-      return { ok: false, error: "Inbox tables missing — run supabase/inbox_p115.sql" };
-    }
     return { ok: false, error: msgIns.error.message };
   }
 
@@ -430,6 +517,7 @@ export async function recordNewComposeMessageInInbox(
   supabase: SupabaseClient,
   params: RecordNewComposeMessageParams,
 ): Promise<{ ok: true; threadId: string } | { ok: false; error: string }> {
+  await ensureInboxSchemaReady();
   const email = normalizeEmail(params.prospectEmail);
   if (!email.includes("@")) return { ok: false, error: "Invalid recipient address." };
 
@@ -443,7 +531,7 @@ export async function recordNewComposeMessageInInbox(
     .eq("prospect_email", email)
     .maybeSingle();
 
-  if (lookErr && !isMissingInboxColumnMessage(lookErr.message)) {
+  if (lookErr && !isOptionalInboxThreadColumnMissingError(lookErr.message)) {
     return { ok: false, error: lookErr.message };
   }
 
@@ -466,7 +554,7 @@ export async function recordNewComposeMessageInInbox(
       .single();
 
     let row = ins;
-    if (ins.error && isMissingInboxColumnMessage(ins.error.message)) {
+    if (ins.error && isOptionalInboxThreadColumnMissingError(ins.error.message)) {
       row = await supabase
         .from("inbox_threads")
         .insert({
@@ -499,9 +587,6 @@ export async function recordNewComposeMessageInInbox(
   });
 
   if (insErr) {
-    if (isMissingInboxColumnMessage(insErr.message)) {
-      return { ok: false, error: "Inbox tables missing — run supabase/inbox_p115.sql" };
-    }
     console.error("[AgentForge] recordNewComposeMessageInInbox insert", insErr.message);
     return { ok: false, error: "Email sent but failed to save to inbox." };
   }
@@ -519,7 +604,7 @@ export async function recordNewComposeMessageInInbox(
       .eq("id", threadId)
       .eq("user_id", params.userId)
   ).error;
-  if (upErr && isMissingInboxColumnMessage(upErr.message)) {
+  if (upErr && isOptionalInboxThreadColumnMissingError(upErr.message)) {
     upErr = (
       await supabase
         .from("inbox_threads")

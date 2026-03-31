@@ -55,6 +55,8 @@ interface DashboardShellProps {
   navLinks: DashboardNavLink[];
   /** Prompt 123 — seed unread badge (`getInboxUnreadCountAction`). */
   initialInboxUnreadCount: number;
+  /** Prompt 129 — seed draft badge (`getInboxDraftCountAction`). */
+  initialDraftCount: number;
   children: React.ReactNode;
 }
 
@@ -121,6 +123,7 @@ export function DashboardShell({
   whiteLabel,
   navLinks,
   initialInboxUnreadCount,
+  initialDraftCount,
   children,
 }: DashboardShellProps) {
   const router = useRouter();
@@ -149,17 +152,17 @@ export function DashboardShell({
   }, [whiteLabel?.primaryColor, whiteLabel?.secondaryColor]);
 
   return (
-    <InboxUnreadProvider initialCount={initialInboxUnreadCount}>
+    <InboxUnreadProvider initialCount={initialInboxUnreadCount} initialDraftCount={initialDraftCount}>
       <div
         className="flex min-h-screen min-h-[100dvh] flex-col text-foreground antialiased selection:bg-primary/15 selection:text-foreground"
         style={brandCssVars}
       >
-        <header className="sticky top-0 z-30 border-b border-border/40 bg-gradient-to-b from-background/95 via-card/88 to-muted/25 shadow-soft backdrop-blur-xl supports-[backdrop-filter]:bg-card/70 [border-bottom-color:color-mix(in_srgb,var(--brand-primary,transparent)_8%,hsl(var(--border)))]">
-          <div className="mx-auto flex min-h-[3.5rem] max-w-6xl flex-wrap items-center justify-between gap-x-2 gap-y-2 px-3 py-2.5 sm:h-[3.75rem] sm:px-6 sm:py-0">
-            <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-5 md:gap-7">
+        <header className="sticky top-0 z-30 border-b border-[color-mix(in_srgb,hsl(var(--foreground))_6%,hsl(var(--border)))] bg-[#F8F5F0]/95 bg-gradient-to-b from-[#F8F5F0] via-[#F8F5F0]/92 to-[color-mix(in_srgb,#F8F5F0_88%,#EDE8E0)] shadow-[0_1px_0_0_rgba(60,48,36,0.06),0_10px_40px_-18px_rgba(55,45,35,0.12)] backdrop-blur-xl supports-[backdrop-filter]:bg-[#F8F5F0]/80">
+          <div className="mx-auto flex min-h-[3.5rem] max-w-6xl flex-wrap items-center justify-between gap-x-3 gap-y-2.5 px-3 py-2.5 sm:h-[3.75rem] sm:px-6 sm:py-0">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-5 md:gap-x-7">
             <Link
               href="/"
-              className="group flex min-w-0 items-center gap-2.5 text-sm font-semibold tracking-tight text-foreground transition-all duration-200 ease-out hover:opacity-90 active:scale-[0.99]"
+              className="group flex shrink-0 items-center gap-2.5 text-[0.95rem] font-semibold tracking-[-0.02em] text-[color-mix(in_srgb,hsl(var(--foreground))_92%,#5c5348)] transition-all duration-300 ease-out hover:text-foreground hover:[text-shadow:0_1px_0_rgba(255,255,255,0.5)] active:scale-[0.995] sm:text-base"
               style={
                 whiteLabel?.primaryColor
                   ? { color: whiteLabel.primaryColor }
@@ -167,21 +170,23 @@ export function DashboardShell({
               }
             >
               {whiteLabel?.logoUrl?.trim() ? (
-                <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-xl border border-border/40 bg-card shadow-sm ring-1 ring-black/[0.04] transition-transform duration-200 group-hover:scale-[1.02]">
+                <span className="relative h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-[color-mix(in_srgb,#9CA88B_35%,hsl(var(--border)))] bg-[hsl(var(--card))] shadow-[0_2px_8px_-2px_rgba(55,48,40,0.12)] ring-1 ring-black/[0.04] transition-all duration-300 group-hover:scale-[1.03] group-hover:shadow-md group-hover:ring-[#9CA88B]/25">
                   <Image
                     src={whiteLabel.logoUrl.trim()}
                     alt=""
-                    width={32}
-                    height={32}
+                    width={36}
+                    height={36}
                     className="object-contain"
                     unoptimized
                   />
                 </span>
               ) : null}
-              <span className="truncate">{whiteLabel?.appName?.trim() || DEFAULT_BRAND_DISPLAY_NAME}</span>
+              <span className="whitespace-nowrap sm:tracking-[-0.03em]">
+                {whiteLabel?.appName?.trim() || DEFAULT_BRAND_DISPLAY_NAME}
+              </span>
             </Link>
 
-            <nav className="hidden min-w-0 md:block" aria-label="Main">
+            <nav className="hidden min-w-0 flex-1 md:block md:max-w-none" aria-label="Main">
               <NavLinkList links={navLinks} stacked={false} />
             </nav>
 

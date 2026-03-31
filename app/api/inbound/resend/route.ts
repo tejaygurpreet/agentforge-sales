@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse, type NextRequest } from "next/server";
 import {
+  ensureInboxSchemaReady,
   extractLocalPartFromEmail,
   findCampaignThreadIdForProspect,
   findUserIdByInboxLocalPart,
@@ -46,6 +47,8 @@ export async function POST(request: NextRequest) {
   if (!sr) {
     return NextResponse.json({ error: "Service role not configured" }, { status: 503 });
   }
+
+  await ensureInboxSchemaReady();
 
   let body: unknown;
   try {
@@ -106,7 +109,7 @@ export async function POST(request: NextRequest) {
     .eq("prospect_email", prospectEmail)
     .maybeSingle();
 
-  if (threadLookupErr && !threadLookupErr.message.includes("does not exist")) {
+  if (threadLookupErr) {
     console.error("[inbound/resend] thread lookup", threadLookupErr.message);
     return NextResponse.json({ ok: false, error: threadLookupErr.message }, { status: 500 });
   }
@@ -160,9 +163,6 @@ export async function POST(request: NextRequest) {
   });
 
   if (msgErr) {
-    if (msgErr.message.includes("does not exist") || msgErr.message.includes("schema cache")) {
-      return NextResponse.json({ ok: false, error: "Run supabase/inbox_p115.sql" }, { status: 503 });
-    }
     console.error("[inbound/resend] message insert", msgErr.message);
     return NextResponse.json({ ok: false, error: msgErr.message }, { status: 500 });
   }

@@ -3,6 +3,9 @@
 import {
   analyzeInboxMessageAction,
   archiveInboxThreadAction,
+  deleteInboxDraftAction,
+  getInboxDraftCountAction,
+  listInboxDraftsAction,
   listInboxMessagesAction,
   listInboxThreadsAction,
   markInboxThreadReadAction,
@@ -26,12 +29,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { useInboxUnread } from "@/components/dashboard/inbox-unread-context";
 import { useInboxRealtime } from "@/hooks/use-inbox-realtime";
 import {
   INBOX_POLL_INTERVAL_MS,
   INBOX_SEARCH_DEBOUNCE_MS,
 } from "@/lib/inbox-shared";
-import type { InboxMessageRow, InboxThreadRow } from "@/lib/inbox";
+import type { InboxDraftRow, InboxMessageRow, InboxThreadRow } from "@/lib/inbox";
 import {
   applyInboxThreadFilter,
   threadIsArchived,
@@ -44,6 +48,7 @@ import type { ProspectReplyAnalysisPayload } from "@/types";
 import { toast } from "@/hooks/use-toast";
 import {
   ChevronLeft,
+  FileText,
   Inbox,
   Keyboard,
   Layers,
@@ -56,6 +61,7 @@ import {
   Send,
   SquarePen,
   Sparkles,
+  Trash2,
   User,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -71,6 +77,8 @@ import {
 export type ProfessionalInboxProps = {
   /** Prompt 116 — server-prefetched threads for instant first paint. */
   initialThreads?: InboxThreadRow[];
+  /** Prompt 129 — server-prefetched drafts for instant Drafts tab. */
+  initialDrafts?: InboxDraftRow[];
   /** Prompt 119 — sync tab badge when threads refresh on the Inbox tab. */
   onUnreadCountChange?: (count: number) => void;
 };
@@ -161,6 +169,7 @@ const FILTER_OPTIONS: { id: InboxThreadFilter; label: string }[] = [
   { id: "needs_review", label: "Needs AI" },
   { id: "reviewed", label: "Reviewed" },
   { id: "archived", label: "Archived" },
+  { id: "drafts", label: "Drafts" },
 ];
 
 const LABEL_PRESETS: { slug: string; label: string }[] = [
@@ -251,9 +260,11 @@ function InboxThreadActionsMenu({
  */
 export function ProfessionalInbox({
   initialThreads = [],
+  initialDrafts = [],
   onUnreadCountChange,
 }: ProfessionalInboxProps) {
   const router = useRouter();
+  const { setDraftCount, draftCount } = useInboxUnread();
   const [threads, setThreads] = useState<InboxThreadRow[]>(initialThreads);
   const threadsRef = useRef(threads);
   threadsRef.current = threads;
@@ -268,6 +279,9 @@ export function ProfessionalInbox({
   const [sendPending, startSend] = useTransition();
   const [, startThreadMutation] = useTransition();
   const [composeOpen, setComposeOpen] = useState(false);
+  const [composeDraftIdToLoad, setComposeDraftIdToLoad] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<InboxDraftRow[]>(initialDrafts);
+  const [loadingDrafts, setLoadingDrafts] = useState(false);
   const [replyDraft, setReplyDraft] = useState("");
   const [analyzeId, setAnalyzeId] = useState<string | null>(null);
   const [localAnalysis, setLocalAnalysis] = useState<
@@ -311,6 +325,16 @@ export function ProfessionalInbox({
       setLoadingList(false);
     }
   }, [threadFilter, onUnreadCountChange]);
+
+  const loadDrafts = useCallback(async () => {
+    setLoadingDrafts(true);
+    try {
+      const rows = await listInboxDraftsAction();
+      setDrafts(rows);
+    } finally {
+      setLoadingDrafts(false);
+    }
+  }, []);
 
   const loadMessages = useCallback(async (threadId: string) => {
     setLoadingMsgs(true);
@@ -395,6 +419,23 @@ export function ProfessionalInbox({
     [afterThreadSettings, selectedId],
   );
 
+  const handleDeleteDraftRow = useCallback(
+    (id: string) => {
+      startThreadMutation(async () => {
+        const res = await deleteInboxDraftAction({ id });
+        if (!res.ok) {
+          toast({ variant: "destructive", title: "Could not delete draft", description: res.error });
+          return;
+        }
+        toast({ title: "Draft deleted", className: "border-border/50 bg-card shadow-soft" });
+        await loadDrafts();
+        const n = await getInboxDraftCountAction();
+        setDraftCount(n);
+      });
+    },
+    [loadDrafts, setDraftCount],
+  );
+
   const handleToggleLabel = useCallback(
     (t: InboxThreadRow, slug: string) => {
       startThreadMutation(async () => {
@@ -417,8 +458,12 @@ export function ProfessionalInbox({
   useInboxRealtime(userId, refreshInbox);
 
   useEffect(() => {
+    if (threadFilter === "drafts") {
+      void loadDrafts();
+      return;
+    }
     void loadThreads(debouncedSearch || undefined);
-  }, [loadThreads, debouncedSearch, threadFilter]);
+  }, [loadThreads, loadDrafts, debouncedSearch, threadFilter]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -445,10 +490,31 @@ export function ProfessionalInbox({
     })();
   }, [selectedId, loadingMsgs, loadThreads, debouncedSearch]);
 
+  useEffect(() => {
+    if (threadFilter === "drafts") setSelectedId(null);
+  }, [threadFilter]);
+
+  useEffect(() => {
+    setDrafts(initialDrafts);
+  }, [initialDrafts]);
+
   const filteredThreads = useMemo(
     () => applyInboxThreadFilter(threads, threadFilter),
     [threads, threadFilter],
   );
+
+  const filteredDrafts = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    if (!q) return drafts;
+    return drafts.filter(
+      (d) =>
+        d.to_email.toLowerCase().includes(q) ||
+        d.subject.toLowerCase().includes(q) ||
+        d.body_text.toLowerCase().includes(q),
+    );
+  }, [drafts, debouncedSearch]);
+
+  const showDraftsList = threadFilter === "drafts";
 
   function onSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -616,11 +682,19 @@ export function ProfessionalInbox({
             <Button
               type="button"
               size="sm"
-              className="gap-2 rounded-xl shadow-soft"
-              onClick={() => setComposeOpen(true)}
+              className="relative gap-2 rounded-xl bg-[#9CA88B] text-[#F8F5F0] shadow-[0_4px_18px_-6px_rgba(85,95,72,0.4)] transition-all duration-300 hover:bg-[color-mix(in_srgb,#9CA88B_90%,#6f7a5e)] hover:shadow-md"
+              onClick={() => {
+                setComposeDraftIdToLoad(null);
+                setComposeOpen(true);
+              }}
             >
               <SquarePen className="h-4 w-4" aria-hidden />
               Compose
+              {draftCount > 0 ? (
+                <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-[#C8A48A] px-1 text-[10px] font-bold tabular-nums text-[#3a322c] shadow-md ring-2 ring-[#F8F5F0]">
+                  {draftCount > 99 ? "99+" : draftCount}
+                </span>
+              ) : null}
             </Button>
             <Button
               type="button"
@@ -704,12 +778,79 @@ export function ProfessionalInbox({
         >
           <div className="flex items-center justify-between border-b border-border/40 bg-gradient-to-r from-muted/25 to-transparent px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Conversations
+              {showDraftsList ? "Drafts" : "Conversations"}
             </p>
-            <span className="text-[10px] text-muted-foreground">{filteredThreads.length} shown</span>
+            <span className="text-[10px] text-muted-foreground">
+              {showDraftsList ? `${filteredDrafts.length} shown` : `${filteredThreads.length} shown`}
+            </span>
           </div>
           <div className="flex-1 overflow-y-auto overscroll-y-contain p-2 touch-pan-y">
-            {loadingList && threads.length === 0 ? (
+            {showDraftsList ? (
+              loadingDrafts && drafts.length === 0 ? (
+                <div className="flex items-center justify-center py-16 text-muted-foreground">
+                  <Loader2 className="h-8 w-8 animate-spin opacity-60" aria-hidden />
+                </div>
+              ) : filteredDrafts.length === 0 ? (
+                <div className="animate-in fade-in zoom-in-95 flex flex-col items-center justify-center px-4 py-14 text-center duration-300">
+                  <div className="mb-4 rounded-2xl border border-[color-mix(in_srgb,#C8A48A_35%,hsl(var(--border)))] bg-gradient-to-br from-[color-mix(in_srgb,#C8A48A_12%,transparent)] via-card to-[color-mix(in_srgb,#9CA88B_08%,transparent)] p-5 shadow-inner ring-1 ring-black/[0.04]">
+                    <FileText className="mx-auto h-9 w-9 text-[#9CA88B]" aria-hidden />
+                  </div>
+                  <p className="text-sm font-medium text-foreground/90">No drafts yet</p>
+                  <p className="mt-2 max-w-[18rem] text-xs leading-relaxed text-muted-foreground">
+                    Compose saves automatically every few seconds — your work survives tab closes and refresh.
+                  </p>
+                </div>
+              ) : (
+                <ul className="space-y-1">
+                  {filteredDrafts.map((d) => (
+                    <li
+                      key={d.id}
+                      className="flex gap-1 rounded-xl border border-transparent transition-all duration-200 hover:border-[color-mix(in_srgb,#9CA88B_25%,transparent)] hover:bg-[color-mix(in_srgb,#9CA88B_06%,hsl(var(--card)))]"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setComposeDraftIdToLoad(d.id);
+                          setComposeOpen(true);
+                        }}
+                        className="min-w-0 flex-1 rounded-xl px-3 py-3 text-left outline-none transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 shrink-0 text-[#9CA88B]" aria-hidden />
+                          <span className="truncate text-sm font-medium text-foreground">
+                            {d.to_email.trim() || "(no recipient)"}
+                          </span>
+                        </div>
+                        <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
+                          {d.subject.trim() || "(no subject)"}
+                        </p>
+                        <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground/90">
+                          {d.body_text.trim() || "—"}
+                        </p>
+                        <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80">
+                          {new Date(d.updated_at).toLocaleString()}
+                        </p>
+                      </button>
+                      <div className="flex shrink-0 items-start pt-1.5 pr-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 shrink-0 rounded-lg text-muted-foreground hover:bg-[color-mix(in_srgb,#C8A48A_15%,transparent)] hover:text-[#5c4a42]"
+                          aria-label="Delete draft"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteDraftRow(d.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : loadingList && threads.length === 0 ? (
               <div className="flex items-center justify-center py-16 text-muted-foreground">
                 <Loader2 className="h-8 w-8 animate-spin opacity-60" aria-hidden />
               </div>
@@ -754,7 +895,7 @@ export function ProfessionalInbox({
                           <div className="flex min-w-0 items-center gap-2">
                             {t.has_unread ? (
                               <span
-                                className="h-2 w-2 shrink-0 rounded-full bg-primary shadow-[0_0_0_3px_rgba(14,165,233,0.2)]"
+                                className="h-2 w-2 shrink-0 rounded-full bg-[#9CA88B] shadow-[0_0_0_3px_color-mix(in_srgb,#9CA88B_35%,transparent)]"
                                 aria-label="Unread"
                               />
                             ) : (
@@ -1029,10 +1170,17 @@ export function ProfessionalInbox({
 
       <ComposeNewEmailDialog
         open={composeOpen}
-        onOpenChange={setComposeOpen}
+        onOpenChange={(o) => {
+          setComposeOpen(o);
+          if (!o) setComposeDraftIdToLoad(null);
+        }}
+        draftIdToLoad={composeDraftIdToLoad}
+        onDraftLoadConsumed={() => setComposeDraftIdToLoad(null)}
+        onDraftCountChange={(n) => setDraftCount(n)}
         onSent={(threadId) => {
           setSelectedId(threadId);
           void loadThreads(debouncedSearch || undefined);
+          void loadDrafts();
           router.refresh();
         }}
       />
@@ -1040,11 +1188,19 @@ export function ProfessionalInbox({
       <Button
         type="button"
         size="icon"
-        className="fixed bottom-6 right-5 z-40 h-14 w-14 rounded-full border border-primary/20 bg-gradient-to-br from-primary to-primary/90 text-primary-foreground shadow-[0_12px_40px_-8px_rgba(0,0,0,0.25)] ring-2 ring-primary/20 transition hover:scale-[1.03] hover:shadow-lg active:scale-[0.98] sm:bottom-8 sm:right-8"
-        onClick={() => setComposeOpen(true)}
+        className="fixed bottom-6 right-5 z-40 h-14 w-14 rounded-full border border-[color-mix(in_srgb,#9CA88B_40%,hsl(var(--border)))] bg-gradient-to-br from-[#9CA88B] to-[color-mix(in_srgb,#9CA88B_88%,#7d8a6c)] text-[#F8F5F0] shadow-[0_12px_40px_-8px_rgba(55,48,40,0.35)] ring-2 ring-[#9CA88B]/25 transition-all duration-300 hover:scale-[1.03] hover:shadow-xl active:scale-[0.98] sm:bottom-8 sm:right-8 relative"
+        onClick={() => {
+          setComposeDraftIdToLoad(null);
+          setComposeOpen(true);
+        }}
         aria-label="Compose new email"
       >
         <SquarePen className="h-6 w-6" aria-hidden />
+        {draftCount > 0 ? (
+          <span className="absolute -right-1 -top-1 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-[#C8A48A] px-1 text-[11px] font-bold tabular-nums text-[#3a322c] shadow-md ring-2 ring-[#F8F5F0]">
+            {draftCount > 99 ? "99+" : draftCount}
+          </span>
+        ) : null}
       </Button>
     </div>
   );

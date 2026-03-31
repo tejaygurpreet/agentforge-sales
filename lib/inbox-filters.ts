@@ -24,7 +24,9 @@ export type InboxThreadFilter =
   | "campaign"
   | "needs_review"
   | "reviewed"
-  | "archived";
+  | "archived"
+  /** Prompt 129 — compose drafts list (handled in `ProfessionalInbox`, not here). */
+  | "drafts";
 
 /** Prompt 119 — Thread is snoozed to a future time. */
 export function threadIsSnoozed(t: Pick<InboxThreadRow, "snoozed_until">): boolean {
@@ -60,6 +62,8 @@ export function applyInboxThreadFilter(
       return threads.filter((x) => x.needs_review !== true);
     case "archived":
       return threads.filter(threadIsArchived);
+    case "drafts":
+      return [];
     default:
       return threads;
   }

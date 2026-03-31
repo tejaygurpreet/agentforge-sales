@@ -25,3 +25,9 @@ export function isLikelyValidRecipientEmail(email: string): boolean {
   if (e.length < 3 || e.length > 320) return false;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 }
+
+/** Prompt 129 — localStorage key for compose restore (`ComposeNewEmailDialog`). */
+export const INBOX_COMPOSE_LOCAL_STORAGE_KEY = "agentforge.inbox.compose.v1";
+
+/** Prompt 129 — autosave interval (ms). */
+export const INBOX_DRAFT_AUTOSAVE_MS = 3000;

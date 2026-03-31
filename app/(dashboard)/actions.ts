@@ -125,7 +125,11 @@ import {
   sendTransactionalEmail,
 } from "@/lib/resend";
 import {
+  ensureInboxSchemaReady,
   getOrSyncInboxLocalPart,
+  isInboxOptionalColumnOrSchemaError,
+  isInboxRelationMissingError,
+  isOptionalInboxThreadColumnMissingError,
   normalizeComposeRecipientEmail,
   normalizeEmail,
   plainTextToEmailHtml,
@@ -133,6 +137,7 @@ import {
   snippetFromBodyText,
   linkInboxThreadToCampaignIfKnown,
   upsertInboxThreadAfterOutreachSend,
+  type InboxDraftRow,
   type InboxMessageRow,
   type InboxThreadRow,
 } from "@/lib/inbox";
@@ -3797,6 +3802,7 @@ export async function listInboxThreadsAction(
     error: authError,
   } = await supabase.auth.getUser();
   if (authError || !user) return [];
+  await ensureInboxSchemaReady();
   const baseSelect =
     "id, user_id, prospect_email, subject, snippet, last_message_at, campaign_thread_id, created_at";
   const extendedSelect = `${baseSelect}, user_last_read_at`;
@@ -3823,20 +3829,22 @@ export async function listInboxThreadsAction(
   let { data, error } = await runQuery(fullSelect);
   let hasReadColumn = true;
   let hasArchiveCols = true;
-  if (error && isMissingColumnOrSchemaError(error.message)) {
+  if (error && isInboxOptionalColumnOrSchemaError(error.message)) {
     hasArchiveCols = false;
     const second = await runQuery(extendedSelect);
     data = second.data;
     error = second.error;
   }
-  if (error && isMissingColumnOrSchemaError(error.message)) {
+  if (error && isInboxOptionalColumnOrSchemaError(error.message)) {
     hasReadColumn = false;
     const third = await runQuery(baseSelect);
     data = third.data;
     error = third.error;
   }
   if (error) {
-    if (isMissingColumnOrSchemaError(error.message)) return [];
+    if (isInboxRelationMissingError(error.message) || isInboxOptionalColumnOrSchemaError(error.message)) {
+      return [];
+    }
     console.error("[AgentForge] listInboxThreadsAction", error.message);
     return [];
   }
@@ -3850,7 +3858,7 @@ export async function listInboxThreadsAction(
     .eq("direction", "inbound")
     .is("reply_analysis_id", null);
   if (pendErr) {
-    if (!isMissingColumnOrSchemaError(pendErr.message)) {
+    if (!isInboxOptionalColumnOrSchemaError(pendErr.message)) {
       console.error("[AgentForge] listInboxThreadsAction needs_review", pendErr.message);
     }
     threads = threads.map((t) => ({
@@ -3880,6 +3888,162 @@ export async function listInboxThreadsAction(
   return threads;
 }
 
+const inboxDraftUpsertSchema = z.object({
+  id: z.string().uuid().optional(),
+  to_email: z.string().max(320),
+  subject: z.string().max(500),
+  body_text: z.string().max(50_000),
+});
+
+/**
+ * Prompt 129 — Create or update a compose draft (auto-save).
+ */
+export async function upsertInboxDraftAction(
+  raw: z.input<typeof inboxDraftUpsertSchema>,
+): Promise<{ ok: true; draft: InboxDraftRow } | { ok: false; error: string }> {
+  const parsed = inboxDraftUpsertSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid draft." };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+  await ensureInboxSchemaReady();
+  const now = new Date().toISOString();
+  const { id, to_email, subject, body_text } = parsed.data;
+
+  if (id) {
+    const { data, error } = await supabase
+      .from("inbox_drafts")
+      .update({
+        to_email,
+        subject,
+        body_text,
+        updated_at: now,
+      })
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .select("id, user_id, to_email, subject, body_text, updated_at, created_at")
+      .maybeSingle();
+    if (error) return { ok: false, error: error.message };
+    if (!data) return { ok: false, error: "Draft not found." };
+    return { ok: true, draft: data as InboxDraftRow };
+  }
+
+  const { data, error } = await supabase
+    .from("inbox_drafts")
+    .insert({
+      user_id: user.id,
+      to_email,
+      subject,
+      body_text,
+      updated_at: now,
+    })
+    .select("id, user_id, to_email, subject, body_text, updated_at, created_at")
+    .single();
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, draft: data as InboxDraftRow };
+}
+
+/**
+ * Prompt 129 — List compose drafts (newest first).
+ */
+export async function listInboxDraftsAction(): Promise<InboxDraftRow[]> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return [];
+  await ensureInboxSchemaReady();
+  const { data, error } = await supabase
+    .from("inbox_drafts")
+    .select("id, user_id, to_email, subject, body_text, updated_at, created_at")
+    .eq("user_id", user.id)
+    .order("updated_at", { ascending: false });
+  if (error) {
+    if (isInboxRelationMissingError(error.message)) return [];
+    console.error("[AgentForge] listInboxDraftsAction", error.message);
+    return [];
+  }
+  return (data ?? []) as InboxDraftRow[];
+}
+
+const inboxDraftIdSchema = z.object({ id: z.string().uuid() });
+
+/**
+ * Prompt 129 — Single draft for compose restore.
+ */
+export async function getInboxDraftByIdAction(
+  raw: z.input<typeof inboxDraftIdSchema>,
+): Promise<{ ok: true; draft: InboxDraftRow } | { ok: false; error: string }> {
+  const parsed = inboxDraftIdSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid draft." };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+  await ensureInboxSchemaReady();
+  const { data, error } = await supabase
+    .from("inbox_drafts")
+    .select("id, user_id, to_email, subject, body_text, updated_at, created_at")
+    .eq("id", parsed.data.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "Draft not found." };
+  return { ok: true, draft: data as InboxDraftRow };
+}
+
+/**
+ * Prompt 129 — Delete one draft (from list or after successful send).
+ */
+export async function deleteInboxDraftAction(
+  raw: z.input<typeof inboxDraftIdSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = inboxDraftIdSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid draft." };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+  await ensureInboxSchemaReady();
+  const { error } = await supabase
+    .from("inbox_drafts")
+    .delete()
+    .eq("id", parsed.data.id)
+    .eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+/**
+ * Prompt 129 — Badge count for header + compose button.
+ */
+export async function getInboxDraftCountAction(): Promise<number> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return 0;
+  await ensureInboxSchemaReady();
+  const { count, error } = await supabase
+    .from("inbox_drafts")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id);
+  if (error) {
+    if (isInboxRelationMissingError(error.message)) return 0;
+    return 0;
+  }
+  return count ?? 0;
+}
+
 /**
  * Prompt 119 — Unread count for tab badge + notifications (excludes snoozed threads).
  */
@@ -3905,6 +4069,7 @@ export async function archiveInboxThreadAction(
     error: authError,
   } = await supabase.auth.getUser();
   if (authError || !user) return { ok: false, error: "Unauthorized" };
+  await ensureInboxSchemaReady();
   const now = new Date().toISOString();
   const { error } = await supabase
     .from("inbox_threads")
@@ -3915,8 +4080,8 @@ export async function archiveInboxThreadAction(
     .eq("id", parsed.data.thread_id)
     .eq("user_id", user.id);
   if (error) {
-    if (isMissingColumnOrSchemaError(error.message)) {
-      return { ok: false, error: "Run supabase/inbox_p119.sql for archive support." };
+    if (isOptionalInboxThreadColumnMissingError(error.message)) {
+      return { ok: false, error: error.message };
     }
     return { ok: false, error: error.message };
   }
@@ -3942,6 +4107,7 @@ export async function snoozeInboxThreadAction(
     error: authError,
   } = await supabase.auth.getUser();
   if (authError || !user) return { ok: false, error: "Unauthorized" };
+  await ensureInboxSchemaReady();
   let until: string | null = null;
   if (parsed.data.hours != null) {
     until = new Date(Date.now() + parsed.data.hours * 3600 * 1000).toISOString();
@@ -3955,8 +4121,8 @@ export async function snoozeInboxThreadAction(
     .eq("id", parsed.data.thread_id)
     .eq("user_id", user.id);
   if (error) {
-    if (isMissingColumnOrSchemaError(error.message)) {
-      return { ok: false, error: "Run supabase/inbox_p119.sql for snooze support." };
+    if (isOptionalInboxThreadColumnMissingError(error.message)) {
+      return { ok: false, error: error.message };
     }
     return { ok: false, error: error.message };
   }
@@ -3997,6 +4163,7 @@ export async function setInboxThreadLabelsAction(
         .filter((s) => s.length > 0),
     ),
   ].slice(0, 8);
+  await ensureInboxSchemaReady();
   const { error } = await supabase
     .from("inbox_threads")
     .update({
@@ -4006,8 +4173,8 @@ export async function setInboxThreadLabelsAction(
     .eq("id", parsed.data.thread_id)
     .eq("user_id", user.id);
   if (error) {
-    if (isMissingColumnOrSchemaError(error.message)) {
-      return { ok: false, error: "Run supabase/inbox_p119.sql for labels." };
+    if (isOptionalInboxThreadColumnMissingError(error.message)) {
+      return { ok: false, error: error.message };
     }
     return { ok: false, error: error.message };
   }
@@ -4026,6 +4193,7 @@ export async function listInboxMessagesAction(threadId: string): Promise<InboxMe
   } = await supabase.auth.getUser();
   if (authError || !user) return [];
   if (!threadId.trim()) return [];
+  await ensureInboxSchemaReady();
   const { data, error } = await supabase
     .from("inbox_messages")
     .select(
@@ -4036,7 +4204,9 @@ export async function listInboxMessagesAction(threadId: string): Promise<InboxMe
     .order("received_at", { ascending: true })
     .limit(200);
   if (error) {
-    if (isMissingColumnOrSchemaError(error.message)) return [];
+    if (isInboxRelationMissingError(error.message) || isInboxOptionalColumnOrSchemaError(error.message)) {
+      return [];
+    }
     console.error("[AgentForge] listInboxMessagesAction", error.message);
     return [];
   }
@@ -4126,6 +4296,7 @@ export async function markInboxThreadReadAction(threadId: string): Promise<{ ok:
   if (authError || !user) return { ok: false };
   const tid = threadId.trim();
   if (!tid) return { ok: false };
+  await ensureInboxSchemaReady();
   const now = new Date().toISOString();
   const { error } = await supabase
     .from("inbox_threads")
@@ -4133,7 +4304,7 @@ export async function markInboxThreadReadAction(threadId: string): Promise<{ ok:
     .eq("id", tid)
     .eq("user_id", user.id);
   if (error) {
-    if (isMissingColumnOrSchemaError(error.message)) return { ok: true };
+    if (isOptionalInboxThreadColumnMissingError(error.message)) return { ok: true };
     console.error("[AgentForge] markInboxThreadReadAction", error.message);
     return { ok: false };
   }
@@ -4166,6 +4337,7 @@ export async function sendInboxReplyAction(
   if (authError || !user) {
     return { ok: false, error: "Unauthorized" };
   }
+  await ensureInboxSchemaReady();
 
   const { data: th, error: thErr } = await supabase
     .from("inbox_threads")
@@ -4255,9 +4427,6 @@ export async function sendInboxReplyAction(
     raw: { source: "inbox_reply_composer" },
   });
   if (insErr) {
-    if (isMissingColumnOrSchemaError(insErr.message)) {
-      return { ok: false, error: "Inbox tables missing — run supabase/inbox_p115.sql" };
-    }
     console.error("[AgentForge] sendInboxReplyAction insert", insErr.message);
     return { ok: false, error: "Email sent but failed to save to thread." };
   }
@@ -4274,7 +4443,7 @@ export async function sendInboxReplyAction(
       .eq("id", row.id)
       .eq("user_id", user.id)
   ).error;
-  if (upErr && isMissingColumnOrSchemaError(upErr.message)) {
+  if (upErr && isOptionalInboxThreadColumnMissingError(upErr.message)) {
     upErr = (
       await supabase
         .from("inbox_threads")
@@ -4327,6 +4496,7 @@ export async function sendNewInboxEmailAction(
   if (authError || !user) {
     return { ok: false, error: "Unauthorized" };
   }
+  await ensureInboxSchemaReady();
 
   const prospectEmail = normalizeComposeRecipientEmail(parsed.data.to);
   if (!prospectEmail.includes("@")) {
