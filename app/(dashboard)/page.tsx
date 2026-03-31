@@ -132,6 +132,42 @@ export const dynamic = "force-dynamic";
  * Prompt 102 — AI SDR Manager: `lib/sdr-manager.ts`, `getSdrManagerPayloadAction`,
  * `generateExecutiveReportAction`, SDR Manager tab; SQL: `supabase/sdr_manager_p102.sql`
  * (`executive_metrics`, `system_health_status` on `profiles`).
+ *
+ * Prompt 103 — Super aesthetic light theme + layout polish: `app/globals.css`, `tailwind.config.ts`,
+ * `app/layout.tsx` (Plus Jakarta Sans), `DashboardShell` (no forced dark), `DashboardHero`,
+ * `DashboardHomeClient`, shared UI primitives (`button`, `card`, `tabs`, `input`, `dialog`, `textarea`).
+ *
+ * Prompt 104 — Core flow UX: `CampaignFlowGuideStrip`, `dashboard-campaign-runner` (workspace before
+ * recent list, guided batch tooltips), `campaign-workspace` (lead sections + FormDescription),
+ * `recent-campaigns`, `active-agents`.
+ *
+ * Prompt 105 — Core flow polish (Outreach, email review, Reply Analyzer): `campaign-workspace` Outreach
+ * card (preview chrome, Send Email CTA, status badges), `paste-reply-panel` + `dashboard-reply-strip`
+ * (prominent analyzer, light gradients); no behavior changes.
+ *
+ * Prompt 106 — Team & settings UX: `WorkspaceMembersCard` (invite flow, member tiles, roles), grouped
+ * `WhiteLabelSettingsCard` + `HubSpotConnectSection` under Brand & integrations on `DashboardHomeClient`;
+ * `DashboardShell` nav (icons, active state, logo link). No API or permission changes.
+ *
+ * Prompt 107 — Login/signup UX: `(auth)/layout`, polished forms; `/onboarding` setup wizard + first-run
+ * banner (`FirstRunSetupBanner`, `lib/onboarding-storage.ts`). `Setup` in dashboard nav.
+ *
+ * Prompt 108 — Analytics & Reports polish (`analytics-dashboard`, `reports-section`), shared `EmptyState` UI,
+ * empty tiles in `lead-priority-section`, `campaign-list`, `recent-campaigns`. No metric or export logic changes.
+ *
+ * Prompt 109 — PDF dossier UX: `lib/campaign-pdf.ts` (warm light paper, layered cover band, refined cards &
+ * footer); `CampaignPdfPreviewDialog` in `CampaignWorkspace` — preview in modal, loading state, download +
+ * success hint (same export as before).
+ *
+ * Prompt 110 — Settings & integrations hub: `settings-integrations-section.tsx` (cream shell, team + brand grid,
+ * HubSpot, Calendar, Twilio cards); global UI polish (`button`, `card`, `dialog`, `tabs`, `DashboardShell`).
+ *
+ * Prompt 111 — Micro-interactions: `tailwind.config` (`shimmer-slide`), `globals.css` (motion helpers), `button`,
+ * `card`, `input`, `badge`, `tooltip`, `toast`, `skeleton`, `empty-state`; `DashboardShell` nav focus/active + footer strip.
+ *
+ * Prompt 112 — Brand cohesion: `generateMetadata` + `secondaryColor` on dashboard layout / `DashboardShell` CSS vars;
+ * root `metadata` template; `pdf-branding` report title + `brandSignoff`; `resend` + auth footer use `DEFAULT_BRAND_DISPLAY_NAME`;
+ * dialog chrome polish.
  */
 export default async function DashboardPage() {
   const envWarnings = getDashboardEnvWarnings();

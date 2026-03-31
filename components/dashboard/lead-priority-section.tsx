@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import type { LeadPriorityLeaderboardRow, LeadPriorityTier } from "@/types";
 import { ListOrdered, Sparkles } from "lucide-react";
@@ -33,8 +34,8 @@ type Props = {
 export function LeadPrioritySection({ rows, summary }: Props) {
   if (!rows.length) {
     return (
-      <Card className="premium-card-interactive rounded-2xl border-border/80 bg-card/95 shadow-lg ring-1 ring-border/20 dark:ring-white/[0.06]">
-        <CardHeader>
+      <Card className="premium-card-interactive overflow-hidden rounded-2xl border-border/80 bg-card/95 shadow-lg ring-1 ring-border/20 dark:ring-white/[0.06]">
+        <CardHeader className="border-b border-border/40 bg-gradient-to-r from-muted/30 via-transparent to-transparent">
           <CardTitle className="flex items-center gap-2 text-lg">
             <ListOrdered className="h-5 w-5 text-primary" aria-hidden />
             Lead priority
@@ -44,6 +45,14 @@ export function LeadPrioritySection({ rows, summary }: Props) {
             enrichment sharpen the queue automatically.
           </CardDescription>
         </CardHeader>
+        <CardContent className="pt-6">
+          <EmptyState
+            icon={ListOrdered}
+            size="md"
+            title="Leaderboard is empty"
+            description="Complete a few campaigns with saved snapshots — we’ll rank leads by composite priority so you know who to contact first."
+          />
+        </CardContent>
       </Card>
     );
   }

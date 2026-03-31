@@ -23,19 +23,19 @@ export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
   return (
     <header
       className={cn(
-        "space-y-5 rounded-2xl border border-border/50 bg-gradient-to-br from-card/95 via-card/80 to-muted/[0.25] px-5 py-6 shadow-lg ring-1 ring-white/[0.06] backdrop-blur-md",
-        "transition-[box-shadow,transform] duration-500 hover:shadow-xl hover:ring-primary/15 sm:px-7 sm:py-8",
+        "space-y-6 rounded-2xl border border-border/50 bg-gradient-to-br from-card via-card to-muted/40 px-5 py-6 shadow-soft ring-1 ring-border/30 backdrop-blur-sm",
+        "motion-safe:animate-content-settle transition-[box-shadow,transform] duration-500 hover:shadow-lift hover:ring-primary/20 sm:px-7 sm:py-8",
       )}
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-4">
+        <div className="space-y-5">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="bg-gradient-to-br from-foreground via-foreground to-muted-foreground bg-clip-text text-3xl font-semibold tracking-tight text-transparent sm:text-4xl">
               {title}
             </h1>
             <Badge
               variant="outline"
-              className="border-primary/40 bg-primary/[0.08] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-primary shadow-sm"
+              className="border-primary/35 bg-primary/[0.08] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-primary shadow-sm"
             >
               Demo mode
             </Badge>
@@ -43,7 +43,7 @@ export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="rounded-full border border-border/60 bg-muted/30 p-1.5 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                  className="rounded-full border border-border/60 bg-muted/40 p-1.5 text-muted-foreground transition-all duration-200 hover:scale-105 hover:bg-muted/70 hover:text-foreground active:scale-100"
                   aria-label="What is demo mode?"
                 >
                   <Info className="h-3.5 w-3.5" aria-hidden />
@@ -62,7 +62,7 @@ export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
               <TooltipTrigger asChild>
                 <Badge
                   variant="secondary"
-                  className="cursor-default gap-1 border border-violet-500/25 bg-violet-500/[0.12] px-2.5 py-1 text-[11px] font-medium text-violet-100 shadow-sm"
+                  className="cursor-default gap-1 border border-violet-200/80 bg-violet-500/[0.1] px-2.5 py-1 text-[11px] font-medium text-violet-800 shadow-sm"
                 >
                   <Sparkles className="h-3 w-3" aria-hidden />
                   5 SDR voices
@@ -77,7 +77,7 @@ export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
               <TooltipTrigger asChild>
                 <Badge
                   variant="secondary"
-                  className="cursor-default gap-1 border border-sky-500/25 bg-sky-500/[0.12] px-2.5 py-1 text-[11px] font-medium text-sky-100 shadow-sm"
+                  className="cursor-default gap-1 border border-sky-200/80 bg-sky-500/[0.1] px-2.5 py-1 text-[11px] font-medium text-sky-800 shadow-sm"
                 >
                   <FileText className="h-3 w-3" aria-hidden />
                   Branded PDF dossier
@@ -92,7 +92,7 @@ export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
               <TooltipTrigger asChild>
                 <Badge
                   variant="secondary"
-                  className="cursor-default gap-1 border border-emerald-500/25 bg-emerald-500/[0.1] px-2.5 py-1 text-[11px] font-medium text-emerald-100 shadow-sm"
+                  className="cursor-default gap-1 border border-emerald-200/80 bg-emerald-500/[0.1] px-2.5 py-1 text-[11px] font-medium text-emerald-800 shadow-sm"
                 >
                   <Layers className="h-3 w-3" aria-hidden />
                   Batch + analytics
@@ -107,7 +107,7 @@ export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
               <TooltipTrigger asChild>
                 <Badge
                   variant="secondary"
-                  className="cursor-default gap-1 border border-amber-500/25 bg-amber-500/[0.1] px-2.5 py-1 text-[11px] font-medium text-amber-100 shadow-sm"
+                  className="cursor-default gap-1 border border-amber-200/80 bg-amber-500/[0.1] px-2.5 py-1 text-[11px] font-medium text-amber-900 shadow-sm"
                 >
                   <Radio className="h-3 w-3" aria-hidden />
                   Live signals
@@ -120,9 +120,9 @@ export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
             </Tooltip>
           </div>
 
-          <p className="max-w-2xl text-pretty text-[11px] leading-relaxed text-muted-foreground/95 sm:text-xs">
+          <p className="max-w-2xl text-pretty text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
             <span className="font-semibold text-muted-foreground">From:</span>{" "}
-            <span className="break-all font-mono text-[10px] text-foreground/85">
+            <span className="break-all font-mono text-[10px] text-foreground/90">
               {outboundFromPreview}
             </span>
           </p>

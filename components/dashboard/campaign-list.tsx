@@ -6,9 +6,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import type { CampaignThreadRow, LeadPriorityTier } from "@/types";
-import { Percent } from "lucide-react";
+import { LayoutGrid, Percent } from "lucide-react";
 
 function tierOutlineClass(tier: LeadPriorityTier | null | undefined): string | undefined {
   if (!tier) return undefined;
@@ -42,9 +43,17 @@ export function CampaignList({ campaigns }: CampaignListProps) {
       </CardHeader>
       <CardContent>
         {campaigns.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No runs yet. Start a campaign below.
-          </p>
+          <EmptyState
+            icon={LayoutGrid}
+            size="sm"
+            title="No active threads yet"
+            description={
+              <>
+                Start a <strong>New campaign</strong> from the Workspace tab. When runs complete, threads
+                appear here with optional smart priority badges.
+              </>
+            }
+          />
         ) : (
           <ul className="space-y-3">
             {campaigns.map((c) => (

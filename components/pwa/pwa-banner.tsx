@@ -93,7 +93,7 @@ export function PwaBanner() {
     vapidReady && perm !== "unsupported" && perm !== "denied";
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-card/40 px-4 py-4 shadow-sm backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
+    <div className="flex flex-col gap-3 rounded-2xl border border-border/50 bg-gradient-to-br from-card via-card to-muted/30 px-4 py-4 shadow-soft ring-1 ring-black/[0.03] backdrop-blur-sm transition-[box-shadow,transform] duration-300 hover:shadow-md sm:flex-row sm:items-center sm:justify-between sm:px-5">
       <div className="min-w-0 space-y-1">
         <p className="text-sm font-semibold text-foreground">Mobile &amp; notifications</p>
         <p className="text-pretty text-xs leading-relaxed text-muted-foreground">

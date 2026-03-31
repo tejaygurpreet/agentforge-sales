@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import "./globals.css";
 
 export { viewport } from "./viewport";
 
-const fontSans = Inter({
+const fontSans = Plus_Jakarta_Sans({
   variable: "--font-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
 });
 
 const fontMono = JetBrains_Mono({
@@ -17,13 +20,16 @@ const fontMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AgentForge Sales",
+  title: {
+    default: DEFAULT_BRAND_DISPLAY_NAME,
+    template: `%s · ${DEFAULT_BRAND_DISPLAY_NAME}`,
+  },
   description: "Autonomous multi-agent B2B Sales Operating System",
-  applicationName: "AgentForge Sales",
+  applicationName: DEFAULT_BRAND_DISPLAY_NAME,
   appleWebApp: {
     capable: true,
-    title: "AgentForge Sales",
-    statusBarStyle: "black-translucent",
+    title: DEFAULT_BRAND_DISPLAY_NAME,
+    statusBarStyle: "default",
   },
   formatDetection: {
     telephone: false,
@@ -36,11 +42,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className="scroll-smooth">
       <body
-        className={`${fontSans.variable} ${fontMono.variable} min-h-screen font-sans`}
+        className={`${fontSans.variable} ${fontMono.variable} min-h-screen font-sans text-[15px] leading-relaxed tracking-[-0.01em]`}
       >
-        <TooltipProvider delayDuration={220}>{children}</TooltipProvider>
+        <TooltipProvider delayDuration={260} skipDelayDuration={120}>
+          {children}
+        </TooltipProvider>
         <Toaster />
       </body>
     </html>

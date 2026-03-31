@@ -1,5 +1,7 @@
+import type { Metadata } from "next";
 import type { DashboardNavLink } from "@/components/dashboard/dashboard-shell";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { fetchWhiteLabelSettings } from "@/lib/white-label";
 import { redirect } from "next/navigation";
@@ -7,8 +9,33 @@ import { redirect } from "next/navigation";
 /** Auth + Supabase use cookies — must not be statically generated (Vercel / Next.js). */
 export const dynamic = "force-dynamic";
 
+/** Prompt 112 — Browser tab / PWA title follows white-label `app_name` when set. */
+export async function generateMetadata(): Promise<Metadata> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return {
+      title: { default: "Dashboard", template: `%s · ${DEFAULT_BRAND_DISPLAY_NAME}` },
+    };
+  }
+  const wl = await fetchWhiteLabelSettings(supabase, user.id);
+  const name = wl.appName?.trim() || DEFAULT_BRAND_DISPLAY_NAME;
+  return {
+    title: {
+      default: name,
+      template: `%s · ${name}`,
+    },
+    description: `${name} — campaign intelligence workspace`,
+    applicationName: name,
+    appleWebApp: { title: name, statusBarStyle: "default" },
+  };
+}
+
 const DASHBOARD_NAV: DashboardNavLink[] = [
   { href: "/", label: "Dashboard" },
+  { href: "/onboarding", label: "Setup" },
   { href: "/agents", label: "Agents" },
   { href: "/replies", label: "Replies" },
   { href: "/analytics", label: "Analytics" },
@@ -54,6 +81,7 @@ export default async function DashboardLayout({
         appName: wl.appName,
         logoUrl: wl.logoUrl,
         primaryColor: wl.primaryColor,
+        secondaryColor: wl.secondaryColor,
       }}
       navLinks={DASHBOARD_NAV}
     >

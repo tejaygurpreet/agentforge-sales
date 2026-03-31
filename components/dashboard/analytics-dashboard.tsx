@@ -7,6 +7,7 @@ import { QualificationObjectionPanel } from "@/components/dashboard/qualificatio
 import type { DashboardAnalyticsSummary } from "@/types";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Card,
   CardContent,
@@ -34,6 +35,7 @@ import {
   GitCompare,
   Heart,
   LayoutGrid,
+  LineChart as LineChartLucide,
   MessageSquare,
   Radio,
   ShieldCheck,
@@ -69,16 +71,16 @@ function StatCard({
   icon: typeof LayoutGrid;
 }) {
   return (
-    <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-md ring-1 ring-border/12 dark:ring-white/[0.05]">
+    <Card className="group premium-card-interactive overflow-hidden rounded-2xl border-border/60 bg-gradient-to-br from-card via-card to-muted/25 shadow-soft ring-1 ring-border/20 transition-all duration-300 hover:border-primary/15 hover:shadow-md dark:from-card/95 dark:to-card/90 dark:ring-white/[0.05]">
       <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <span className="rounded-lg border border-border/50 bg-muted/30 p-2 text-primary">
+        <span className="rounded-xl border border-border/45 bg-primary/[0.06] p-2 text-primary shadow-sm transition-transform duration-300 group-hover:scale-[1.03]">
           <Icon className="h-4 w-4" aria-hidden />
         </span>
       </CardHeader>
       <CardContent>
-        <p className="text-3xl font-bold tabular-nums tracking-tight">{value}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+        <p className="text-3xl font-bold tabular-nums tracking-tight text-foreground">{value}</p>
+        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{hint}</p>
       </CardContent>
     </Card>
   );
@@ -132,29 +134,46 @@ export function AnalyticsDashboard({
     <div className="space-y-10">
       <div
         className={cn(
-          "premium-surface rounded-2xl border border-border/60 bg-gradient-to-br from-primary/[0.06] via-card to-card px-5 py-6 shadow-sm ring-1 ring-white/[0.05] dark:from-primary/[0.1] sm:px-7 sm:py-7",
+          "premium-surface relative overflow-hidden rounded-2xl border border-border/55 bg-gradient-to-br from-primary/[0.07] via-card to-violet-500/[0.04] px-5 py-6 shadow-lift ring-1 ring-border/30 dark:from-primary/[0.1] sm:px-7 sm:py-8",
         )}
       >
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            {embedded ? "Workspace analytics" : "Analytics"}
-          </h1>
-          <Badge variant="outline" className="text-[10px] uppercase tracking-widest text-muted-foreground">
-            Live data
-          </Badge>
+        <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-primary/[0.06] blur-3xl" aria-hidden />
+        <div className="relative">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-2xl font-semibold tracking-tight text-transparent sm:text-3xl">
+              {embedded ? "Workspace analytics" : "Analytics"}
+            </h1>
+            <Badge
+              variant="outline"
+              className="border-emerald-400/40 bg-emerald-500/[0.1] text-[10px] font-semibold uppercase tracking-widest text-emerald-900 shadow-sm"
+            >
+              Live data
+            </Badge>
+          </div>
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            Aggregates from saved campaigns and reply analyses.{" "}
+            {!embedded ? (
+              <Link href="/replies" className="font-medium text-primary underline-offset-4 hover:underline">
+                Replies
+              </Link>
+            ) : (
+              <span className="font-medium text-foreground/90">Replies</span>
+            )}{" "}
+            tab holds full reply intelligence. Pipeline forecast (below) blends composite, qualification,
+            ICP, BANT proxy, and reply interest — heuristic until CRM sync.
+          </p>
+          {campaignCount > 0 ? (
+            <p className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-xl border border-border/50 bg-card/80 px-4 py-2.5 text-sm text-foreground shadow-sm ring-1 ring-black/[0.03]">
+              <Sparkles className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+              <span>
+                <strong className="font-semibold tabular-nums">{campaignCount}</strong> campaign
+                {campaignCount === 1 ? "" : "s"} in view ·{" "}
+                <strong className="font-semibold tabular-nums">{replyAnalyzedCount}</strong> reply
+                {replyAnalyzedCount === 1 ? "" : "ies"} analyzed
+              </span>
+            </p>
+          ) : null}
         </div>
-        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          Aggregates from saved campaigns and reply analyses.{" "}
-          {!embedded ? (
-            <Link href="/replies" className="font-medium text-primary underline-offset-4 hover:underline">
-              Replies
-            </Link>
-          ) : (
-            <span className="font-medium text-foreground/90">Replies</span>
-          )}{" "}
-          tab holds full reply intelligence. Pipeline forecast (below) blends composite, qualification,
-          ICP, BANT proxy, and reply interest — heuristic until CRM sync.
-        </p>
       </div>
 
       {coachingPreview ? (
@@ -199,7 +218,7 @@ export function AnalyticsDashboard({
         <Card className="rounded-2xl border-sky-500/25 bg-sky-500/[0.04] shadow-sm ring-1 ring-sky-500/10">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Briefcase className="h-4 w-4 text-sky-600 dark:text-sky-400" aria-hidden />
+              <Briefcase className="h-4 w-4 text-sky-600" aria-hidden />
               AI SDR Manager (Prompt 102)
             </CardTitle>
             <CardDescription>
@@ -253,7 +272,7 @@ export function AnalyticsDashboard({
 
       <OptimizerPanel mode="feed" rows={optimizerFeed} />
 
-      <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-md dark:bg-card/90">
+      <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-soft dark:bg-card/90">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <Sparkles className="h-5 w-5 text-primary" aria-hidden />
@@ -265,9 +284,18 @@ export function AnalyticsDashboard({
         </CardHeader>
         <CardContent className="h-[260px] min-h-[200px]">
           {forecastTrend.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No weekly trend yet — run campaigns with completion timestamps to populate.
-            </p>
+            <EmptyState
+              className="h-full min-h-[200px] justify-center"
+              size="sm"
+              icon={LineChartLucide}
+              title="No weekly trend yet"
+              description={
+                <>
+                  Complete a few campaigns so we can chart weighted pipeline by week (UTC). Timestamps come
+                  from saved <strong>campaign</strong> rows.
+                </>
+              }
+            />
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={forecastTrend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -363,7 +391,7 @@ export function AnalyticsDashboard({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-md dark:bg-card/90">
+        <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-soft dark:bg-card/90">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <span className="rounded-lg border border-border/50 bg-muted/30 p-2 text-primary">
@@ -384,7 +412,7 @@ export function AnalyticsDashboard({
             </p>
           </CardContent>
         </Card>
-        <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-md dark:bg-card/90">
+        <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-soft dark:bg-card/90">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <span className="rounded-lg border border-border/50 bg-muted/30 p-2 text-primary">
@@ -408,7 +436,7 @@ export function AnalyticsDashboard({
       </div>
 
       {abTestComparisons.length > 0 ? (
-        <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-md">
+        <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-soft">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <GitCompare className="h-5 w-5 text-primary" aria-hidden />
@@ -531,7 +559,7 @@ export function AnalyticsDashboard({
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-md">
+        <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-soft">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <Activity className="h-5 w-5 text-primary" aria-hidden />
@@ -541,9 +569,13 @@ export function AnalyticsDashboard({
           </CardHeader>
           <CardContent className="h-[280px] min-h-[200px]">
             {chartData.every((d) => d.count === 0) ? (
-              <p className="text-sm text-muted-foreground">
-                No campaign snapshots yet — run a campaign to populate this chart.
-              </p>
+              <EmptyState
+                className="h-full min-h-[200px] justify-center"
+                size="sm"
+                icon={BarChart3}
+                title="No strength distribution yet"
+                description="Run at least one campaign to see how composite scores spread across Strong, Promising, Solid, and at-risk bands."
+              />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -569,7 +601,7 @@ export function AnalyticsDashboard({
           </CardContent>
         </Card>
 
-        <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-md">
+        <Card className="premium-card-interactive rounded-xl border-border/70 bg-card/95 shadow-soft">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <Radio className="h-5 w-5 text-primary" aria-hidden />
@@ -582,10 +614,17 @@ export function AnalyticsDashboard({
           </CardHeader>
           <CardContent>
             {liveSignalsFeed.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No signals yet — run campaigns after applying the Prompt 70 migration, or confirm
-                TAVILY_API_KEY for richer pulls.
-              </p>
+              <EmptyState
+                size="sm"
+                icon={Radio}
+                title="No live signals yet"
+                description={
+                  <>
+                    Signals appear after runs that write to <code>campaign_signals</code>. Confirm the
+                    Prompt 70 migration and optional <code>TAVILY_API_KEY</code> for richer account intel.
+                  </>
+                }
+              />
             ) : (
               <ul className="max-h-[280px] space-y-3 overflow-y-auto pr-1">
                 {liveSignalsFeed.slice(0, 24).map((s) => (

@@ -1,6 +1,7 @@
 "use client";
 
-import { Calendar, GitCompare, Inbox, Mail, Percent, RefreshCw, Shield, User } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Calendar, GitCompare, Mail, Percent, RefreshCw, Shield, Sparkles, User } from "lucide-react";
 import type { LeadFormInput } from "@/agents/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,12 @@ function priorityBadgeClass(tier: LeadPriorityTier | null): string {
 
 function parseTier(v: unknown): LeadPriorityTier | null {
   return v === "critical" || v === "high" || v === "medium" || v === "low" ? v : null;
+}
+
+function statusAccentClass(status: string): string {
+  if (status === "completed") return "border-l-emerald-500";
+  if (status === "failed" || status === "completed_with_errors") return "border-l-amber-500";
+  return "border-l-primary/50";
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -99,51 +106,55 @@ export function RecentCampaigns({
   onToggleSelect,
 }: RecentCampaignsProps) {
   return (
-    <Card className="premium-card-interactive rounded-2xl border-border/80 bg-card/95 shadow-xl ring-1 ring-border/20 dark:bg-card/95 dark:ring-white/[0.07]">
-      <CardHeader className="space-y-2 border-b border-border/40 bg-gradient-to-r from-muted/35 via-transparent to-transparent pb-5 dark:from-muted/15">
-        <CardTitle className="text-xl tracking-tight">Recent campaigns</CardTitle>
-        <CardDescription className="text-sm leading-relaxed">
-          Your last 25 runs from{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">campaigns</code>. Green = clean
-          completion; amber = failed or finished with step errors. Export JSON, Markdown, or PDF from
-          a completed run anytime.{" "}
-          <span className="font-medium text-foreground/90">Re-run</span> restores the saved lead
-          (including SDR voice) and starts a new thread.
-          {batchMode ? (
-            <>
-              {" "}
-              <span className="font-medium text-foreground/90">Batch mode:</span> select rows with a
-              saved snapshot, then use Run selected in the batch panel.
-            </>
-          ) : null}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {campaigns.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border/80 bg-muted/20 px-6 py-12 text-center">
-            <Inbox className="h-10 w-10 text-muted-foreground" aria-hidden />
-            <div className="space-y-1">
-              <p className="font-medium text-foreground">No campaigns yet</p>
-              <p className="max-w-md text-sm text-muted-foreground">
-                Start a campaign below. If the list stays empty, confirm{" "}
-                <code className="text-xs">supabase/campaigns.sql</code> ran (including{" "}
-                <span className="font-medium">grant select</span> for authenticated users).
-              </p>
-            </div>
+    <Card className="premium-card-interactive rounded-2xl border-border/60 bg-card shadow-soft ring-1 ring-border/25 dark:bg-card/95 dark:ring-white/[0.07]">
+      <CardHeader className="space-y-2 border-b border-border/40 bg-gradient-to-r from-muted/30 via-transparent to-transparent pb-5 dark:from-muted/15">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-xl tracking-tight">Recent campaigns</CardTitle>
+            <CardDescription className="mt-2 text-sm leading-relaxed">
+              Last 25 runs from{" "}
+              <code className="rounded-md bg-muted/80 px-1.5 py-0.5 text-xs">campaigns</code>.{" "}
+              <span className="font-medium text-foreground/90">Re-run</span> restores the saved lead and opens
+              a fresh thread. Export JSON, Markdown, or PDF from any completed run.
+              {batchMode ? (
+                <>
+                  {" "}
+                  <span className="font-medium text-foreground/90">Batch:</span> select rows with a snapshot,
+                  then use <span className="font-medium">Run selected</span> in the batch panel.
+                </>
+              ) : null}
+            </CardDescription>
           </div>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-6">
+        {campaigns.length === 0 ? (
+          <EmptyState
+            icon={Sparkles}
+            title="No campaigns yet"
+            description={
+              <>
+                Start with <strong>New campaign</strong> above. If this stays empty, confirm{" "}
+                <code>supabase/campaigns.sql</code> ran and grants are in place.
+              </>
+            }
+          />
         ) : (
-          <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/70 bg-card/90 shadow-inner ring-1 ring-black/[0.02] dark:bg-card dark:ring-white/[0.04]">
+          <ul className="divide-y divide-border/50 overflow-hidden rounded-xl border border-border/60 bg-card/95 shadow-inner ring-1 ring-black/[0.02] dark:bg-card dark:ring-white/[0.04]">
             {campaigns.map((c) => (
               <li
                 key={c.id}
-                className="flex flex-col gap-3 p-4 transition-colors hover:bg-muted/30 dark:hover:bg-muted/15 lg:flex-row lg:items-center lg:justify-between"
+                className={cn(
+                  "flex flex-col gap-3 border-l-[3px] p-4 transition-colors hover:bg-muted/25 dark:hover:bg-muted/15 lg:flex-row lg:items-center lg:justify-between",
+                  statusAccentClass(c.status),
+                )}
               >
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <div className="flex flex-wrap items-center gap-2">
                     {batchMode && onToggleSelect ? (
                       <input
                         type="checkbox"
-                        className="h-4 w-4 rounded border-border"
+                        className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                         checked={selectedIds?.has(c.id) ?? false}
                         disabled={!c.rerun_lead}
                         title={

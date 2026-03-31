@@ -95,24 +95,25 @@ async function renderCampaignPdfDocument(
   const logoDataUrl = options?.logoDataUrl?.trim() || undefined;
   const bandAccent = mixRgb(primary, secondary, 0.35);
 
+  /** Light mode: warm paper + ink tuned for long-form reading (Prompt 109). */
   const pageBg: CampaignPdfRgb = dark
     ? { r: 18, g: 22, b: 30 }
-    : { r: 252, g: 253, b: 255 };
+    : { r: 255, g: 252, b: 246 };
   const ink: CampaignPdfRgb = dark
     ? { r: 241, g: 245, b: 249 }
     : { r: 30, g: 41, b: 59 };
   const muted: CampaignPdfRgb = dark
     ? { r: 148, g: 163, b: 184 }
-    : { r: 100, g: 116, b: 139 };
+    : { r: 91, g: 103, b: 122 };
   const cardBg: CampaignPdfRgb = dark
     ? { r: 28, g: 34, b: 44 }
-    : { r: 248, g: 250, b: 252 };
+    : { r: 255, g: 255, b: 252 };
   const rule: CampaignPdfRgb = dark
     ? { r: 51, g: 65, b: 85 }
-    : { r: 226, g: 232, b: 240 };
+    : { r: 228, g: 232, b: 239 };
   const subtleLine: CampaignPdfRgb = dark
     ? { r: 60, g: 74, b: 94 }
-    : { r: 236, g: 240, b: 245 };
+    : { r: 243, g: 246, b: 250 };
 
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   doc.setProperties({
@@ -122,12 +123,12 @@ async function renderCampaignPdfDocument(
     keywords: forPdf(`${orgLine}, sales, campaign, intelligence, dossier`),
   });
 
-  const margin = 54;
+  const margin = 56;
   const pageH = doc.internal.pageSize.getHeight();
   const pageW = doc.internal.pageSize.getWidth();
   const maxW = pageW - margin * 2;
-  const bodySize = dark ? 9.5 : 9.25;
-  const bodyLead = dark ? 12.2 : 11.8;
+  const bodySize = dark ? 9.5 : 9.45;
+  const bodyLead = dark ? 12.2 : 12.1;
   const footerH = 48;
   let y = margin;
 
@@ -141,13 +142,24 @@ async function renderCampaignPdfDocument(
 
   function drawPageHeaderBand(full: boolean) {
     if (full) {
-      const bandBottom = 108;
-      doc.setFillColor(secondary.r, secondary.g, secondary.b);
-      doc.rect(0, 0, pageW, bandBottom, "F");
-      doc.setFillColor(bandAccent.r, bandAccent.g, bandAccent.b);
-      doc.rect(0, 0, pageW * 0.42, bandBottom, "F");
+      const bandBottom = 114;
+      if (dark) {
+        doc.setFillColor(secondary.r, secondary.g, secondary.b);
+        doc.rect(0, 0, pageW, bandBottom, "F");
+        doc.setFillColor(bandAccent.r, bandAccent.g, bandAccent.b);
+        doc.rect(0, 0, pageW * 0.42, bandBottom, "F");
+      } else {
+        const base = mixRgb(secondary, { r: 15, g: 23, b: 42 }, 0.88);
+        doc.setFillColor(base.r, base.g, base.b);
+        doc.rect(0, 0, pageW, bandBottom, "F");
+        const sweep = mixRgb(primary, secondary, 0.55);
+        doc.setFillColor(sweep.r, sweep.g, sweep.b);
+        doc.rect(0, 0, pageW * 0.5, bandBottom, "F");
+        doc.setFillColor(bandAccent.r, bandAccent.g, bandAccent.b);
+        doc.rect(0, 0, pageW * 0.4, bandBottom, "F");
+      }
       doc.setDrawColor(primary.r, primary.g, primary.b);
-      doc.setLineWidth(3);
+      doc.setLineWidth(dark ? 3 : 2.5);
       doc.line(0, bandBottom, pageW, bandBottom);
 
       if (logoDataUrl) {
@@ -170,8 +182,8 @@ async function renderCampaignPdfDocument(
       doc.text(forPdf(orgLine), titleX, 56);
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
-      doc.setTextColor(230, 235, 245);
-      doc.text(forPdf("Consultant-grade intelligence dossier"), titleX, 76);
+      doc.setTextColor(226, 232, 240);
+      doc.text(forPdf("Consultant-grade intelligence dossier"), titleX, 78);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7.5);
       const conf = forPdf("CONFIDENTIAL — INTERNAL STRATEGY USE");
@@ -214,8 +226,9 @@ async function renderCampaignPdfDocument(
 
   function heading(text: string, size = 13) {
     ensureSpace(size + 22);
-    doc.setFillColor(primary.r, primary.g, primary.b);
-    doc.rect(margin, y - 2, 5, size + 8, "F");
+    const barRgb = dark ? primary : mixRgb(primary, pageBg, 0.82);
+    doc.setFillColor(barRgb.r, barRgb.g, barRgb.b);
+    doc.roundedRect(margin, y - 2, 5, size + 8, 1.5, 1.5, "F");
     doc.setDrawColor(rule.r, rule.g, rule.b);
     doc.setLineWidth(0.35);
     doc.line(margin + 14, y + 5, pageW - margin, y + 5);
@@ -342,9 +355,13 @@ async function renderCampaignPdfDocument(
   }
 
   function drawCardShadow(top: number, height: number) {
-    const s = dark ? 36 : 228;
-    doc.setFillColor(s, s, s + (dark ? 3 : 4));
-    doc.roundedRect(margin + 3, top + 3, maxW, height, 5, 5, "F");
+    if (dark) {
+      doc.setFillColor(36, 36, 42);
+      doc.roundedRect(margin + 3, top + 3, maxW, height, 5, 5, "F");
+    } else {
+      doc.setFillColor(230, 228, 224);
+      doc.roundedRect(margin + 4, top + 4, maxW, height, 7, 7, "F");
+    }
   }
 
   function drawStatTile(
@@ -508,8 +525,8 @@ async function renderCampaignPdfDocument(
   drawCardShadow(cardTop, cardH);
   doc.setFillColor(cardBg.r, cardBg.g, cardBg.b);
   doc.setDrawColor(rule.r, rule.g, rule.b);
-  doc.setLineWidth(0.55);
-  doc.roundedRect(margin, cardTop, maxW, cardH, 6, 6, "FD");
+  doc.setLineWidth(dark ? 0.55 : 0.45);
+  doc.roundedRect(margin, cardTop, maxW, cardH, dark ? 6 : 8, dark ? 6 : 8, "FD");
 
   y = cardTop + innerPad;
   doc.setFont("helvetica", "bold");
@@ -722,9 +739,10 @@ async function renderCampaignPdfDocument(
   }
 
   const totalPages = doc.getNumberOfPages();
+  const footerAccent = dark ? primary : mixRgb(primary, pageBg, 0.55);
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    doc.setFillColor(primary.r, primary.g, primary.b);
+    doc.setFillColor(footerAccent.r, footerAccent.g, footerAccent.b);
     doc.rect(0, pageH - 5, pageW, 5, "F");
     doc.setDrawColor(rule.r, rule.g, rule.b);
     doc.setLineWidth(0.4);
@@ -757,6 +775,18 @@ export async function downloadCampaignPdfSummary(
 ): Promise<void> {
   const { doc, base } = await renderCampaignPdfDocument(snapshot, options);
   doc.save(`${base}-full-report.pdf`);
+}
+
+/**
+ * Browser preview + manual download — same render as `downloadCampaignPdfSummary` (Prompt 109).
+ */
+export async function getCampaignPdfBlob(
+  snapshot: CampaignClientSnapshot,
+  options?: CampaignPdfExportOptions,
+): Promise<{ blob: Blob; filename: string }> {
+  const { doc, base } = await renderCampaignPdfDocument(snapshot, options);
+  const blob = doc.output("blob") as Blob;
+  return { blob, filename: `${base}-full-report.pdf` };
 }
 
 /**

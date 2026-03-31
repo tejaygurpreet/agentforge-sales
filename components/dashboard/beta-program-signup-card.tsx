@@ -92,19 +92,13 @@ export function BetaProgramSignupCard() {
       </CardHeader>
       <CardContent className="pt-6">
         {success ? (
-          <div
-            role="status"
-            className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-900 dark:text-emerald-100"
-          >
+          <div role="status" className="ux-inline-success px-4 py-3 text-sm font-medium">
             Thanks — you&apos;re on the beta list. We&apos;ll be in touch soon.
           </div>
         ) : (
           <form className="space-y-5" onSubmit={(e) => void onSubmit(e)} noValidate>
             {error ? (
-              <p
-                role="alert"
-                className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-              >
+              <p role="alert" className="ux-inline-error">
                 {error}
               </p>
             ) : null}

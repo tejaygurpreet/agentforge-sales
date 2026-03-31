@@ -13,7 +13,7 @@ function TabsList({
   return (
     <TabsPrimitive.List
       className={cn(
-        "inline-flex h-11 items-center justify-center rounded-xl border border-border/60 bg-muted/40 p-1 text-muted-foreground shadow-inner ring-1 ring-black/[0.03] dark:bg-muted/30 dark:ring-white/[0.06]",
+        "inline-flex h-11 items-center justify-center rounded-xl border border-border/50 bg-gradient-to-b from-muted/70 to-muted/40 p-1 text-muted-foreground shadow-inner ring-1 ring-black/[0.03]",
         className,
       )}
       {...props}
@@ -30,9 +30,10 @@ function TabsTrigger({
     <TabsPrimitive.Trigger
       suppressHydrationWarning
       className={cn(
-        "inline-flex min-w-[120px] items-center justify-center whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200",
-        "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-md data-[state=active]:ring-1 data-[state=active]:ring-border/60",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "inline-flex min-w-[120px] items-center justify-center whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
+        "hover:bg-muted/45 hover:text-foreground/95",
+        "data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-soft data-[state=active]:ring-1 data-[state=active]:ring-border/45 data-[state=active]:transition-transform",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         className,
       )}
       {...props}
@@ -48,7 +49,7 @@ function TabsContent({
   return (
     <TabsPrimitive.Content
       className={cn(
-        "mt-6 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        "mt-8 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:mt-9",
         className,
       )}
       {...props}

@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { dashboardOutlineActionClass } from "@/lib/dashboard-action-classes";
 import { cn } from "@/lib/utils";
-import { Link2, Loader2, Unplug } from "lucide-react";
+import { Link2, Loader2, PlugZap, Unplug } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -75,85 +75,87 @@ export function HubSpotConnectSection({ connected: initialConnected }: Props) {
   return (
     <Card
       className={cn(
-        "premium-surface rounded-2xl border border-orange-500/25 bg-gradient-to-br from-card/95 via-card/85 to-orange-500/[0.06] shadow-lg ring-1 ring-orange-500/15 dark:to-orange-500/[0.1]",
+        "h-full overflow-hidden rounded-2xl border-border/55 bg-card shadow-lift ring-1 ring-border/25",
+        "transition-all duration-300 hover:-translate-y-0.5 hover:shadow-soft",
       )}
     >
-      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0 pb-4">
-        <div className="space-y-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-lg border border-orange-500/35 bg-orange-500/15 p-2 text-orange-700 dark:text-orange-200">
-              <Link2 className="h-4 w-4" aria-hidden />
-            </span>
-            <CardTitle className="text-lg font-semibold tracking-tight">Connect HubSpot</CardTitle>
-            {connected ? (
-              <Badge className="border-emerald-500/40 bg-emerald-600/15 text-emerald-900 dark:text-emerald-100">
-                Connected
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="border-muted-foreground/30">
-                Not connected
-              </Badge>
-            )}
+      <CardHeader className="space-y-4 border-b border-border/40 bg-gradient-to-br from-orange-500/[0.08] via-card to-amber-500/[0.04] px-6 pb-6 pt-7 sm:px-8 sm:pt-8">
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-orange-900/80">CRM sync</p>
+        <div className="flex flex-wrap items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-orange-400/35 bg-card shadow-sm">
+            <Link2 className="h-6 w-6 text-orange-700" aria-hidden />
           </div>
-          <CardDescription className="max-w-2xl text-sm">
-            Add a{" "}
-            <span className="font-medium text-foreground">Private App access token</span> from HubSpot
-            (Settings → Integrations → Private Apps). It is stored encrypted at rest in your Supabase
-            workspace and used only from this server to sync deals and notes — never exposed to the
-            browser.
-          </CardDescription>
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle className="text-xl font-semibold tracking-tight">HubSpot CRM</CardTitle>
+              {connected ? (
+                <Badge className="border-emerald-500/35 bg-emerald-600/12 font-semibold text-emerald-900 shadow-sm">
+                  Connected
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="border-border/60 font-medium text-muted-foreground">
+                  Not connected
+                </Badge>
+              )}
+            </div>
+            <CardDescription className="text-[15px] leading-relaxed text-muted-foreground">
+              Add a{" "}
+              <span className="font-medium text-foreground">Private App access token</span> from HubSpot
+              (Settings → Integrations → Private Apps). Stored encrypted in your workspace — used only from
+              this server to sync deals and notes, never exposed to the browser.
+            </CardDescription>
+          </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-5 px-6 py-8 sm:px-8 sm:py-9">
         {error ? (
-          <p
-            role="alert"
-            className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          >
+          <p role="alert" className="ux-inline-error px-4 py-3">
             {error}
           </p>
         ) : null}
         {!connected ? (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="min-w-0 flex-1 space-y-2">
-              <Label htmlFor="hubspot-token">Private app access token</Label>
-              <Input
-                id="hubspot-token"
-                name="access_token"
-                type="password"
-                autoComplete="off"
-                placeholder="pat-na1-…"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                className="font-mono text-sm"
-              />
+          <div className="rounded-2xl border border-border/45 bg-muted/20 p-5 shadow-inner sm:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Label htmlFor="hubspot-token">Private app access token</Label>
+                <Input
+                  id="hubspot-token"
+                  name="access_token"
+                  type="password"
+                  autoComplete="off"
+                  placeholder="pat-na1-…"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  className="h-11 rounded-xl border-border/60 font-mono text-sm shadow-sm"
+                />
+              </div>
+              <Button
+                type="button"
+                disabled={busy || token.trim().length < 20}
+                className="h-11 shrink-0 gap-2 rounded-xl px-6 shadow-soft sm:w-auto"
+                onClick={() => void onConnect()}
+              >
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <PlugZap className="h-4 w-4" aria-hidden />}
+                Connect HubSpot
+              </Button>
             </div>
-            <Button
-              type="button"
-              disabled={busy || token.trim().length < 20}
-              className={cn("shrink-0 gap-2 sm:w-auto", dashboardOutlineActionClass)}
-              onClick={() => void onConnect()}
-            >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-              Connect
-            </Button>
           </div>
         ) : (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-3 rounded-2xl border border-emerald-400/30 bg-emerald-500/[0.06] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className={cn("gap-2", dashboardOutlineActionClass)}
+              className={cn("w-fit gap-2 rounded-xl", dashboardOutlineActionClass)}
               disabled={busy}
               onClick={() => void onDisconnect()}
             >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Unplug className="h-4 w-4" />}
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Unplug className="h-4 w-4" aria-hidden />}
               Disconnect
             </Button>
-            <p className="text-xs text-muted-foreground">
-              Use <strong className="font-medium text-foreground">Export to HubSpot</strong> on a
-              completed campaign to create a deal, notes, and attach the dossier PDF.
+            <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
+              Use <strong className="font-medium text-foreground">Export to HubSpot</strong> on a completed
+              campaign to create a deal, notes, and attach the dossier PDF.
             </p>
           </div>
         )}

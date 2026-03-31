@@ -27,8 +27,9 @@ export function ObjectionLibrarySection({ transcripts, objections }: Props) {
 
   return (
     <section
+      id="objection-library-section"
       aria-labelledby="objection-library-heading"
-      className="rounded-2xl border border-border/80 bg-card/40 shadow-sm backdrop-blur-sm"
+      className="scroll-mt-24 rounded-2xl border border-border/80 bg-card/40 shadow-sm backdrop-blur-sm"
     >
       <Card className="border-0 bg-transparent shadow-none">
         <CardHeader className="pb-2">

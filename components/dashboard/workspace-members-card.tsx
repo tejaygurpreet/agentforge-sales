@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { dashboardOutlineActionClass } from "@/lib/dashboard-action-classes";
 import { cn } from "@/lib/utils";
 import type { WorkspaceMemberDTO, WorkspaceMemberRole } from "@/types";
-import { Loader2, Users } from "lucide-react";
+import { Loader2, Mail, Send, Shield, Sparkles, UserPlus, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "@/hooks/use-toast";
@@ -28,6 +28,47 @@ type Props = {
 };
 
 const ROLE_OPTIONS: WorkspaceMemberRole[] = ["admin", "member", "viewer"];
+
+const ROLE_LABEL: Record<WorkspaceMemberRole, string> = {
+  admin: "Admin",
+  member: "Member",
+  viewer: "Viewer",
+};
+
+function roleHint(role: WorkspaceMemberRole): string {
+  switch (role) {
+    case "admin":
+      return "Full access — invites & roles";
+    case "member":
+      return "Create and run campaigns";
+    case "viewer":
+      return "Read-only analytics & history";
+    default:
+      return "";
+  }
+}
+
+function displayLabel(m: WorkspaceMemberDTO): string {
+  if (m.is_self) return "You";
+  return m.invited_email || m.user_id || "Member";
+}
+
+function secondaryLine(m: WorkspaceMemberDTO): string {
+  if (m.is_self && m.invited_email) return m.invited_email;
+  if (m.invited_email && m.invited_email !== displayLabel(m)) return m.invited_email;
+  if (m.user_id && !m.invited_email) return m.user_id;
+  return "";
+}
+
+function initialsForMember(m: WorkspaceMemberDTO): string {
+  const raw = m.invited_email || m.user_id || "?";
+  const local = raw.split("@")[0] ?? raw;
+  const parts = local.split(/[._-]+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase().slice(0, 2);
+  }
+  return local.slice(0, 2).toUpperCase() || "?";
+}
 
 export function WorkspaceMembersCard({ members, currentRole }: Props) {
   const router = useRouter();
@@ -86,117 +127,198 @@ export function WorkspaceMembersCard({ members, currentRole }: Props) {
   }
 
   return (
-    <Card className="rounded-2xl border-border/80 shadow-xl ring-1 ring-border/20 dark:ring-white/[0.07]">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg tracking-tight">
-          <Users className="h-5 w-5 text-primary" aria-hidden />
-          Workspace members
-        </CardTitle>
-        <CardDescription>
-          Invite team members to share campaigns, leads, and analytics in this workspace. AI team coaching
-          insights (Prompt 101) live on the Coaching tab.
-        </CardDescription>
+    <Card
+      className={cn(
+        "overflow-hidden rounded-2xl border-border/55 bg-card shadow-lift ring-1 ring-border/25",
+        "transition-shadow duration-300 hover:shadow-soft",
+      )}
+    >
+      <CardHeader className="space-y-3 border-b border-border/40 bg-gradient-to-br from-violet-500/[0.07] via-card to-sky-500/[0.05] px-6 pb-6 pt-7 sm:px-8 sm:pt-8">
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-800/85">
+          Collaboration
+        </p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 flex-1 gap-4">
+            <div className="mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-violet-400/30 bg-card shadow-sm">
+              <Users className="h-6 w-6 text-violet-700" aria-hidden />
+            </div>
+            <div className="min-w-0 space-y-2">
+              <CardTitle className="text-xl font-semibold tracking-tight text-foreground">
+                Team &amp; workspace
+              </CardTitle>
+              <CardDescription className="text-[15px] leading-relaxed text-muted-foreground">
+                Invite teammates to share campaigns, leads, and analytics. AI team coaching (Coaching tab)
+                uses this roster for shared context.
+              </CardDescription>
+            </div>
+          </div>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <form onSubmit={onInvite} className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
-          <div className="space-y-1.5">
-            <Label htmlFor="invite-email">Email</Label>
-            <Input
-              id="invite-email"
-              type="email"
-              placeholder="teammate@company.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={pending || !canManage}
-              autoComplete="email"
-            />
+
+      <CardContent className="space-y-8 px-6 py-8 sm:px-8 sm:py-9">
+        <div
+          className={cn(
+            "rounded-2xl border border-border/50 bg-gradient-to-br from-muted/35 via-card to-card p-5 shadow-inner ring-1 ring-black/[0.02] sm:p-6",
+            !canManage && "opacity-95",
+          )}
+        >
+          <div className="mb-4 flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/20 bg-primary/[0.06] text-primary shadow-sm">
+              <UserPlus className="h-4 w-4" aria-hidden />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">Invite someone new</p>
+              <p className="text-xs text-muted-foreground">They&apos;ll get workspace access based on the role you pick.</p>
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="invite-role">Role</Label>
-            <select
-              id="invite-role"
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-              value={role}
-              onChange={(e) => setRole(e.target.value as WorkspaceMemberRole)}
-              disabled={pending || !canManage}
-            >
-              {ROLE_OPTIONS.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="self-end">
-            <Button type="submit" disabled={pending || !canManage} className="gap-2">
-              {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Invite
-            </Button>
-          </div>
-        </form>
+          <form onSubmit={onInvite} className="grid gap-4 sm:grid-cols-[1fr_minmax(8rem,10rem)_auto] sm:items-end">
+            <div className="space-y-2">
+              <Label htmlFor="invite-email" className="text-sm font-medium">
+                Work email
+              </Label>
+              <div className="relative">
+                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+                <Input
+                  id="invite-email"
+                  type="email"
+                  placeholder="teammate@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={pending || !canManage}
+                  autoComplete="email"
+                  className="h-11 rounded-xl border-border/60 pl-10 shadow-sm transition-shadow focus-visible:ring-2 focus-visible:ring-primary/25"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="invite-role" className="text-sm font-medium">
+                Default role
+              </Label>
+              <select
+                id="invite-role"
+                className={cn(
+                  "flex h-11 w-full rounded-xl border border-border/60 bg-card px-3 text-sm shadow-sm",
+                  "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
+                )}
+                value={role}
+                onChange={(e) => setRole(e.target.value as WorkspaceMemberRole)}
+                disabled={pending || !canManage}
+                title={roleHint(role)}
+              >
+                {ROLE_OPTIONS.map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABEL[r]}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] leading-snug text-muted-foreground">{roleHint(role)}</p>
+            </div>
+            <div className="flex sm:justify-end">
+              <Button
+                type="submit"
+                disabled={pending || !canManage || !email.trim()}
+                className="h-11 min-w-[8.5rem] gap-2 rounded-xl px-6 shadow-soft transition-transform active:scale-[0.99]"
+              >
+                {pending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Send className="h-4 w-4" aria-hidden />}
+                Send invite
+              </Button>
+            </div>
+          </form>
+        </div>
 
         {!canManage ? (
-          <p className="text-xs text-muted-foreground">
-            Your role is <span className="font-semibold">{currentRole}</span>. Only admins can manage
-            invitations and roles.
+          <p className="flex items-start gap-2 rounded-xl border border-amber-400/35 bg-amber-500/[0.08] px-4 py-3 text-sm text-amber-950">
+            <Shield className="mt-0.5 h-4 w-4 shrink-0 opacity-80" aria-hidden />
+            <span>
+              Your role is <span className="font-semibold capitalize">{currentRole}</span>. Only admins can
+              send invites or change roles.
+            </span>
           </p>
         ) : null}
 
-        <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Active members ({activeMembers.length})
-          </p>
-          <ul className="space-y-2">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              Active members · {activeMembers.length}
+            </p>
+            <Sparkles className="h-3.5 w-3.5 text-muted-foreground/60" aria-hidden />
+          </div>
+          <ul className="grid gap-3 sm:grid-cols-1 lg:grid-cols-2">
             {activeMembers.map((m) => (
-              <li
-                key={`${m.workspace_id}-${m.user_id ?? m.invited_email ?? m.created_at}`}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {m.is_self ? "You" : m.invited_email || m.user_id || "Member"}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {m.user_id ?? m.invited_email ?? "—"}
-                  </p>
+              <li key={`${m.workspace_id}-${m.user_id ?? m.invited_email ?? m.created_at}`}>
+                <div
+                  className={cn(
+                    "group flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/55 bg-card px-4 py-3.5 shadow-sm",
+                    "ring-1 ring-black/[0.02] transition-all duration-200 hover:border-primary/20 hover:shadow-md",
+                  )}
+                >
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                    <div
+                      className={cn(
+                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm font-bold tabular-nums text-white shadow-sm",
+                        m.is_self
+                          ? "bg-gradient-to-br from-violet-500 to-violet-600"
+                          : "bg-gradient-to-br from-slate-500 to-slate-600",
+                      )}
+                      aria-hidden
+                    >
+                      {m.is_self ? "You" : initialsForMember(m)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-foreground">{displayLabel(m)}</p>
+                      {secondaryLine(m) ? (
+                        <p className="truncate text-xs text-muted-foreground">{secondaryLine(m)}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                  {canManage && !m.is_self && m.user_id ? (
+                    <select
+                      className={cn(
+                        "h-9 rounded-lg border border-border/60 bg-background px-2.5 text-xs font-medium shadow-sm",
+                        "transition-colors hover:border-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
+                        dashboardOutlineActionClass,
+                      )}
+                      value={m.role}
+                      onChange={(e) => onRoleChange(m, e.target.value as WorkspaceMemberRole)}
+                      disabled={pending}
+                      aria-label={`Role for ${displayLabel(m)}`}
+                    >
+                      {ROLE_OPTIONS.map((r) => (
+                        <option key={r} value={r}>
+                          {ROLE_LABEL[r]}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="rounded-full border border-border/50 bg-muted/40 px-3 py-1 text-xs font-semibold capitalize text-muted-foreground">
+                      {ROLE_LABEL[m.role]}
+                    </span>
+                  )}
                 </div>
-                {canManage && !m.is_self && m.user_id ? (
-                  <select
-                    className={cn(
-                      "h-8 rounded-md border border-input bg-background px-2 text-xs",
-                      dashboardOutlineActionClass,
-                    )}
-                    value={m.role}
-                    onChange={(e) => onRoleChange(m, e.target.value as WorkspaceMemberRole)}
-                    disabled={pending}
-                  >
-                    {ROLE_OPTIONS.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <span className="text-xs capitalize text-muted-foreground">{m.role}</span>
-                )}
               </li>
             ))}
           </ul>
         </div>
 
         {pendingInvites.length > 0 ? (
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Pending invites ({pendingInvites.length})
+          <div className="space-y-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+              Pending invites · {pendingInvites.length}
             </p>
             <ul className="space-y-2">
               {pendingInvites.map((m) => (
                 <li
                   key={`${m.workspace_id}-${m.invited_email ?? m.created_at}`}
-                  className="flex items-center justify-between rounded-md border border-dashed border-border/70 px-3 py-2 text-sm"
+                  className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-amber-400/45 bg-amber-500/[0.06] px-4 py-3 text-sm"
                 >
-                  <span className="truncate">{m.invited_email ?? "pending"}</span>
-                  <span className="text-xs capitalize text-muted-foreground">{m.role}</span>
+                  <span className="flex min-w-0 items-center gap-2 truncate font-medium text-foreground">
+                    <Mail className="h-4 w-4 shrink-0 text-amber-700/80" aria-hidden />
+                    <span className="truncate">{m.invited_email ?? "pending"}</span>
+                  </span>
+                  <span className="shrink-0 rounded-full bg-background/80 px-2.5 py-0.5 text-xs font-semibold capitalize text-muted-foreground shadow-sm">
+                    {ROLE_LABEL[m.role]}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -206,4 +328,3 @@ export function WorkspaceMembersCard({ members, currentRole }: Props) {
     </Card>
   );
 }
-

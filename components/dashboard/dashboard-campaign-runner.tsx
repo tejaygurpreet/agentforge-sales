@@ -5,6 +5,7 @@ import {
   startCampaignAction,
   startCampaignWithOptionsAction,
 } from "@/app/(dashboard)/actions";
+import { CampaignFlowGuideStrip } from "@/components/dashboard/campaign-flow-guide";
 import { CampaignWorkspace } from "@/components/dashboard/campaign-workspace";
 import type { CampaignRerunPayload } from "@/components/dashboard/campaign-rerun-types";
 import { RecentCampaigns } from "@/components/dashboard/recent-campaigns";
@@ -17,6 +18,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { dashboardOutlineActionClass } from "@/lib/dashboard-action-classes";
 import { cn } from "@/lib/utils";
 import { leadFormSchema, type LeadFormInput } from "@/agents/types";
@@ -28,7 +34,7 @@ import type {
   PersistedCampaignRow,
   WhiteLabelClientSettingsDTO,
 } from "@/types";
-import { Layers, Loader2, Play } from "lucide-react";
+import { HelpCircle, Layers, Loader2, Play } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
@@ -60,7 +66,7 @@ type Props = {
 const batchJsonSchema = z.array(leadFormSchema);
 
 /**
- * Client-only shell: recent list + optional batch mode + new-lead workspace (Prompt 24 + 70).
+ * Client-only shell: guided new-campaign path + optional batch mode + recent history (Prompt 24 + 70 + 104).
  */
 export function DashboardCampaignRunner({
   recentCampaigns,
@@ -231,19 +237,39 @@ export function DashboardCampaignRunner({
   }, [recentCampaigns, selectedCampaignIds, runBatch]);
 
   return (
-    <div className="space-y-10 sm:space-y-12">
+    <div className="space-y-8 sm:space-y-10">
+      <CampaignFlowGuideStrip />
+
       <div
         className={cn(
-          "premium-surface flex flex-col gap-4 rounded-2xl border border-border/60 bg-card/50 px-4 py-4 ring-1 ring-white/[0.04] sm:flex-row sm:items-center sm:justify-between sm:px-5",
+          "premium-surface flex flex-col gap-4 rounded-2xl border border-border/50 bg-card/80 px-4 py-4 shadow-soft ring-1 ring-border/20 sm:flex-row sm:items-center sm:justify-between sm:px-5",
         )}
       >
-        <div className="flex items-center gap-3">
-          <Layers className="h-5 w-5 text-primary" aria-hidden />
-          <div>
-            <p className="text-sm font-semibold">Batch mode</p>
-            <p className="text-xs text-muted-foreground">
-              Optional — run several campaigns in parallel (3 at a time). Single-lead form below is
-              unchanged.
+        <div className="flex min-w-0 items-start gap-3 sm:items-center">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-muted/40 text-primary shadow-sm">
+            <Layers className="h-5 w-5" aria-hidden />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-foreground">Batch mode</p>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    aria-label="What is batch mode?"
+                  >
+                    <HelpCircle className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs text-left leading-relaxed">
+                  Run several campaigns in parallel (up to three at a time). The single-lead form below is
+                  unchanged — use batch for lists you already have in JSON or from Recent campaigns.
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+              Optional — power users & lists. Turn on only when you need parallel runs.
             </p>
           </div>
         </div>
@@ -268,17 +294,18 @@ export function DashboardCampaignRunner({
       </div>
 
       {batchMode ? (
-        <Card className="premium-card-interactive rounded-2xl border-border/80 bg-card/95 shadow-lg ring-1 ring-border/15 dark:ring-white/[0.06]">
+        <Card className="premium-card-interactive rounded-2xl border-border/60 bg-card shadow-soft ring-1 ring-border/25">
           <CardHeader>
             <CardTitle className="text-lg">Batch campaigns</CardTitle>
             <CardDescription>
-              Paste a JSON array of leads (same fields as the form). Or select rows in Recent
-              campaigns (when a snapshot exists) and run the selection.
+              Paste a JSON array of leads (same fields as the form). Or select rows in{" "}
+              <span className="font-medium text-foreground/90">Recent campaigns</span> (below) when a
+              snapshot exists, then run the selection.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {batchError ? (
-              <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p className="ux-inline-error" role="alert">
                 {batchError}
               </p>
             ) : null}
@@ -289,7 +316,7 @@ export function DashboardCampaignRunner({
                 </p>
                 <select
                   id="batch-sequence"
-                  className="mt-2 flex h-10 w-full max-w-md rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-2 flex h-10 w-full max-w-md rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   value={batchSequenceId}
                   onChange={(e) => setBatchSequenceId(e.target.value)}
                   disabled={batchBusy}
@@ -346,13 +373,6 @@ export function DashboardCampaignRunner({
         </Card>
       ) : null}
 
-      <RecentCampaigns
-        campaigns={recentCampaigns}
-        onRerunLead={handleRerun}
-        batchMode={batchMode}
-        selectedIds={selectedCampaignIds}
-        onToggleSelect={toggleSelect}
-      />
       <CampaignWorkspace
         rerunRequest={rerunRequest}
         onRerunConsumed={onRerunConsumed}
@@ -364,6 +384,14 @@ export function DashboardCampaignRunner({
         onSequencePrefillConsumed={onSequencePrefillConsumed}
         calendarStatus={calendarStatus}
         recentCampaigns={recentCampaigns}
+      />
+
+      <RecentCampaigns
+        campaigns={recentCampaigns}
+        onRerunLead={handleRerun}
+        batchMode={batchMode}
+        selectedIds={selectedCampaignIds}
+        onToggleSelect={toggleSelect}
       />
     </div>
   );

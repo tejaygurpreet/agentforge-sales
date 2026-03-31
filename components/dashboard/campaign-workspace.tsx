@@ -51,6 +51,7 @@ import {
 } from "@/app/(dashboard)/actions";
 import { DashboardReplyStrip } from "@/components/dashboard/dashboard-reply-strip";
 import { useReplyIntel } from "@/components/dashboard/reply-intel-context";
+import { CampaignPdfPreviewDialog } from "@/components/dashboard/campaign-pdf-preview-dialog";
 import { MeetingSchedulerPanel } from "@/components/dashboard/meeting-scheduler-panel";
 import { PersonalizedDemoBookingCard } from "@/components/dashboard/personalized-demo-booking-card";
 import { OptimizerPanel } from "@/components/dashboard/optimizer-panel";
@@ -74,7 +75,7 @@ import {
   type SmartFollowUpStepPlan,
 } from "@/agents/types";
 import { toast } from "@/hooks/use-toast";
-import { buildCampaignPdfExportOptions, loadPdfBranding } from "@/lib/pdf-branding";
+import { loadPdfBranding } from "@/lib/pdf-branding";
 import { getVoiceSampleEmailPreview } from "@/lib/sdr-voice-preview";
 import { SDR_VOICE_OPTIONS, sdrVoiceLabel, voiceLabelForLead } from "@/lib/sdr-voice";
 import type {
@@ -115,6 +116,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -499,7 +501,7 @@ function outreachNotice(outreach: {
   if (isOutreachReadyToSend(outreach)) {
     return {
       friendly:
-        "Draft generated — click Send Email above to deliver via Resend.",
+        "Draft generated — use Send Email below to deliver via Resend.",
       detail: undefined,
     };
   }
@@ -765,6 +767,7 @@ export function CampaignWorkspace({
   const [snapshot, setSnapshot] = useState<CampaignClientSnapshot | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [voicePreviewOpen, setVoicePreviewOpen] = useState(false);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const [copyTip, setCopyTip] = useState<"email" | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [exportTip, setExportTip] = useState<string | null>(null);
@@ -1284,30 +1287,6 @@ export function CampaignWorkspace({
     }
   }
 
-  async function exportCampaignPdf() {
-    if (!snapshot) return;
-    setExportTip(null);
-    try {
-      const { downloadCampaignPdfSummary } = await import("@/lib/campaign-pdf");
-      const opts = await buildCampaignPdfExportOptions(whiteLabel ?? undefined);
-      await downloadCampaignPdfSummary(snapshot, opts);
-      setExportTip("Premium PDF saved — executive one-pager + full dossier.");
-      toast({
-        title: "PDF exported",
-        description: "Branded report downloaded (check your downloads folder).",
-      });
-      window.setTimeout(() => setExportTip(null), 4500);
-    } catch {
-      setExportTip("PDF failed — use Markdown or JSON.");
-      toast({
-        variant: "destructive",
-        title: "PDF export failed",
-        description: "Try Markdown or JSON, or check the browser console.",
-      });
-      window.setTimeout(() => setExportTip(null), 5500);
-    }
-  }
-
   return (
     <div
       id="campaign-workspace"
@@ -1318,20 +1297,16 @@ export function CampaignWorkspace({
       <DashboardReplyStrip />
 
       {isPending ? (
-        <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-background/75 backdrop-blur-[2px]"
-          role="status"
-          aria-live="polite"
-          aria-busy="true"
-        >
-          <div className="flex flex-col items-center gap-3 rounded-xl border bg-card px-8 py-6 shadow-lg">
-            <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <div className="text-center">
-              <p className="font-semibold">Running campaign</p>
-              <p className="max-w-xs text-sm text-muted-foreground">
-                Lead intel → research → outreach → qualification → nurture. Usually under a minute.
+        <div className="ux-loading-overlay" role="status" aria-live="polite" aria-busy="true">
+          <div className="ux-loading-panel">
+            <Loader2 className="h-10 w-10 shrink-0 animate-spin text-primary" aria-hidden />
+            <div className="space-y-1">
+              <p className="text-base font-semibold tracking-tight text-foreground">Running your campaign</p>
+              <p className="max-w-xs text-sm leading-relaxed text-muted-foreground">
+                Lead intel → research → outreach → qualification → nurture. Most runs finish in under a
+                minute.
               </p>
-              <p className="mt-2 inline-flex items-center gap-2 rounded-lg border border-violet-500/35 bg-violet-500/[0.1] px-3 py-1.5 text-sm font-semibold text-violet-950 dark:border-violet-400/35 dark:bg-violet-500/15 dark:text-violet-50">
+              <p className="mt-3 inline-flex items-center gap-2 rounded-xl border border-violet-200/80 bg-violet-500/[0.1] px-3 py-1.5 text-sm font-semibold text-violet-900 shadow-sm ring-1 ring-violet-200/40 dark:border-violet-400/35 dark:bg-violet-500/15 dark:text-violet-50">
                 <Mic className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
                 Voice: {activeVoiceLabel}
               </p>
@@ -1342,8 +1317,8 @@ export function CampaignWorkspace({
 
       <Card
         className={cn(
-          "rounded-2xl border-border/80 bg-card/95 shadow-xl ring-1 ring-border/20 transition-all duration-500 dark:bg-card/95 dark:ring-white/[0.07]",
-          "hover:shadow-2xl hover:ring-border/35",
+          "rounded-2xl border-border/70 bg-card/95 shadow-soft ring-1 ring-border/25 transition-all duration-500 dark:bg-card/95 dark:ring-white/[0.07]",
+          "hover:shadow-lift hover:ring-primary/15",
           isPending && "pointer-events-none opacity-55",
         )}
       >
@@ -1351,10 +1326,12 @@ export function CampaignWorkspace({
           <div>
             <CardTitle className="text-xl tracking-tight">New campaign</CardTitle>
             <CardDescription className="mt-1.5 text-sm leading-relaxed">
-              One submit runs the full graph. Thread id:{" "}
-              <code className="rounded bg-muted/80 px-1.5 py-0.5 text-xs">
+              Add a lead, pick a voice, then start — one run walks research → outreach → qualification →
+              nurture. Each thread id looks like{" "}
+              <code className="rounded-md bg-muted/80 px-1.5 py-0.5 text-xs">
                 {"`${userId}_${Date.now()}`"}
               </code>
+              .
             </CardDescription>
           </div>
           <div
@@ -1388,73 +1365,103 @@ export function CampaignWorkspace({
         </CardHeader>
         <CardContent className="space-y-6 pt-2">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+              <div className="space-y-3">
+                <div>
+                  <h3 className="text-sm font-semibold tracking-tight text-foreground">Lead details</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    Used for research and outreach — double-check spelling so agents find the right account.
+                  </p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Full name</FormLabel>
+                        <FormControl>
+                          <Input
+                            disabled={isPending}
+                            placeholder="Jordan Lee"
+                            autoComplete="name"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>Prospect or champion as they sign emails.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="company"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Company</FormLabel>
+                        <FormControl>
+                          <Input
+                            disabled={isPending}
+                            placeholder="Acme Corp"
+                            autoComplete="organization"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>Legal or brand name agents should research against.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
                 <FormField
                   control={form.control}
-                  name="name"
+                  name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Name</FormLabel>
+                      <FormLabel>Work email</FormLabel>
                       <FormControl>
-                        <Input disabled={isPending} {...field} />
+                        <Input
+                          type="email"
+                          autoComplete="email"
+                          disabled={isPending}
+                          placeholder="jordan@company.com"
+                          {...field}
+                        />
                       </FormControl>
+                      <FormDescription>Routing for outreach review and thread identity — not auto-sent without your send action.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
                 <FormField
                   control={form.control}
-                  name="company"
+                  name="linkedin_url"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Company</FormLabel>
+                      <FormLabel>LinkedIn URL (optional)</FormLabel>
                       <FormControl>
-                        <Input disabled={isPending} {...field} />
+                        <Input
+                          type="url"
+                          placeholder="https://linkedin.com/in/…"
+                          disabled={isPending}
+                          {...field}
+                          value={field.value ?? ""}
+                        />
                       </FormControl>
+                      <FormDescription>Helps agents align tone and role when present.</FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               </div>
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="email"
-                        autoComplete="email"
-                        disabled={isPending}
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="linkedin_url"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>LinkedIn URL (optional)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="url"
-                        placeholder="https://linkedin.com/in/…"
-                        disabled={isPending}
-                        {...field}
-                        value={field.value ?? ""}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+
               <div className="space-y-3 rounded-xl border border-border/65 bg-muted/15 px-4 py-4 dark:bg-muted/10">
+                <div>
+                  <h3 className="text-sm font-semibold tracking-tight text-foreground">Voice &amp; tone</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    This voice is injected into every agent stage — presets are fast; custom voices use your saved instructions.
+                  </p>
+                </div>
                 <div className="flex items-center gap-2">
                   <FormLabel className="m-0 text-base">Campaign voice</FormLabel>
                   <Tooltip>
@@ -1523,7 +1530,7 @@ export function CampaignWorkspace({
                           <select
                             disabled={isPending}
                             className={cn(
-                              "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors",
+                              "flex h-9 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm transition-colors",
                               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                               "disabled:cursor-not-allowed disabled:opacity-50",
                             )}
@@ -1554,7 +1561,7 @@ export function CampaignWorkspace({
                           <select
                             disabled={isPending}
                             className={cn(
-                              "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors",
+                              "flex h-9 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm transition-colors",
                               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                               "disabled:cursor-not-allowed disabled:opacity-50",
                             )}
@@ -1602,24 +1609,30 @@ export function CampaignWorkspace({
                   </p>
                 ) : null}
               </div>
-              <FormField
-                control={form.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Notes</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        disabled={isPending}
-                        placeholder="Context for the agents — ICP hints, timing, competitors…"
-                        className="min-h-[88px] resize-y"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold tracking-tight text-foreground">Context (optional)</h3>
+                <FormField
+                  control={form.control}
+                  name="notes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notes for agents</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          disabled={isPending}
+                          placeholder="ICP hints, timing, competitors, internal notes…"
+                          className="min-h-[96px] resize-y"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Passed into research and follow-up — more detail usually means sharper angles.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
               <div
                 className="flex flex-col gap-2 rounded-xl border-2 border-primary/30 bg-primary/[0.08] px-4 py-4 shadow-sm dark:border-primary/35 dark:bg-primary/[0.11] sm:flex-row sm:items-center sm:justify-between"
                 role="status"
@@ -1677,7 +1690,7 @@ export function CampaignWorkspace({
                   before you start. The same enrichment runs automatically when you click Start campaign.
                 </p>
                 {enrichmentError ? (
-                  <p className="rounded-md border border-destructive/35 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  <p className="ux-inline-error" role="alert">
                     {enrichmentError}
                   </p>
                 ) : null}
@@ -1701,7 +1714,7 @@ export function CampaignWorkspace({
                     id="workspace-sequence-select"
                     disabled={isPending}
                     className={cn(
-                      "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm",
+                      "flex h-10 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       "disabled:cursor-not-allowed disabled:opacity-50",
                     )}
@@ -1741,9 +1754,7 @@ export function CampaignWorkspace({
             <div
               role="status"
               className={
-                feedback.type === "success"
-                  ? "rounded-md border border-green-600/30 bg-green-500/10 px-3 py-2 text-sm text-green-800 dark:text-green-200"
-                  : "rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                feedback.type === "success" ? "ux-inline-success" : "ux-inline-error"
               }
             >
               {feedback.text}
@@ -1800,6 +1811,17 @@ export function CampaignWorkspace({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CampaignPdfPreviewDialog
+        open={pdfPreviewOpen}
+        onOpenChange={setPdfPreviewOpen}
+        snapshot={snapshot}
+        whiteLabel={whiteLabel}
+        onDownloaded={() => {
+          setExportTip("Premium PDF saved — executive one-pager + full dossier.");
+          window.setTimeout(() => setExportTip(null), 4500);
+        }}
+      />
 
       {snapshot ? (
         <div className="space-y-6">
@@ -1905,9 +1927,12 @@ export function CampaignWorkspace({
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="cursor-pointer gap-2 py-2.5"
-                    onClick={() => void exportCampaignPdf()}
+                    onClick={() => {
+                      setExportTip(null);
+                      setPdfPreviewOpen(true);
+                    }}
                   >
-                    <FileText className="h-4 w-4 opacity-70" />
+                    <Eye className="h-4 w-4 opacity-70" aria-hidden />
                     PDF (executive + dossier)
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -2002,24 +2027,24 @@ export function CampaignWorkspace({
           </Dialog>
 
           {snapshot.final_status === "completed_with_errors" ? (
-            <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="flex gap-2 ux-inline-warning">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-200" />
               <div>
-                <p className="font-medium">Finished with step errors</p>
-                <p>
-                  All stages ran; some nodes logged errors. Review the cards or open{" "}
-                  <span className="font-medium">View full log</span>.
+                <p className="font-medium">Finished with a few step warnings</p>
+                <p className="opacity-95">
+                  Every stage ran; some nodes reported issues. Review the cards below or open{" "}
+                  <span className="font-medium">View full log</span> for detail.
                 </p>
               </div>
             </div>
           ) : null}
 
           {snapshot.pipeline_error ? (
-            <div className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div className="flex gap-2 ux-inline-error">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <div>
-                <p className="font-medium">Pipeline error</p>
-                <p>{humanizeClientError(snapshot.pipeline_error)}</p>
+                <p className="font-medium">We hit a snag running the pipeline</p>
+                <p className="opacity-95">{humanizeClientError(snapshot.pipeline_error)}</p>
               </div>
             </div>
           ) : null}
@@ -2352,88 +2377,134 @@ export function CampaignWorkspace({
               <CardHeader
                 className={cn(
                   resultsCardHeaderClass,
-                  "flex flex-row flex-wrap items-start justify-between gap-3",
+                  "flex flex-col gap-4 border-b border-border/45 bg-gradient-to-br from-sky-500/[0.08] via-card to-violet-500/[0.05] sm:flex-row sm:items-start sm:justify-between",
                 )}
               >
-                <div className="min-w-0">
-                  <CardTitle className="text-lg font-semibold tracking-tight">Outreach</CardTitle>
-                  <CardDescription className="mt-1.5">
-                    Subject, email body (HTML), LinkedIn & strategy
-                  </CardDescription>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <StepBadge ok={outreachOk} label="Success" />
-                  {outreach?.linkedin_message?.trim() ? (
-                    <Badge
-                      variant="outline"
-                      className="border-emerald-500/40 bg-emerald-500/10 text-[11px] font-semibold uppercase tracking-wide text-emerald-900 dark:text-emerald-100"
-                    >
-                      LinkedIn Ready
-                    </Badge>
-                  ) : null}
-                  {outreach ? (
-                    isOutreachReadyToSend(outreach) ? (
-                      <>
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <CardTitle className="text-lg font-semibold tracking-tight">Outreach</CardTitle>
+                    <StepBadge ok={outreachOk} label="Success" />
+                    {outreach?.linkedin_message?.trim() ? (
+                      <Badge
+                        variant="outline"
+                        className="border-emerald-400/50 bg-emerald-500/[0.1] text-[11px] font-semibold uppercase tracking-wide text-emerald-900"
+                      >
+                        LinkedIn ready
+                      </Badge>
+                    ) : null}
+                    {outreach ? (
+                      isOutreachReadyToSend(outreach) ? (
                         <Badge
                           variant="outline"
-                          className="border-sky-500/35 text-sky-950 dark:text-sky-100"
+                          className="border-sky-400/50 bg-sky-500/10 text-[11px] font-semibold uppercase tracking-wide text-sky-900"
                         >
                           Ready to send
                         </Badge>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className={cn("gap-1.5", dashboardOutlineActionClass)}
-                          disabled={sendEmailPending}
-                          onClick={() => void onSendOutreachEmail()}
-                        >
-                          {sendEmailPending ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                          ) : (
-                            <Mail className="h-3.5 w-3.5" aria-hidden />
-                          )}
-                          Send Email
-                        </Button>
-                      </>
-                    ) : outreach.email_sent ? (
-                      <Badge className="gap-1">
-                        <CheckCircle2 className="h-3 w-3" />
-                        Sent
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary">Not sent</Badge>
-                    )
-                  ) : null}
+                      ) : outreach.email_sent ? (
+                        <Badge className="gap-1 border border-emerald-500/35 bg-emerald-500/10 text-emerald-900">
+                          <CheckCircle2 className="h-3 w-3" aria-hidden />
+                          Delivered
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">Draft</Badge>
+                      )
+                    ) : null}
+                  </div>
+                  <CardDescription className="text-sm leading-relaxed">
+                    Review the generated first touch, then send via Resend (your workspace From / Reply-To) or
+                    copy anywhere. LinkedIn stays copy-only — never auto-posted.
+                  </CardDescription>
                 </div>
               </CardHeader>
-              <CardContent className={cn(resultsCardContentClass, "space-y-4")}>
+              <CardContent className={cn(resultsCardContentClass, "space-y-5")}>
                 {outreach ? (
                   <>
                     {outreach.email_sent ? (
-                      <p className="rounded-md border border-green-600/30 bg-green-500/10 px-3 py-2 text-sm text-green-800 dark:text-green-200">
-                        Email sent successfully.
-                      </p>
+                      <div
+                        className="flex items-start gap-3 rounded-xl border border-emerald-400/40 bg-gradient-to-r from-emerald-500/[0.1] to-emerald-500/[0.04] px-4 py-3 shadow-sm"
+                        role="status"
+                      >
+                        <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
+                        <div>
+                          <p className="text-sm font-semibold text-emerald-950">Email sent successfully</p>
+                          <p className="mt-0.5 text-xs text-emerald-900/90">
+                            First touch delivered through your connected sending domain.
+                          </p>
+                        </div>
+                      </div>
                     ) : (
                       (() => {
                         const { friendly, detail } = outreachNotice(outreach);
                         if (!friendly) return null;
                         return (
-                          <div className="space-y-2 rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm text-sky-950 dark:text-sky-100">
-                            <p>{friendly}</p>
+                          <div className="space-y-2 rounded-xl border border-sky-400/35 bg-sky-500/[0.08] px-4 py-3 text-sm text-sky-950 shadow-sm">
+                            <p className="font-medium">{friendly}</p>
                             {detail && detail !== friendly ? (
-                              <p className="text-xs opacity-80">{detail}</p>
+                              <p className="text-xs leading-relaxed opacity-90">{detail}</p>
                             ) : null}
                           </div>
                         );
                       })()
                     )}
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Subject
+                    {isOutreachReadyToSend(outreach) ? (
+                      <div className="flex flex-col gap-4 rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/[0.06] via-card to-muted/30 p-4 shadow-soft sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-sm font-semibold text-foreground">Send first touch email</p>
+                          <p className="text-xs leading-relaxed text-muted-foreground">
+                            One click delivers via Resend using your dynamic From and Reply-To (manual send —
+                            nothing leaves without this action).
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          size="lg"
+                          className="h-11 shrink-0 gap-2 px-8 shadow-soft transition-transform active:scale-[0.99] sm:min-w-[200px]"
+                          disabled={sendEmailPending}
+                          onClick={() => void onSendOutreachEmail()}
+                        >
+                          {sendEmailPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                          ) : (
+                            <Mail className="h-4 w-4" aria-hidden />
+                          )}
+                          Send Email
+                        </Button>
+                      </div>
+                    ) : null}
+                    <div className="rounded-xl border border-border/55 bg-muted/25 px-4 py-3 shadow-inner">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                        Subject line
                       </p>
-                      <p className="mt-1 font-medium">{outreach.subject}</p>
+                      <p className="mt-1.5 text-base font-semibold leading-snug text-foreground">
+                        {outreach.subject}
+                      </p>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                        Email body — preview
+                      </p>
+                      <div className="overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-b from-card to-muted/20 shadow-inner ring-1 ring-black/[0.04]">
+                        <div className="flex items-center gap-2 border-b border-border/50 bg-muted/40 px-4 py-2">
+                          <span className="flex gap-1.5" aria-hidden>
+                            <span className="h-2.5 w-2.5 rounded-full bg-rose-400/80" />
+                            <span className="h-2.5 w-2.5 rounded-full bg-amber-400/80" />
+                            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/80" />
+                          </span>
+                          <span className="text-[11px] font-medium text-muted-foreground">Plain-text preview</span>
+                        </div>
+                        <div className="max-h-[20rem] overflow-y-auto px-5 py-4">
+                          <div
+                            className="whitespace-pre-wrap break-words text-[15px] leading-[1.75] tracking-tight text-foreground antialiased"
+                            style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif" }}
+                          >
+                            {emailPlainTextFromHtml(
+                              outreachEmailHtml(outreach as Record<string, unknown>),
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button
                         type="button"
                         variant="outline"
@@ -2441,31 +2512,29 @@ export function CampaignWorkspace({
                         className={cn("gap-1.5", dashboardOutlineActionClass)}
                         onClick={() => void copyEmailForOutreach()}
                       >
-                        <Mail className="h-3.5 w-3.5" />
-                        Copy email
+                        <ClipboardCopy className="h-3.5 w-3.5" aria-hidden />
+                        Copy full email
                       </Button>
                       {copyTip === "email" ? (
-                        <span className="self-center text-xs text-emerald-700 dark:text-emerald-400">
-                          Email copied
-                        </span>
+                        <span className="self-center text-xs font-medium text-emerald-700">Copied</span>
                       ) : null}
                     </div>
-                    <div className="rounded-xl border border-emerald-500/35 bg-gradient-to-br from-emerald-500/[0.08] to-transparent p-4 ring-1 ring-emerald-500/15 dark:from-emerald-500/12">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900 dark:text-emerald-100">
-                        LinkedIn — safe handoff (copy only; no auto-post)
+                    <div className="rounded-xl border border-emerald-400/35 bg-gradient-to-br from-emerald-500/[0.08] to-transparent p-4 shadow-sm ring-1 ring-emerald-500/15">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-900">
+                        LinkedIn — safe handoff
                       </p>
-                      <p className="mt-1.5 text-xs text-muted-foreground">
-                        Copy the DM below, or open LinkedIn compose — we never post on your behalf.
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        Copy-only — we never post on your behalf. Open compose in LinkedIn when you’re ready.
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <Button
                           type="button"
                           size="default"
-                          className="gap-2 px-5 sm:min-w-[220px]"
+                          className="gap-2 px-5 shadow-sm sm:min-w-[200px]"
                           onClick={() => void copyLinkedInMessage()}
                         >
                           <MessageSquare className="h-4 w-4" aria-hidden />
-                          Copy LinkedIn Message
+                          Copy LinkedIn message
                         </Button>
                         <Button
                           type="button"
@@ -2484,26 +2553,11 @@ export function CampaignWorkspace({
                         {copyError}
                       </p>
                     ) : null}
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Email body (preview)
+                    <div className="rounded-xl border border-border/50 bg-muted/15 px-4 py-3">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                        LinkedIn DM text
                       </p>
-                      <div className="mt-1 max-h-[18rem] overflow-y-auto rounded-2xl border border-border/65 bg-card px-5 py-4 shadow-inner ring-1 ring-black/[0.03] dark:ring-white/[0.06]">
-                        <div
-                          className="whitespace-pre-wrap break-words text-[15px] leading-[1.75] tracking-tight text-foreground antialiased"
-                          style={{ fontFamily: "ui-sans-serif, system-ui, sans-serif" }}
-                        >
-                          {emailPlainTextFromHtml(
-                            outreachEmailHtml(outreach as Record<string, unknown>),
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        LinkedIn
-                      </p>
-                      <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
                         {outreach.linkedin_message}
                       </p>
                     </div>

@@ -1,11 +1,11 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-/** Prompt 71 — dashboard route loading skeleton (dark shell matches logged-in layout). */
+/** Prompt 113–114 — dashboard route loading: light canvas + shimmer skeletons (matches signed-in shell). */
 export default function DashboardLoading() {
   return (
-    <div className="dark min-h-screen bg-gradient-to-b from-[hsl(222_47%_5.5%)] via-background to-[hsl(222_40%_7%)]">
-      <div className="mx-auto max-w-6xl space-y-8 px-4 py-10 sm:space-y-10 sm:px-6 lg:px-8">
+    <div className="ux-loading-canvas animate-in fade-in duration-300">
+      <div className="mx-auto max-w-6xl space-y-8 px-4 py-10 motion-safe:animate-content-settle sm:space-y-10 sm:px-6 lg:px-8">
         <div className="space-y-4">
           <Skeleton className="h-11 w-72 rounded-xl" />
           <Skeleton className="h-4 w-full max-w-xl rounded-md" />
@@ -16,16 +16,16 @@ export default function DashboardLoading() {
           </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Skeleton className="h-36 rounded-2xl" />
-          <Skeleton className="h-36 rounded-2xl" />
-          <Skeleton className="h-36 rounded-2xl" />
-          <Skeleton className="h-36 rounded-2xl" />
+          <Skeleton className="h-36 rounded-2xl shadow-sm ring-1 ring-border/30" />
+          <Skeleton className="h-36 rounded-2xl shadow-sm ring-1 ring-border/30" />
+          <Skeleton className="h-36 rounded-2xl shadow-sm ring-1 ring-border/30" />
+          <Skeleton className="h-36 rounded-2xl shadow-sm ring-1 ring-border/30" />
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
-          <Skeleton className="h-48 rounded-2xl" />
-          <Skeleton className="h-48 rounded-2xl" />
+          <Skeleton className="h-48 rounded-2xl shadow-sm ring-1 ring-border/30" />
+          <Skeleton className="h-48 rounded-2xl shadow-sm ring-1 ring-border/30" />
         </div>
-        <Card className="border-border/60 bg-card/50 shadow-lg">
+        <Card className="border-border/55 bg-card/80 shadow-soft ring-1 ring-black/[0.03]">
           <CardHeader className="space-y-2">
             <Skeleton className="h-6 w-56 rounded-md" />
             <Skeleton className="h-4 w-full max-w-2xl rounded-md" />

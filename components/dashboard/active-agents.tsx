@@ -24,7 +24,7 @@ const agents = [
     description:
       "Deep account context: ICP score, sector read, 6–8-step reasoning trace, stakeholders, pains, angles, and BANT hypotheses tuned to this lead.",
     icon: Radar,
-    accent: "border-sky-500/25 bg-sky-500/[0.08] text-sky-700 dark:text-sky-300",
+    accent: "border-sky-200/90 bg-sky-500/[0.08] text-sky-800",
   },
   {
     id: "outreach",
@@ -33,7 +33,7 @@ const agents = [
     description:
       "Voice-matched email and LinkedIn — hooks from research, human cadence, and a frictionless reply path.",
     icon: Send,
-    accent: "border-violet-500/25 bg-violet-500/[0.08] text-violet-800 dark:text-violet-200",
+    accent: "border-violet-200/90 bg-violet-500/[0.08] text-violet-800",
   },
   {
     id: "qualification",
@@ -42,7 +42,7 @@ const agents = [
     description:
       "Buyer reality: score, objections, BANT synthesis, and a concrete next-best action with artifacts.",
     icon: Target,
-    accent: "border-amber-500/25 bg-amber-500/[0.1] text-amber-950 dark:text-amber-100",
+    accent: "border-amber-200/90 bg-amber-500/[0.1] text-amber-950",
   },
   {
     id: "nurture",
@@ -51,7 +51,7 @@ const agents = [
     description:
       "Three-step cadence with channel mix, value-add ideas, and timing rationale tied to objections.",
     icon: GitBranch,
-    accent: "border-emerald-500/25 bg-emerald-500/[0.08] text-emerald-800 dark:text-emerald-300",
+    accent: "border-emerald-200/90 bg-emerald-500/[0.08] text-emerald-800",
   },
 ] as const;
 
@@ -65,11 +65,11 @@ function batchStatusBadge(status: BatchRunItem["status"]) {
     case "queued":
       return "bg-muted text-muted-foreground";
     case "running":
-      return "border-sky-500/40 bg-sky-500/15 text-sky-950 dark:text-sky-50";
+      return "border-sky-400/50 bg-sky-500/12 text-sky-900";
     case "done":
-      return "border-emerald-500/40 bg-emerald-500/12 text-emerald-950 dark:text-emerald-50";
+      return "border-emerald-500/40 bg-emerald-500/12 text-emerald-950";
     case "error":
-      return "border-red-500/40 bg-red-500/12 text-red-950 dark:text-red-50";
+      return "border-red-500/40 bg-red-500/12 text-red-950";
     default:
       return "";
   }
@@ -77,25 +77,24 @@ function batchStatusBadge(status: BatchRunItem["status"]) {
 
 export function ActiveAgents({ batchProgress }: ActiveAgentsProps) {
   return (
-    <section className="space-y-5">
+    <section className="space-y-6">
       {batchProgress && batchProgress.length > 0 ? (
         <div
-          className="rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/[0.06] via-card to-card px-5 py-4 shadow-md ring-1 ring-primary/15 dark:from-primary/[0.09] dark:to-card sm:px-6"
+          className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.05] via-card to-card px-5 py-4 shadow-soft ring-1 ring-primary/10 sm:px-6"
           role="status"
           aria-live="polite"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold tracking-tight">Batch run progress</h3>
-            <span className="text-[11px] text-muted-foreground">
-              {batchProgress.filter((b) => b.status === "done").length}/{batchProgress.length}{" "}
-              finished
+            <h3 className="text-sm font-semibold tracking-tight text-foreground">Batch run progress</h3>
+            <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
+              {batchProgress.filter((b) => b.status === "done").length}/{batchProgress.length} finished
             </span>
           </div>
           <ul className="mt-3 space-y-2">
             {batchProgress.map((b) => (
               <li
                 key={b.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-background/80 px-3 py-2 text-sm dark:bg-background/40"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/50 bg-card/90 px-3 py-2.5 text-sm shadow-sm"
               >
                 <span className="min-w-0 truncate font-medium">
                   {b.label}{" "}
@@ -103,7 +102,7 @@ export function ActiveAgents({ batchProgress }: ActiveAgentsProps) {
                 </span>
                 <span className="flex items-center gap-2">
                   {b.status === "running" ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-600 dark:text-sky-400" />
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-600" />
                   ) : null}
                   <Badge
                     variant="outline"
@@ -129,14 +128,13 @@ export function ActiveAgents({ batchProgress }: ActiveAgentsProps) {
         </div>
       ) : null}
 
-      <div className="premium-surface rounded-2xl border border-border/50 bg-gradient-to-br from-card via-card to-muted/[0.35] px-5 py-5 shadow-md ring-1 ring-white/[0.05] dark:from-card dark:to-muted/15 sm:px-6 sm:py-6">
+      <div className="premium-surface rounded-2xl border border-border/50 bg-gradient-to-br from-card via-card to-muted/30 px-5 py-5 shadow-soft ring-1 ring-border/25 sm:px-6 sm:py-6">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight sm:text-xl">Active agents</h2>
-          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          <h2 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">Active agents</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
             LangGraph pipeline — each stage consumes the prior output and your selected{" "}
             <span className="font-medium text-foreground">SDR voice</span> preset. Research builds a
-            consultant-grade dossier (reasoning trace, BANT hypotheses, nurture arc); outreach and
-            qualification stay voice-matched end to end.
+            consultant-grade dossier; outreach and qualification stay voice-matched end to end.
           </p>
         </div>
       </div>
@@ -146,7 +144,7 @@ export function ActiveAgents({ batchProgress }: ActiveAgentsProps) {
           <Card
             key={a.id}
             className={cn(
-              "group premium-card-interactive overflow-hidden rounded-xl border-border/60 bg-card/95 shadow-md ring-1 ring-border/10 dark:ring-white/[0.06]",
+              "group premium-card-interactive overflow-hidden rounded-xl border-border/55 bg-card shadow-soft ring-1 ring-border/20",
             )}
           >
             <CardHeader className="space-y-3 pb-3">
@@ -160,7 +158,7 @@ export function ActiveAgents({ batchProgress }: ActiveAgentsProps) {
                 >
                   <a.icon className="h-5 w-5" strokeWidth={2} />
                 </span>
-                <span className="rounded-md bg-muted/60 px-2 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-muted-foreground">
+                <span className="rounded-md bg-muted/70 px-2 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-muted-foreground">
                   {a.step}/4
                 </span>
               </div>

@@ -40,11 +40,17 @@ import { SequencesSection } from "@/components/dashboard/sequences-section";
 import { WorkspaceMembersCard } from "@/components/dashboard/workspace-members-card";
 import { DeliverabilityCoachWidget } from "@/components/dashboard/deliverability-coach-widget";
 import { DeliverabilityPanel } from "@/components/dashboard/deliverability-panel";
+import {
+  CalendarIntegrationCard,
+  SettingsIntegrationsSection,
+  TwilioVoiceIntegrationCard,
+} from "@/components/dashboard/settings-integrations-section";
 import { WhiteLabelSettingsCard } from "@/components/dashboard/white-label-settings-card";
 import { ObjectionLibrarySection } from "@/components/dashboard/objection-library-section";
 import { PlaybooksSection } from "@/components/dashboard/playbooks-section";
 import { SalesCoachingSection } from "@/components/dashboard/sales-coaching-section";
 import { SdrManagerSection } from "@/components/dashboard/sdr-manager-section";
+import { FirstRunSetupBanner } from "@/components/onboarding/first-run-setup-banner";
 import { PwaBanner } from "@/components/pwa/pwa-banner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRouter } from "next/navigation";
@@ -102,6 +108,15 @@ type Props = {
  * Prompt 99 — `DeliverabilityCoachWidget` on Workspace + coach in `DeliverabilityPanel`.
  * Prompt 101 — Coaching tab (`SalesCoachingSection`) + `coachingPreview` on analytics.
  * Prompt 102 — SDR Manager tab (`SdrManagerSection`) + analytics/reports entry points.
+ * Prompt 103 — Light aesthetic spacing, tab chrome, env banner styling (tokens from `globals.css`).
+ * Prompt 104 — Workspace tab: guided campaign runner order + polished recent list & active agents.
+ * Prompt 106 — Team (`WorkspaceMembersCard`), brand & integrations (`WhiteLabelSettingsCard`, `HubSpotConnectSection`),
+ * layout group on the home stack; `DashboardShell` nav (active routes, icons, mobile sheet).
+ * Prompt 107 — Auth pages `(auth)/layout`, polished `login-form` / `signup-form`; `/onboarding` wizard +
+ * `FirstRunSetupBanner` (localStorage dismiss); `Setup` nav link.
+ * Prompt 108 — `EmptyState` + analytics/reports visual polish; richer empty surfaces on list/priority cards.
+ * Prompt 110 — `SettingsIntegrationsSection` + Calendar / Twilio cards; shared UI polish (button, card, dialog, tabs, shell).
+ * Prompt 114 — Entrance timing, tab affordances, env banner harmony with light tokens.
  */
 export function DashboardHomeClient({
   envWarnings,
@@ -148,20 +163,60 @@ export function DashboardHomeClient({
     setMainTab("workspace");
   }, []);
 
+  const goToWorkspaceForIntegrations = useCallback(() => {
+    setMainTab("workspace");
+    window.setTimeout(() => {
+      document.getElementById("campaign-workspace")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 80);
+  }, []);
+
+  const scrollToObjectionLibrary = useCallback(() => {
+    document.getElementById("objection-library-section")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, []);
+
   return (
-    <div className="mx-auto max-w-6xl animate-in fade-in slide-in-from-bottom-2 space-y-10 px-4 py-6 duration-700 sm:space-y-12 sm:px-6 sm:py-8 lg:px-8">
+    <div className="mx-auto max-w-6xl animate-in fade-in slide-in-from-bottom-2 space-y-11 px-4 py-2 duration-500 ease-out sm:space-y-14 sm:px-5 sm:py-4 lg:px-6">
       <PwaBanner />
+      <FirstRunSetupBanner />
       <DashboardHero outboundFromPreview={outboundFromPreview} whiteLabel={whiteLabel} />
 
-      {whiteLabel ? <WhiteLabelSettingsCard initial={whiteLabel} /> : null}
-      <WorkspaceMembersCard members={workspaceMembers} currentRole={workspaceRole} />
+      <SettingsIntegrationsSection>
+        <WorkspaceMembersCard members={workspaceMembers} currentRole={workspaceRole} />
+        <div className="space-y-5">
+          <div className="flex flex-col gap-1 px-0.5">
+            <h3 className="text-base font-semibold tracking-tight text-foreground">
+              Brand &amp; connected services
+            </h3>
+            <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+              Appearance, CRM, calendar, and voice — wire what you use; skip anything you don&apos;t need.
+            </p>
+          </div>
+          <div className="grid gap-6 lg:grid-cols-3">
+            {whiteLabel ? (
+              <div className="lg:col-span-3">
+                <WhiteLabelSettingsCard initial={whiteLabel} />
+              </div>
+            ) : null}
+            <HubSpotConnectSection connected={hubspotConnected} />
+            <CalendarIntegrationCard
+              calendarStatus={calendarStatus}
+              onGoToWorkspace={goToWorkspaceForIntegrations}
+            />
+            <TwilioVoiceIntegrationCard onViewObjectionLibrary={scrollToObjectionLibrary} />
+          </div>
+        </div>
+      </SettingsIntegrationsSection>
 
       <ObjectionLibrarySection
         transcripts={objectionLibraryTranscripts}
         objections={objectionLibraryEntries}
       />
-
-      <HubSpotConnectSection connected={hubspotConnected} />
 
       <CompetitiveEdgePanel />
 
@@ -169,10 +224,10 @@ export function DashboardHomeClient({
         <div
           role="region"
           aria-label="Environment configuration hints"
-          className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.08] px-5 py-4 text-sm text-amber-950 shadow-sm dark:text-amber-50"
+          className="rounded-2xl border border-amber-300/55 bg-gradient-to-br from-amber-50/95 via-card to-orange-50/35 px-5 py-4 text-sm text-amber-950 shadow-soft ring-1 ring-amber-200/40"
         >
           <p className="font-semibold">Configuration</p>
-          <ul className="mt-2 list-inside list-disc space-y-1.5 text-amber-900/95 dark:text-amber-100/90">
+          <ul className="mt-2 list-inside list-disc space-y-1.5 text-amber-900/90">
             {envWarnings.map((w) => (
               <li key={w}>{w}</li>
             ))}
@@ -196,69 +251,69 @@ export function DashboardHomeClient({
       />
 
       <Tabs value={mainTab} onValueChange={setMainTab} className="w-full">
-        <TabsList className="flex h-auto w-full max-w-6xl flex-nowrap justify-start gap-1 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:grid sm:grid-cols-10 sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden">
+        <TabsList className="flex h-auto w-full max-w-6xl flex-nowrap justify-start gap-1 overflow-x-auto border-border/40 bg-muted/50 p-1.5 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:grid sm:grid-cols-10 sm:overflow-visible sm:pb-1.5 [&::-webkit-scrollbar]:hidden">
           <TabsTrigger
             value="workspace"
-            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
+            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-soft"
           >
             Workspace
           </TabsTrigger>
           <TabsTrigger
             value="sdr-manager"
-            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
+            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-soft"
           >
             SDR Manager
           </TabsTrigger>
           <TabsTrigger
             value="analytics"
-            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
+            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-soft"
           >
             Analytics
           </TabsTrigger>
           <TabsTrigger
             value="coaching"
-            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
+            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-soft"
           >
             Coaching
           </TabsTrigger>
           <TabsTrigger
             value="templates"
-            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
+            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-soft"
           >
             Templates
           </TabsTrigger>
           <TabsTrigger
             value="sequences"
-            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
+            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-soft"
           >
             Sequences
           </TabsTrigger>
           <TabsTrigger
             value="reports"
-            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
+            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-soft"
           >
             Reports
           </TabsTrigger>
           <TabsTrigger
             value="playbooks"
-            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
+            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-soft"
           >
             Playbooks
           </TabsTrigger>
           <TabsTrigger
             value="deliverability"
-            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
+            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-soft"
           >
             Deliverability
           </TabsTrigger>
           <TabsTrigger
             value="voices"
-            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-md"
+            className="shrink-0 transition-all duration-200 data-[state=active]:shadow-soft"
           >
             Custom voices
           </TabsTrigger>
         </TabsList>
-        <TabsContent value="workspace" className="space-y-10 sm:space-y-12">
+        <TabsContent value="workspace" className="space-y-11 sm:space-y-14">
           <LeadPrioritySection
             rows={analytics.leadPriorityLeaderboard}
             summary={analytics.leadPrioritySummary}

@@ -108,8 +108,12 @@ export async function buildCampaignPdfExportOptions(
   const useServer = serverWhiteLabel != null;
   const primaryHex = useServer ? serverWhiteLabel!.primaryColor : b.primaryHex;
   const secondaryHex = useServer ? serverWhiteLabel!.secondaryColor : b.secondaryHex;
+  /** Prompt 112 — align with `mergeWhiteLabelRow` signoff when app name is blank. */
   const orgTitle = useServer
-    ? serverWhiteLabel!.appName.trim() || b.orgName.trim() || DEFAULT_BRAND_DISPLAY_NAME
+    ? serverWhiteLabel!.appName.trim() ||
+      serverWhiteLabel!.brandSignoff?.trim() ||
+      b.orgName.trim() ||
+      DEFAULT_BRAND_DISPLAY_NAME
     : b.orgName.trim() || DEFAULT_BRAND_DISPLAY_NAME;
   const logoRef =
     useServer && serverWhiteLabel!.logoUrl.trim().length > 0

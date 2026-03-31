@@ -1,6 +1,7 @@
 import "server-only";
 
 import { Resend } from "resend";
+import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import { getServerEnv } from "@/lib/env";
 
 const RESEND_KEY_MISSING =
@@ -84,7 +85,7 @@ export function buildDynamicFromEmail(senderFullName: string | undefined | null)
           const h = baseHeader ?? "";
           const m = h.match(/^["']?([^"'<]+?)["']?\s*</);
           if (m?.[1]?.trim()) return m[1].trim();
-          return "AgentForge";
+          return DEFAULT_BRAND_DISPLAY_NAME;
         })();
   const local =
     typeof senderFullName === "string" && senderFullName.trim().length > 0
@@ -109,7 +110,7 @@ export async function sendTransactionalEmail(params: {
   const from =
     params.from ??
     env.RESEND_FROM_EMAIL ??
-    "AgentForge <onboarding@resend.dev>";
+    `${DEFAULT_BRAND_DISPLAY_NAME} <onboarding@resend.dev>`;
   if (!client) {
     return { ok: false, error: RESEND_KEY_MISSING };
   }

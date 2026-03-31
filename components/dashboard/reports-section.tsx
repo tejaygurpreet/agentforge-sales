@@ -19,7 +19,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { FileDown, Loader2, Mail, Trash2 } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
+import { CalendarClock, FileDown, FileText, Loader2, Mail, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { toast } from "@/hooks/use-toast";
@@ -151,8 +152,24 @@ export function ReportsSection({
 
   return (
     <div className="space-y-8">
+      <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-gradient-to-br from-sky-500/[0.07] via-card to-primary/[0.04] px-5 py-6 shadow-soft ring-1 ring-border/30 sm:px-8 sm:py-7">
+        <div className="pointer-events-none absolute -left-10 top-0 h-40 w-40 rounded-full bg-primary/[0.07] blur-3xl" aria-hidden />
+        <div className="relative flex flex-wrap items-start gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-sky-400/30 bg-card shadow-sm">
+            <FileText className="h-6 w-6 text-sky-700" aria-hidden />
+          </div>
+          <div className="min-w-0 flex-1 space-y-2">
+            <h2 className="text-xl font-semibold tracking-tight text-foreground">Reports &amp; exports</h2>
+            <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+              Filter workspace history, download PDF or CSV, and schedule recurring email digests. Exports
+              respect the filters below each time they run.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {onOpenSdrManagerTab ? (
-        <Card className="border-sky-500/25 bg-sky-500/[0.04] shadow-sm">
+        <Card className="rounded-2xl border-sky-500/25 bg-sky-500/[0.05] shadow-sm ring-1 ring-sky-500/15">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Executive narrative (Prompt 102)</CardTitle>
             <CardDescription>
@@ -167,8 +184,8 @@ export function ReportsSection({
           </CardContent>
         </Card>
       ) : null}
-      <Card className="border-border/70 bg-card/90 shadow-md">
-        <CardHeader>
+      <Card className="overflow-hidden rounded-2xl border-border/60 bg-card shadow-lift ring-1 ring-border/25">
+        <CardHeader className="border-b border-border/40 bg-gradient-to-r from-muted/35 via-transparent to-transparent">
           <CardTitle className="text-lg">Filters</CardTitle>
           <CardDescription>
             Narrow campaigns and reply analyses by date (created time), SDR voice, or team member.
@@ -265,8 +282,8 @@ export function ReportsSection({
         </CardContent>
       </Card>
 
-      <Card className="border-border/70 bg-card/90 shadow-md">
-        <CardHeader>
+      <Card className="overflow-hidden rounded-2xl border-border/60 bg-card shadow-lift ring-1 ring-border/25">
+        <CardHeader className="border-b border-border/40 bg-gradient-to-br from-violet-500/[0.06] via-card to-transparent">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Mail className="h-5 w-5 text-primary" aria-hidden />
             Scheduled email reports
@@ -379,7 +396,18 @@ export function ReportsSection({
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">No schedules yet.</p>
+            <EmptyState
+              variant="soft"
+              size="sm"
+              icon={CalendarClock}
+              title="No scheduled reports yet"
+              description={
+                <>
+                  Add a recipient and cadence above, then save. Your server cron sends filtered PDF metrics on
+                  the next UTC window.
+                </>
+              }
+            />
           )}
         </CardContent>
       </Card>

@@ -2,32 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * Prompt 103 — Super aesthetic light theme: warm cream canvas, soft indigo primary,
+ * calm neutrals (Notion / Linear / Vercel-inspired). Dark `.dark` kept for optional future use.
+ */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
-    --radius: 0.5rem;
+    --background: 42 38% 96%;
+    --foreground: 224 28% 11%;
+    --card: 40 50% 99.5%;
+    --card-foreground: 224 28% 11%;
+    --popover: 40 50% 99.5%;
+    --popover-foreground: 224 28% 11%;
+    --primary: 231 52% 48%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 22% 91%;
+    --secondary-foreground: 224 25% 14%;
+    --muted: 40 22% 93%;
+    --muted-foreground: 220 11% 40%;
+    --accent: 225 38% 92%;
+    --accent-foreground: 231 40% 26%;
+    --destructive: 0 72% 52%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 38 16% 86%;
+    --input: 38 18% 88%;
+    --ring: 231 52% 48%;
+    --radius: 0.8125rem;
+    --canvas-mid: 210 38% 97%;
+    --canvas-btm: 215 30% 95%;
   }
 
   .dark {
-    /* Prompt 71 — slightly deeper, cooler canvas (enterprise console) */
     --background: 222 47% 6%;
     --foreground: 210 40% 98%;
     --card: 222 41% 8%;
@@ -47,6 +52,8 @@
     --border: 217 19% 18%;
     --input: 217 19% 18%;
     --ring: 217 91% 60%;
+    --canvas-mid: 222 42% 8%;
+    --canvas-btm: 222 47% 5%;
   }
 }
 
@@ -55,20 +62,72 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply text-foreground antialiased;
     font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    background-color: hsl(var(--background));
+    background-image: linear-gradient(
+      180deg,
+      hsl(var(--background)) 0%,
+      hsl(var(--canvas-mid)) 42%,
+      hsl(var(--canvas-btm)) 100%
+    );
+    background-attachment: fixed;
   }
 }
 
-/* Prompt 71 — premium surfaces & motion (no extra runtime deps) */
+/* Prompt 71 + 103 — premium surfaces & motion */
+/* Prompt 111 — micro-interaction helpers (use with interactive cards / lists). */
+/* Prompt 112 — DashboardShell sets --brand-primary / --brand-secondary for signed-in white-label users. */
+/* Prompt 113 — friendly inline alerts & field errors (light-first, soft gradients). */
+/* Prompt 114 — premium loading overlays & page rhythm (delight, light-first). */
 @layer utilities {
   .premium-surface {
     @apply transition-[box-shadow,transform,border-color] duration-300 ease-out;
   }
   .premium-card-interactive {
-    @apply transition-[box-shadow,transform,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:shadow-xl hover:ring-primary/20 active:translate-y-0;
+    @apply transition-[box-shadow,transform,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:shadow-lg hover:ring-primary/15 active:translate-y-0;
   }
   .text-balance-safe {
     text-wrap: balance;
+  }
+  .motion-tap {
+    @apply transition-transform duration-150 ease-out active:scale-[0.98];
+  }
+  .focus-ring-calm {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+  /** Compact validation copy under inputs (forms). */
+  .ux-field-error {
+    @apply mt-1.5 rounded-lg border border-destructive/20 bg-gradient-to-r from-destructive/[0.07] to-destructive/[0.04] px-2.5 py-1.5 text-[0.8rem] font-medium leading-snug text-destructive shadow-sm ring-1 ring-destructive/10;
+  }
+  /** Block-level errors (cards, integrations, batch). */
+  .ux-inline-error {
+    @apply rounded-xl border border-destructive/25 bg-gradient-to-br from-destructive/[0.08] via-card to-muted/35 px-3.5 py-2.5 text-sm leading-relaxed text-destructive shadow-sm ring-1 ring-destructive/10;
+  }
+  /** Warnings (partial success, step errors). */
+  .ux-inline-warning {
+    @apply rounded-xl border border-amber-300/60 bg-gradient-to-br from-amber-50/95 via-card to-orange-50/40 px-3.5 py-2.5 text-sm leading-relaxed text-amber-950 shadow-sm ring-1 ring-amber-200/40;
+  }
+  .dark .ux-inline-warning {
+    @apply border-amber-500/40 bg-gradient-to-br from-amber-500/10 via-card to-amber-950/30 text-amber-50 ring-amber-500/25;
+  }
+  /** Positive feedback banners. */
+  .ux-inline-success {
+    @apply rounded-xl border border-emerald-300/50 bg-gradient-to-br from-emerald-50/90 via-card to-teal-50/30 px-3.5 py-2.5 text-sm leading-relaxed text-emerald-950 shadow-sm ring-1 ring-emerald-200/35;
+  }
+  .dark .ux-inline-success {
+    @apply border-emerald-500/35 bg-gradient-to-br from-emerald-500/10 via-card to-emerald-950/25 text-emerald-100 ring-emerald-500/20;
+  }
+  /** Full-view loading shell (matches body gradient). */
+  .ux-loading-canvas {
+    @apply min-h-screen min-h-[100dvh] bg-background bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--canvas-mid))_42%,hsl(var(--canvas-btm))_100%)] bg-fixed;
+  }
+  /** Dimmed backdrop + centered panel (campaign run, heavy operations). */
+  .ux-loading-overlay {
+    @apply fixed inset-0 z-40 flex items-center justify-center bg-background/80 backdrop-blur-[3px];
+  }
+  .ux-loading-panel {
+    @apply flex max-w-md flex-col items-center gap-4 rounded-2xl border border-border/55 bg-gradient-to-b from-card via-card to-muted/25 px-8 py-7 text-center shadow-lift ring-1 ring-primary/15 backdrop-blur-sm motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-300;
   }
 }
