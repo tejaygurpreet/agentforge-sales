@@ -24,6 +24,8 @@ const InboxUnreadContext = createContext<InboxUnreadContextValue | null>(null);
 /**
  * Prompt 123 — Shared unread count for header mail button + `ProfessionalInbox` on `/inbox`.
  * Prompt 129 — Draft count for header + compose (same provider).
+ * Prompt 141 — Prefer mounting once in `app/(dashboard)/layout.tsx` wrapping `DashboardShell` so
+ * the header, `/inbox`, and all dashboard pages share one context (no hook-outside-provider cases).
  */
 export function InboxUnreadProvider({
   initialCount,

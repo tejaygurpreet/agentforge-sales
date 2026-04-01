@@ -14,7 +14,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { HeaderInboxButton } from "@/components/dashboard/header-inbox-button";
-import { InboxUnreadProvider } from "@/components/dashboard/inbox-unread-context";
 import { ReplyIntelProvider } from "@/components/dashboard/reply-intel-context";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,8 +51,6 @@ interface DashboardShellProps {
     secondaryColor?: string;
   };
   navLinks: DashboardNavLink[];
-  initialInboxUnreadCount: number;
-  initialDraftCount: number;
   children: React.ReactNode;
 }
 
@@ -162,8 +159,6 @@ export function DashboardShell({
   displayName,
   whiteLabel,
   navLinks,
-  initialInboxUnreadCount,
-  initialDraftCount,
   children,
 }: DashboardShellProps) {
   const router = useRouter();
@@ -195,11 +190,10 @@ export function DashboardShell({
   const logoUsesWhiteLabelColor = Boolean(whiteLabel?.primaryColor?.trim());
 
   return (
-    <InboxUnreadProvider initialCount={initialInboxUnreadCount} initialDraftCount={initialDraftCount}>
-      <div
-        className="flex min-h-screen min-h-[100dvh] flex-col bg-background text-foreground antialiased selection:bg-[#EDE0D4]/80 selection:text-foreground"
-        style={brandCssVars}
-      >
+    <div
+      className="flex min-h-screen min-h-[100dvh] flex-col bg-background text-foreground antialiased selection:bg-[#EDE0D4]/80 selection:text-foreground"
+      style={brandCssVars}
+    >
         <header className="sticky top-0 z-30 border-b border-[#111827]/10 bg-[#F9F6F0]/96 shadow-[0_1px_0_0_rgba(17,24,39,0.06),0_18px_48px_-28px_rgba(17,24,39,0.1)] backdrop-blur-xl supports-[backdrop-filter]:bg-[#F9F6F0]/90">
           <div className="mx-auto flex min-h-[3.5rem] max-w-7xl items-center gap-3 px-5 py-3 sm:h-[3.65rem] sm:gap-4 sm:px-8 sm:py-0">
             <Link
@@ -300,7 +294,6 @@ export function DashboardShell({
             </p>
           </div>
         </footer>
-      </div>
-    </InboxUnreadProvider>
+    </div>
   );
 }

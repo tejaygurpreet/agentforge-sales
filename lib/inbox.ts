@@ -21,11 +21,10 @@ import "server-only";
  * - **Prompt 128 — Narrow schema detection (no false “inbox missing” on unrelated `column` errors) +
  *   `ensureInboxSchemaReady()` + `supabase/inbox_ensure_p128.sql` RPC when service role is available.
  * - **Prompt 129 — `inbox_drafts` for compose auto-save (localStorage + Supabase every 3s).
- * - **Prompt 133–138 — `insertInboxMessageReliable` (exported) + normalized `from`/`to` + schema ensure +
- *   service-role + ultra-minimal insert so every sent mail can persist (RLS / schema / reply composer).
  */
+import { randomUUID } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { slugifyLocalPartFromName } from "@/lib/resend";
+import { extractBareEmailFromFromHeader, slugifyLocalPartFromName } from "@/lib/resend";
 import { getServiceRoleSupabaseOrNull } from "@/lib/supabase-server";
 
 import type { ProspectReplyAnalysisPayload } from "@/types";
@@ -91,6 +90,17 @@ export function normalizeEmail(email: string): string {
  */
 export function normalizeComposeRecipientEmail(raw: string): string {
   return normalizeEmail(raw);
+}
+
+/** Bare mailbox for `inbox_messages.from_email` / `to_email` (handles `Name <a@b.com>` and plain `a@b.com`). */
+export function normalizeMailboxForInboxStorage(raw: string): string {
+  const t = (raw || "").trim();
+  if (!t) return "";
+  const bare =
+    extractBareEmailFromFromHeader(t) ??
+    extractBareEmailFromFromHeader(`<${t.replace(/^</, "").replace(/>$/, "")}>`) ??
+    (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t) ? t : null);
+  return bare ? normalizeEmail(bare) : normalizeEmail(t);
 }
 
 export { isLikelyValidRecipientEmail } from "@/lib/inbox-shared";
@@ -308,155 +318,449 @@ export function isOptionalInboxMessageColumnMissingError(message: string): boole
   return cols.some((c) => m.includes(c));
 }
 
-function isInboxMessageInsertRetryable(message: string): boolean {
-  if (isInboxOptionalColumnOrSchemaError(message)) return true;
-  if (isOptionalInboxMessageColumnMissingError(message)) return true;
-  return false;
+function isUniqueViolation(err: { message?: string; code?: string } | null | undefined): boolean {
+  if (!err) return false;
+  if (err.code === "23505") return true;
+  const m = (err.message || "").toLowerCase();
+  return m.includes("duplicate key") || m.includes("unique constraint");
+}
+
+/** Structured Supabase error logging for inbox post-send persistence debugging. */
+export function logInboxDbError(
+  scope: string,
+  err: { message?: string; code?: string; details?: string; hint?: string } | null | undefined,
+  extra?: Record<string, unknown>,
+): void {
+  if (!err?.message && !err?.code) return;
+  console.error(
+    `[AgentForge] ${scope}`,
+    JSON.stringify({
+      ...extra,
+      message: err?.message,
+      code: err?.code,
+      details: err?.details,
+      hint: err?.hint,
+    }),
+  );
+}
+
+/** Prompt 141 — Detailed `console.log` for post-send save debugging (user-requested). */
+function inboxPostSendLog(step: string, detail?: Record<string, unknown>): void {
+  if (detail != null) {
+    console.log(`[AgentForge][inbox-post-send] ${step}`, JSON.stringify(detail));
+  } else {
+    console.log(`[AgentForge][inbox-post-send] ${step}`);
+  }
+}
+
+/** Every post-send write: refresh schema via RPC so PostgREST cache matches DB (no process-wide skip). */
+async function runEnsureInboxSchemaRpcEveryWrite(sr: SupabaseClient, stepPrefix: string): Promise<void> {
+  inboxPostSendLog(`${stepPrefix}:schema_rpc_before`);
+  const { error } = await sr.rpc("ensure_inbox_schema");
+  if (error) {
+    const msg = error.message ? error.message : "";
+    if (/function .* does not exist|could not find the function|pgrst202|404/i.test(msg)) {
+      inboxPostSendLog(`${stepPrefix}:schema_rpc_skip_no_fn`);
+    } else {
+      inboxPostSendLog(`${stepPrefix}:schema_rpc_warn`, { message: msg, code: error.code });
+      console.warn("[AgentForge] runEnsureInboxSchemaRpcEveryWrite", msg);
+    }
+  } else {
+    inboxPostSendLog(`${stepPrefix}:schema_rpc_ok`);
+  }
 }
 
 /**
- * Prompt 130 — Insert outbound (or inbound) row with fallbacks so sends always persist when RLS allows.
- * Prompt 133 — If the user-scoped client still cannot insert (RLS / policy edge cases), retry with the
- * service-role client so a successful Resend send always leaves a matching `inbox_messages` row.
+ * Confirm `inbox_threads` row exists before `inbox_messages.thread_id` insert (avoids FK 23503 / ghost ids).
+ */
+async function assertInboxThreadRowVisible(
+  db: SupabaseClient,
+  userId: string,
+  threadId: string,
+  stepPrefix: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const tid = threadId.trim();
+  if (tid.length === 0) {
+    inboxPostSendLog(`${stepPrefix}:verify_thread_FAIL_empty_id`);
+    return { ok: false, error: "thread_id is empty before inbox_messages insert." };
+  }
+  inboxPostSendLog(`${stepPrefix}:verify_thread_select`, { threadId: tid, userId });
+  const { data, error } = await db
+    .from("inbox_threads")
+    .select("id")
+    .eq("id", tid)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    const msg = error.message ? error.message : "inbox_threads verify failed";
+    inboxPostSendLog(`${stepPrefix}:verify_thread_FAIL_select`, { message: msg, code: error.code });
+    return { ok: false, error: msg };
+  }
+  const row = data as { id?: string } | null;
+  const got = row && typeof row.id === "string" ? row.id.trim() : "";
+  if (got !== tid) {
+    inboxPostSendLog(`${stepPrefix}:verify_thread_FAIL_not_found`, { threadId: tid, userId, got });
+    return {
+      ok: false,
+      error:
+        "inbox thread row not found for thread_id; message insert would violate foreign key (inbox_messages.thread_id → inbox_threads.id).",
+    };
+  }
+  inboxPostSendLog(`${stepPrefix}:verify_thread_ok`, { threadId: tid, userId });
+  return { ok: true };
+}
+
+function isThreadsTableThreadIdColumnUnsupported(message: string | undefined): boolean {
+  if (!message) return false;
+  const m = message.toLowerCase();
+  if (/pgrst204/i.test(m)) return true;
+  if (!m.includes("thread_id")) return false;
+  return m.includes("does not exist") || m.includes("could not find") || m.includes("undefined column");
+}
+
+type InboxThreadInsertFirstArgs = {
+  userId: string;
+  prospectEmail: string;
+  subject: string;
+  snippet: string;
+  lastMessageAt: string;
+  campaignThreadId?: string;
+};
+
+/**
+ * Prompt 142 — INSERT-first inbox_threads row, then message. Always tries INSERT before any UPDATE so new
+ * outbound compose never depends on a stale "existing" row. Optional `thread_id` text on `inbox_threads`.
+ */
+async function ensureInboxThreadRowInsertFirst(
+  db: SupabaseClient,
+  args: InboxThreadInsertFirstArgs,
+  logPrefix: string,
+): Promise<{ ok: true; threadId: string } | { ok: false; error: string }> {
+  const email = normalizeEmail(args.prospectEmail);
+  if (!email.includes("@")) {
+    inboxPostSendLog(`${logPrefix}:FAIL:invalid_email`, { raw: args.prospectEmail });
+    return { ok: false, error: "Invalid prospect email." };
+  }
+
+  const subj = args.subject.trim() || "(no subject)";
+  const threadsExternalKey = randomUUID();
+
+  const base: Record<string, unknown> = {
+    user_id: args.userId,
+    prospect_email: email,
+    subject: subj,
+    snippet: args.snippet,
+    last_message_at: args.lastMessageAt,
+    user_last_read_at: args.lastMessageAt,
+    updated_at: args.lastMessageAt,
+  };
+  const ct = args.campaignThreadId;
+  if (typeof ct === "string" && ct.trim().length > 0) {
+    base.campaign_thread_id = ct.trim();
+  }
+
+  const runInsert = async (withThreadsThreadIdCol: boolean) => {
+    const row: Record<string, unknown> = withThreadsThreadIdCol
+      ? { ...base, thread_id: threadsExternalKey }
+      : { ...base };
+    inboxPostSendLog(`${logPrefix}:insert_first_attempt`, {
+      userId: args.userId,
+      prospectEmail: email,
+      with_inbox_threads_thread_id_text_col: withThreadsThreadIdCol,
+    });
+    return db.from("inbox_threads").insert(row as never).select("id").single();
+  };
+
+  let ins = await runInsert(true);
+  if (ins.error && isThreadsTableThreadIdColumnUnsupported(ins.error.message)) {
+    inboxPostSendLog(`${logPrefix}:insert_retry_without_inbox_threads_thread_id_text`, {
+      message: ins.error.message,
+    });
+    ins = await runInsert(false);
+  }
+
+  if (!ins.error && ins.data) {
+    const id = String((ins.data as { id: string }).id);
+    inboxPostSendLog(`${logPrefix}:insert_first_ok`, { inbox_threads_pk: id });
+    const v = await assertInboxThreadRowVisible(db, args.userId, id, `${logPrefix}_after_insert`);
+    if (!v.ok) {
+      inboxPostSendLog(`${logPrefix}:FAIL:verify_after_insert`, { error: v.error });
+      return v;
+    }
+    return { ok: true, threadId: id };
+  }
+
+  if (ins.error && isUniqueViolation(ins.error)) {
+    inboxPostSendLog(`${logPrefix}:insert_conflict_unique_reuse_row`, { userId: args.userId, prospectEmail: email });
+    const { data: existingRow, error: selErr } = await db
+      .from("inbox_threads")
+      .select("id")
+      .eq("user_id", args.userId)
+      .eq("prospect_email", email)
+      .maybeSingle();
+    if (selErr) {
+      const msg = selErr.message ? selErr.message : "inbox_threads select after conflict failed";
+      inboxPostSendLog(`${logPrefix}:FAIL:select_after_conflict`, { message: msg, code: selErr.code });
+      return { ok: false, error: msg };
+    }
+    const ex = existingRow as { id?: string } | null;
+    const rid = ex && typeof ex.id === "string" ? ex.id.trim() : "";
+    if (rid.length === 0) {
+      inboxPostSendLog(`${logPrefix}:FAIL:no_row_after_unique_violation`, { userId: args.userId, prospectEmail: email });
+      return { ok: false, error: "Unique constraint fired but inbox_threads row not found." };
+    }
+
+    inboxPostSendLog(`${logPrefix}:refresh_existing_after_conflict`, { threadPk: rid });
+    const patch: Record<string, unknown> = {
+      subject: subj,
+      snippet: args.snippet,
+      last_message_at: args.lastMessageAt,
+      user_last_read_at: args.lastMessageAt,
+      updated_at: args.lastMessageAt,
+    };
+    if (typeof ct === "string" && ct.trim().length > 0) {
+      patch.campaign_thread_id = ct.trim();
+    }
+    const up = await db.from("inbox_threads").update(patch as never).eq("id", rid).eq("user_id", args.userId);
+    if (up.error) {
+      const msg = up.error.message ? up.error.message : "inbox_threads update after conflict failed";
+      inboxPostSendLog(`${logPrefix}:FAIL:update_after_conflict`, { threadPk: rid, message: msg, code: up.error.code });
+      return { ok: false, error: msg };
+    }
+    inboxPostSendLog(`${logPrefix}:update_after_conflict_ok`, { threadPk: rid });
+    const v2 = await assertInboxThreadRowVisible(db, args.userId, rid, `${logPrefix}_after_conflict_refresh`);
+    if (!v2.ok) {
+      inboxPostSendLog(`${logPrefix}:FAIL:verify_after_conflict`, { error: v2.error });
+      return v2;
+    }
+    return { ok: true, threadId: rid };
+  }
+
+  const errMsg = ins.error && ins.error.message ? ins.error.message : "inbox_threads insert failed";
+  inboxPostSendLog(`${logPrefix}:FAIL:insert`, {
+    message: errMsg,
+    code: ins.error ? ins.error.code : undefined,
+  });
+  logInboxDbError(`${logPrefix} insert`, ins.error, { userId: args.userId, prospectEmail: email });
+  return { ok: false, error: errMsg };
+}
+
+async function ensureInboxThreadForOutbox(
+  db: SupabaseClient,
+  args: {
+    userId: string;
+    prospectEmail: string;
+    subject: string;
+    snippet: string;
+    lastMessageAt: string;
+  },
+): Promise<{ ok: true; threadId: string } | { ok: false; error: string }> {
+  return ensureInboxThreadRowInsertFirst(
+    db,
+    {
+      userId: args.userId,
+      prospectEmail: args.prospectEmail,
+      subject: args.subject,
+      snippet: args.snippet,
+      lastMessageAt: args.lastMessageAt,
+    },
+    "compose_null_thread",
+  );
+}
+
+export type InsertInboxMessageReliablePayload = {
+  /** Omit or null while sending brand-new outbound mail; use `outboundThread` then. */
+  thread_id?: string | null;
+  user_id: string;
+  direction: "inbound" | "outbound";
+  from_email: string;
+  to_email: string;
+  subject: string;
+  body_text: string;
+  body_html?: string | null;
+  received_at: string;
+  raw?: Record<string, unknown>;
+  provider_message_id?: string | null;
+  /** Required when `thread_id` is empty for outbound — creates or reuses `inbox_threads`. */
+  outboundThread?: {
+    prospect_email: string;
+    snippet: string;
+    last_message_at: string;
+  };
+};
+
+/**
+ * Insert one `inbox_messages` row using the service-role client only (API-compatible unused first arg).
  */
 export async function insertInboxMessageReliable(
-  supabase: SupabaseClient,
-  payload: {
-    thread_id: string;
-    user_id: string;
-    direction: "inbound" | "outbound";
-    from_email: string;
-    to_email: string;
-    subject: string;
-    body_text: string;
-    body_html?: string | null;
-    received_at: string;
-    raw?: Record<string, unknown>;
-    provider_message_id?: string | null;
-  },
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  await ensureInboxSchemaReady();
-
-  /** Prompt 136 — Canonical addresses for reliable matching + RLS-friendly inserts. */
-  const from_email = normalizeEmail(payload.from_email);
-  const to_email = normalizeEmail(payload.to_email);
-
-  const full: Record<string, unknown> = {
-    thread_id: payload.thread_id,
-    user_id: payload.user_id,
+  _supabase: SupabaseClient,
+  payload: InsertInboxMessageReliablePayload,
+): Promise<{ ok: true; threadId: string } | { ok: false; error: string }> {
+  inboxPostSendLog("reliable:0:start", {
+    userId: payload.user_id,
     direction: payload.direction,
-    from_email,
-    to_email,
-    subject: payload.subject,
-    body_text: payload.body_text,
-    received_at: payload.received_at,
-    raw: payload.raw ?? {},
-  };
-  if (payload.body_html !== undefined) full.body_html = payload.body_html;
-  if (payload.provider_message_id !== undefined && payload.provider_message_id !== null) {
-    full.provider_message_id = payload.provider_message_id;
-  }
-
-  const minimal: Record<string, unknown> = {
-    thread_id: payload.thread_id,
-    user_id: payload.user_id,
-    direction: payload.direction,
-    from_email,
-    to_email,
-    subject: payload.subject,
-    body_text: payload.body_text,
-    received_at: payload.received_at,
-    raw: {},
-  };
-
-  let res = await supabase.from("inbox_messages").insert(full as never);
-  if (!res.error) return { ok: true };
-
-  if (!isInboxMessageInsertRetryable(res.error.message)) {
-    const sr = getServiceRoleSupabaseOrNull();
-    if (sr) {
-      const trySr = await tryInsertInboxMessageWithClient(sr, full, minimal);
-      if (trySr.ok) {
-        console.warn(
-          "[AgentForge] insertInboxMessageReliable: persisted via service role (user insert not retryable)",
-        );
-        return { ok: true };
-      }
-    }
-    return { ok: false, error: res.error.message };
-  }
-
-  res = await supabase.from("inbox_messages").insert(minimal as never);
-  if (!res.error) return { ok: true };
-
-  console.warn("[AgentForge] insertInboxMessageReliable minimal failed", res.error.message);
+    thread_id_present: Boolean(payload.thread_id != null && String(payload.thread_id).trim()),
+    has_outboundThread: Boolean(payload.outboundThread),
+  });
 
   const sr = getServiceRoleSupabaseOrNull();
   if (!sr) {
-    return { ok: false, error: res.error.message };
+    const err =
+      "Inbox sync failed: set SUPABASE_SERVICE_ROLE_KEY on the server (required to save sent mail).";
+    inboxPostSendLog("reliable:FAIL:no_service_role", {
+      userId: payload.user_id,
+      direction: payload.direction,
+      hint: "Server Actions need the service-role secret to write inbox_threads / inbox_messages.",
+    });
+    return { ok: false, error: err };
+  }
+  inboxPostSendLog("reliable:1:service_role_ready", { userId: payload.user_id });
+  await runEnsureInboxSchemaRpcEveryWrite(sr, "reliable");
+  inboxPostSendLog("reliable:2:schema_rpc_flow_done", { userId: payload.user_id });
+
+  let threadId = (payload.thread_id != null && String(payload.thread_id).trim()) || "";
+
+  if (!threadId) {
+    if (payload.direction !== "outbound" || !payload.outboundThread) {
+      inboxPostSendLog("reliable:FAIL:missing_thread_id", {
+        direction: payload.direction,
+        userId: payload.user_id,
+        hasOutboundThread: !!payload.outboundThread,
+      });
+      return {
+        ok: false,
+        error:
+          payload.direction === "outbound"
+            ? "thread_id or outboundThread is required for outbound inbox_messages insert."
+            : "thread_id is required for inbound inbox_messages insert.",
+      };
+    }
+    inboxPostSendLog("reliable:3:deferred_thread_null", {
+      userId: payload.user_id,
+      prospectEmail: payload.outboundThread.prospect_email,
+    });
+    inboxPostSendLog("reliable:4:ensure_thread_before_message_sequential");
+    const ensured = await ensureInboxThreadForOutbox(sr, {
+      userId: payload.user_id,
+      prospectEmail: payload.outboundThread.prospect_email,
+      subject: payload.subject,
+      snippet: payload.outboundThread.snippet,
+      lastMessageAt: payload.outboundThread.last_message_at,
+    });
+    if (!ensured.ok) {
+      inboxPostSendLog("reliable:FAIL:ensure_thread", { error: ensured.error, userId: payload.user_id });
+      return { ok: false, error: ensured.error };
+    }
+    threadId = ensured.threadId;
+    inboxPostSendLog("reliable:5:thread_resolved_after_ensure", { threadId, userId: payload.user_id });
+  } else {
+    inboxPostSendLog("reliable:3:thread_id_from_payload", { threadId, userId: payload.user_id });
   }
 
-  const srTry = await tryInsertInboxMessageWithClient(sr, full, minimal);
-  if (srTry.ok) {
-    console.warn("[AgentForge] insertInboxMessageReliable: persisted via service role after user failure");
-    return { ok: true };
+  const verifyThread = await assertInboxThreadRowVisible(sr, payload.user_id, threadId, "reliable");
+  if (!verifyThread.ok) {
+    inboxPostSendLog("reliable:FAIL:thread_not_committed", { error: verifyThread.error, threadId, userId: payload.user_id });
+    return { ok: false, error: verifyThread.error };
   }
 
-  /** Last resort: omit `raw` if jsonb / defaults differ between environments (Prompt 135). */
-  const ultra: Record<string, unknown> = {
-    thread_id: payload.thread_id,
+  const from_email = normalizeMailboxForInboxStorage(payload.from_email);
+  const to_email = normalizeMailboxForInboxStorage(payload.to_email);
+  if (payload.direction === "outbound" && !from_email.includes("@")) {
+    inboxPostSendLog("reliable:FAIL:invalid_from_email", {
+      raw: payload.from_email,
+      normalized: from_email,
+      userId: payload.user_id,
+    });
+    return { ok: false, error: "Invalid from_email for outbound inbox_messages insert." };
+  }
+  if (!to_email.includes("@")) {
+    inboxPostSendLog("reliable:FAIL:invalid_to_email", {
+      raw: payload.to_email,
+      normalized: to_email,
+      userId: payload.user_id,
+    });
+    return { ok: false, error: "Invalid to_email for inbox_messages insert." };
+  }
+
+  inboxPostSendLog("reliable:6:addresses_normalized_pre_message", {
+    userId: payload.user_id,
+    threadId,
+    from_email,
+    to_email,
+  });
+
+  let bodyHtml: string | null;
+  if (payload.body_html === undefined) {
+    bodyHtml = null;
+  } else {
+    bodyHtml = payload.body_html;
+  }
+
+  const rawSrc = payload.raw;
+  let rawObj: Record<string, unknown>;
+  if (rawSrc !== undefined && rawSrc !== null && typeof rawSrc === "object" && !Array.isArray(rawSrc)) {
+    rawObj = rawSrc as Record<string, unknown>;
+  } else {
+    rawObj = {};
+  }
+
+  let providerId: string | null;
+  if (
+    payload.provider_message_id !== undefined &&
+    payload.provider_message_id !== null &&
+    String(payload.provider_message_id).trim() !== ""
+  ) {
+    providerId = String(payload.provider_message_id).trim();
+  } else {
+    providerId = null;
+  }
+
+  const messageRow = {
+    thread_id: threadId,
     user_id: payload.user_id,
     direction: payload.direction,
     from_email,
     to_email,
     subject: payload.subject,
     body_text: payload.body_text,
+    body_html: bodyHtml,
+    raw: rawObj,
     received_at: payload.received_at,
+    provider_message_id: providerId,
   };
-  const ur = await sr.from("inbox_messages").insert(ultra as never);
-  if (!ur.error) {
-    console.warn("[AgentForge] insertInboxMessageReliable: persisted via service role (ultra-minimal, no raw)");
-    return { ok: true };
+
+  const ctx = { thread_id: threadId, user_id: payload.user_id, from_email, to_email };
+
+  inboxPostSendLog("reliable:7:inbox_messages_insert_after_thread_verified", {
+    threadId,
+    userId: payload.user_id,
+    direction: payload.direction,
+    client: "service_role",
+  });
+
+  const insMsg = await sr.from("inbox_messages").insert(messageRow).select("id").single();
+  if (!insMsg.error) {
+    inboxPostSendLog("reliable:8:message_insert_ok", { threadId, userId: payload.user_id });
+    inboxPostSendLog("reliable:9:complete", { threadId, userId: payload.user_id });
+    return { ok: true, threadId };
   }
 
-  return { ok: false, error: ur.error?.message ?? res.error?.message ?? "inbox_messages insert failed" };
-}
-
-async function tryInsertInboxMessageWithClient(
-  client: SupabaseClient,
-  full: Record<string, unknown>,
-  minimal: Record<string, unknown>,
-): Promise<{ ok: true } | { ok: false }> {
-  let r = await client.from("inbox_messages").insert(full as never);
-  if (!r.error) return { ok: true };
-  if (!isInboxMessageInsertRetryable(r.error.message)) {
-    const ultra: Record<string, unknown> = {
-      thread_id: minimal.thread_id,
-      user_id: minimal.user_id,
-      direction: minimal.direction,
-      from_email: minimal.from_email,
-      to_email: minimal.to_email,
-      subject: minimal.subject,
-      body_text: minimal.body_text,
-      received_at: minimal.received_at,
-    };
-    const u = await client.from("inbox_messages").insert(ultra as never);
-    return u.error ? { ok: false } : { ok: true };
-  }
-  r = await client.from("inbox_messages").insert(minimal as never);
-  if (!r.error) return { ok: true };
-  const ultra: Record<string, unknown> = {
-    thread_id: minimal.thread_id,
-    user_id: minimal.user_id,
-    direction: minimal.direction,
-    from_email: minimal.from_email,
-    to_email: minimal.to_email,
-    subject: minimal.subject,
-    body_text: minimal.body_text,
-    received_at: minimal.received_at,
-  };
-  r = await client.from("inbox_messages").insert(ultra as never);
-  return r.error ? { ok: false } : { ok: true };
+  const errText = insMsg.error.message ? insMsg.error.message : "inbox_messages insert failed";
+  const isFk =
+    insMsg.error.code === "23503" ||
+    errText.toLowerCase().includes("foreign key") ||
+    errText.toLowerCase().includes("violates foreign key");
+  inboxPostSendLog("reliable:FAIL:message_insert", {
+    thread_id: threadId,
+    user_id: payload.user_id,
+    from_email,
+    to_email,
+    code: insMsg.error.code,
+    message: errText,
+    likely_fk_violation: isFk,
+  });
+  logInboxDbError("insertInboxMessageReliable write failed", insMsg.error, ctx);
+  return { ok: false, error: errText };
 }
 
 /**
@@ -552,138 +856,88 @@ export type UpsertInboxAfterOutreachParams = {
 };
 
 /**
- * Prompt 120 — After a successful Workspace outreach send: ensure `inbox_threads` carries `campaign_thread_id`,
- * and record the outbound message so the Professional Inbox shows full threading with campaign flows.
+ * Prompt 120 / 141 — After Workspace outreach send: upsert `inbox_threads` (service role) + insert outbound
+ * message via `insertInboxMessageReliable` (service role). Every step logs with `inboxPostSendLog`.
  */
 export async function upsertInboxThreadAfterOutreachSend(
   params: UpsertInboxAfterOutreachParams,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  await ensureInboxSchemaReady();
+  const peRaw = params.prospectEmail;
+  const prospectPreview = typeof peRaw === "string" ? peRaw.slice(0, 120) : "";
+  inboxPostSendLog("outreach:0:start", {
+    userId: params.userId,
+    campaignThreadId: params.campaignThreadId,
+    prospectEmailRaw: prospectPreview,
+  });
+
+  const sr = getServiceRoleSupabaseOrNull();
+  if (!sr) {
+    inboxPostSendLog("outreach:FAIL:no_service_role", { userId: params.userId });
+    return {
+      ok: false,
+      error: "Inbox sync failed: set SUPABASE_SERVICE_ROLE_KEY on the server.",
+    };
+  }
+  inboxPostSendLog("outreach:1:service_role_client_ready", { userId: params.userId });
+  await runEnsureInboxSchemaRpcEveryWrite(sr, "outreach");
+  inboxPostSendLog("outreach:2:schema_rpc_flow_done_before_thread_ops", { userId: params.userId });
+
   const email = normalizeEmail(params.prospectEmail);
-  if (!email.includes("@")) return { ok: false, error: "Invalid prospect email." };
+  if (!email.includes("@")) {
+    inboxPostSendLog("outreach:FAIL:invalid_prospect_email", { normalized: email });
+    return { ok: false, error: "Invalid prospect email." };
+  }
 
   const plain = approximatePlainTextFromHtml(params.htmlBody);
   const snippet = snippetFromBodyText(plain || "(Campaign email sent)", 220);
   const now = new Date().toISOString();
+  inboxPostSendLog("outreach:3:derived_fields", {
+    userId: params.userId,
+    prospectEmail: email,
+    snippetLen: snippet.length,
+    plainLen: plain.length,
+    now,
+  });
 
-  const { data: existing, error: lookErr } = await params.supabase
-    .from("inbox_threads")
-    .select("id")
-    .eq("user_id", params.userId)
-    .eq("prospect_email", email)
-    .maybeSingle();
+  inboxPostSendLog("outreach:4:thread_insert_first_begin", { userId: params.userId, prospectEmail: email });
+  const ensured = await ensureInboxThreadRowInsertFirst(
+    sr,
+    {
+      userId: params.userId,
+      prospectEmail: email,
+      subject: params.subject,
+      snippet,
+      lastMessageAt: now,
+      campaignThreadId: params.campaignThreadId,
+    },
+    "outreach",
+  );
+  if (!ensured.ok) {
+    inboxPostSendLog("outreach:FAIL:thread_ensure", { error: ensured.error });
+    return { ok: false, error: ensured.error };
+  }
+  const threadId = ensured.threadId;
+  inboxPostSendLog("outreach:5:thread_ready_for_message", { threadPk: threadId });
 
-  if (lookErr && !isOptionalInboxThreadColumnMissingError(lookErr.message)) {
-    return { ok: false, error: lookErr.message };
+  const preMsgThread = await assertInboxThreadRowVisible(sr, params.userId, threadId, "outreach");
+  if (!preMsgThread.ok) {
+    inboxPostSendLog("outreach:FAIL:thread_verify_before_message", {
+      threadId,
+      error: preMsgThread.error,
+    });
+    return { ok: false, error: preMsgThread.error };
   }
 
-  let threadId: string;
-  const ex = existing as { id?: string } | null;
-  if (ex?.id) {
-    threadId = ex.id;
-    let up = await params.supabase
-      .from("inbox_threads")
-      .update({
-        subject: params.subject,
-        snippet,
-        last_message_at: now,
-        updated_at: now,
-        campaign_thread_id: params.campaignThreadId,
-        user_last_read_at: now,
-      })
-      .eq("id", threadId)
-      .eq("user_id", params.userId);
-    if (up.error && isOptionalInboxThreadColumnMissingError(up.error.message)) {
-      up = await params.supabase
-        .from("inbox_threads")
-        .update({
-          subject: params.subject,
-          snippet,
-          last_message_at: now,
-          updated_at: now,
-          campaign_thread_id: params.campaignThreadId,
-        })
-        .eq("id", threadId)
-        .eq("user_id", params.userId);
-    }
-    if (up.error) return { ok: false, error: up.error.message };
-  } else {
-    const ins = await params.supabase
-      .from("inbox_threads")
-      .insert({
-        user_id: params.userId,
-        prospect_email: email,
-        subject: params.subject,
-        snippet,
-        last_message_at: now,
-        campaign_thread_id: params.campaignThreadId,
-        user_last_read_at: now,
-      })
-      .select("id")
-      .single();
-
-    let row = ins;
-    if (ins.error && isOptionalInboxThreadColumnMissingError(ins.error.message)) {
-      row = await params.supabase
-        .from("inbox_threads")
-        .insert({
-          user_id: params.userId,
-          prospect_email: email,
-          subject: params.subject,
-          snippet,
-          last_message_at: now,
-          campaign_thread_id: params.campaignThreadId,
-        })
-        .select("id")
-        .single();
-    }
-    if (row.error || !row.data) {
-      const srTh = getServiceRoleSupabaseOrNull();
-      if (srTh) {
-        await ensureInboxSchemaReady();
-        let srIns = await srTh
-          .from("inbox_threads")
-          .insert({
-            user_id: params.userId,
-            prospect_email: email,
-            subject: params.subject,
-            snippet,
-            last_message_at: now,
-            campaign_thread_id: params.campaignThreadId,
-            user_last_read_at: now,
-          })
-          .select("id")
-          .single();
-        if (srIns.error && isOptionalInboxThreadColumnMissingError(srIns.error.message)) {
-          srIns = await srTh
-            .from("inbox_threads")
-            .insert({
-              user_id: params.userId,
-              prospect_email: email,
-              subject: params.subject,
-              snippet,
-              last_message_at: now,
-              campaign_thread_id: params.campaignThreadId,
-            })
-            .select("id")
-            .single();
-        }
-        if (!srIns.error && srIns.data) {
-          console.warn("[AgentForge] upsertInboxThreadAfterOutreachSend: thread created via service role");
-          threadId = String((srIns.data as { id: string }).id);
-        } else {
-          return {
-            ok: false,
-            error: srIns.error?.message ?? row.error?.message ?? "Could not create inbox thread.",
-          };
-        }
-      } else {
-        return { ok: false, error: row.error?.message ?? "Could not create inbox thread." };
-      }
-    } else {
-      threadId = String((row.data as { id: string }).id);
-    }
-  }
+  const fromStored = normalizeMailboxForInboxStorage(params.fromEmail);
+  const subjForLen = params.subject;
+  const subjectLen = typeof subjForLen === "string" ? subjForLen.length : 0;
+  inboxPostSendLog("outreach:6:message_payload_build", {
+    threadId,
+    userId: params.userId,
+    from_email: fromStored,
+    to_email: email,
+    subjectLen,
+  });
 
   const msgPayload = {
     thread_id: threadId,
@@ -698,20 +952,18 @@ export async function upsertInboxThreadAfterOutreachSend(
     raw: { source: "campaign_outreach_send", campaign_thread_id: params.campaignThreadId },
   };
 
-  let msgIns = await insertInboxMessageReliable(params.supabase, msgPayload);
+  inboxPostSendLog("outreach:7:insertInboxMessageReliable_before", { threadId });
+  const msgIns = await insertInboxMessageReliable(params.supabase, msgPayload);
   if (!msgIns.ok) {
-    await ensureInboxSchemaReady();
-    const srMsg = getServiceRoleSupabaseOrNull();
-    if (srMsg) {
-      msgIns = await insertInboxMessageReliable(srMsg, msgPayload);
-    }
-  }
-
-  if (!msgIns.ok) {
-    console.error("[AgentForge] upsertInboxThreadAfterOutreachSend message insert", msgIns.error);
+    inboxPostSendLog("outreach:FAIL:message_insert", { threadId, error: msgIns.error });
+    logInboxDbError("upsertInboxThreadAfterOutreachSend message insert", { message: msgIns.error }, {
+      threadId,
+    });
     return { ok: false, error: msgIns.error };
   }
+  inboxPostSendLog("outreach:8:insertInboxMessageReliable_ok", { threadId: msgIns.threadId });
 
+  inboxPostSendLog("outreach:9:complete", { threadId: msgIns.threadId });
   return { ok: true };
 }
 
@@ -726,207 +978,91 @@ export type RecordNewComposeMessageParams = {
 };
 
 /**
- * Prompt 124 — After Resend accepts a net-new compose, upsert the thread row and insert the outbound message.
- * Visibility remains per-user via RLS on `inbox_threads` / `inbox_messages`.
+ * Prompt 124 / 141 — After Resend accepts net-new compose: resolve thread (`thread_id` null + outboundThread)
+ * and insert message — all via service role in `insertInboxMessageReliable`. **`console.log` each step.**
  */
 export async function recordNewComposeMessageInInbox(
   supabase: SupabaseClient,
   params: RecordNewComposeMessageParams,
 ): Promise<{ ok: true; threadId: string } | { ok: false; error: string }> {
-  await ensureInboxSchemaReady();
+  inboxPostSendLog("compose:0:start", { userId: params.userId });
+  void supabase;
+
+  if (!getServiceRoleSupabaseOrNull()) {
+    const err =
+      "Inbox sync failed: set SUPABASE_SERVICE_ROLE_KEY on the server (required to save sent mail).";
+    inboxPostSendLog("compose:FAIL:no_service_role", { userId: params.userId });
+    return { ok: false, error: err };
+  }
+  inboxPostSendLog("compose:1:service_role_precheck_ok", { userId: params.userId });
+
   const email = normalizeEmail(params.prospectEmail);
-  if (!email.includes("@")) return { ok: false, error: "Invalid recipient address." };
+  if (!email.includes("@")) {
+    inboxPostSendLog("compose:FAIL:invalid_recipient", { raw: params.prospectEmail });
+    return { ok: false, error: "Invalid recipient address." };
+  }
 
   const snippet = snippetFromBodyText(params.bodyText, 220);
   const subj = params.subject.trim() || "(no subject)";
+  const fromPreview = normalizeMailboxForInboxStorage(params.fromBareForStorage);
 
-  const { data: existing, error: lookErr } = await supabase
-    .from("inbox_threads")
-    .select("id")
-    .eq("user_id", params.userId)
-    .eq("prospect_email", email)
-    .maybeSingle();
+  inboxPostSendLog("compose:2:validated_recipient_and_preview", {
+    userId: params.userId,
+    prospectEmail: email,
+    from_email_preview: fromPreview,
+    subjectLen: subj.length,
+    bodyLen: params.bodyText.length,
+    thread_id: null,
+  });
 
-  if (lookErr && !isOptionalInboxThreadColumnMissingError(lookErr.message)) {
-    return { ok: false, error: lookErr.message };
-  }
-
-  let threadId: string;
-  const ex = existing as { id?: string } | null;
-  if (ex?.id) {
-    threadId = ex.id;
-  } else {
-    const ins = await supabase
-      .from("inbox_threads")
-      .insert({
-        user_id: params.userId,
-        prospect_email: email,
-        subject: subj,
-        snippet,
-        last_message_at: params.now,
-        user_last_read_at: params.now,
-      })
-      .select("id")
-      .single();
-
-    let row = ins;
-    if (ins.error && isOptionalInboxThreadColumnMissingError(ins.error.message)) {
-      row = await supabase
-        .from("inbox_threads")
-        .insert({
-          user_id: params.userId,
-          prospect_email: email,
-          subject: subj,
-          snippet,
-          last_message_at: params.now,
-        })
-        .select("id")
-        .single();
-    }
-    if (row.error || !row.data) {
-      const srTh = getServiceRoleSupabaseOrNull();
-      if (srTh) {
-        await ensureInboxSchemaReady();
-        let srIns = await srTh
-          .from("inbox_threads")
-          .insert({
-            user_id: params.userId,
-            prospect_email: email,
-            subject: subj,
-            snippet,
-            last_message_at: params.now,
-            user_last_read_at: params.now,
-          })
-          .select("id")
-          .single();
-        if (srIns.error && isOptionalInboxThreadColumnMissingError(srIns.error.message)) {
-          srIns = await srTh
-            .from("inbox_threads")
-            .insert({
-              user_id: params.userId,
-              prospect_email: email,
-              subject: subj,
-              snippet,
-              last_message_at: params.now,
-            })
-            .select("id")
-            .single();
-        }
-        if (!srIns.error && srIns.data) {
-          console.warn("[AgentForge] recordNewComposeMessageInInbox: thread created via service role");
-          threadId = String((srIns.data as { id: string }).id);
-        } else {
-          return {
-            ok: false,
-            error: srIns.error?.message ?? row.error?.message ?? "Could not create inbox thread.",
-          };
-        }
-      } else {
-        return { ok: false, error: row.error?.message ?? "Could not create inbox thread." };
-      }
-    } else {
-      threadId = String((row.data as { id: string }).id);
-    }
-  }
-
-  const payload = {
-    thread_id: threadId,
+  inboxPostSendLog("compose:3:insertInboxMessageReliable_before", {
+    path: "thread_id_null_with_outboundThread",
+  });
+  const ins = await insertInboxMessageReliable(supabase, {
+    thread_id: null,
     user_id: params.userId,
-    direction: "outbound" as const,
+    direction: "outbound",
     from_email: params.fromBareForStorage,
     to_email: email,
     subject: subj,
     body_text: params.bodyText.slice(0, 50_000),
-    body_html: null as string | null,
+    body_html: null,
     received_at: params.now,
     raw: { source: "inbox_compose_new" },
-  };
-
-  let ins = await insertInboxMessageReliable(supabase, payload);
-  if (!ins.ok) {
-    await ensureInboxSchemaReady();
-    const sr = getServiceRoleSupabaseOrNull();
-    if (sr) {
-      ins = await insertInboxMessageReliable(sr, payload);
-    }
-  }
+    outboundThread: {
+      prospect_email: email,
+      snippet,
+      last_message_at: params.now,
+    },
+  });
 
   if (!ins.ok) {
-    console.error("[AgentForge] recordNewComposeMessageInInbox insert", ins.error);
+    inboxPostSendLog("compose:FAIL:insertInboxMessageReliable", {
+      userId: params.userId,
+      prospectEmail: email,
+      error: ins.error,
+    });
+    logInboxDbError(
+      "recordNewComposeMessageInInbox insertInboxMessageReliable failed",
+      { message: ins.error },
+      { userId: params.userId, prospectEmail: email },
+    );
+    const configured =
+      typeof ins.error === "string" &&
+      (ins.error.includes("SUPABASE_SERVICE_ROLE_KEY") ||
+        ins.error.toLowerCase().includes("service role"));
     return {
       ok: false,
-      error:
-        "Email was delivered, but we could not sync a copy to your inbox. Refresh the inbox page or check your database connection. If this persists, verify the inbox schema migration is applied.",
+      error: configured
+        ? ins.error
+        : "Email was delivered, but we could not sync a copy to your inbox. Refresh the inbox page or check your database connection. If this persists, verify the inbox schema migration is applied.",
     };
   }
 
-  let upErr = (
-    await supabase
-      .from("inbox_threads")
-      .update({
-        last_message_at: params.now,
-        snippet,
-        subject: subj,
-        updated_at: params.now,
-        user_last_read_at: params.now,
-      })
-      .eq("id", threadId)
-      .eq("user_id", params.userId)
-  ).error;
-  if (upErr && isOptionalInboxThreadColumnMissingError(upErr.message)) {
-    upErr = (
-      await supabase
-        .from("inbox_threads")
-        .update({
-          last_message_at: params.now,
-          snippet,
-          subject: subj,
-          updated_at: params.now,
-        })
-        .eq("id", threadId)
-        .eq("user_id", params.userId)
-    ).error;
-  }
-  if (upErr) {
-    const sr = getServiceRoleSupabaseOrNull();
-    if (sr) {
-      let srErr = (
-        await sr
-          .from("inbox_threads")
-          .update({
-            last_message_at: params.now,
-            snippet,
-            subject: subj,
-            updated_at: params.now,
-            user_last_read_at: params.now,
-          })
-          .eq("id", threadId)
-          .eq("user_id", params.userId)
-      ).error;
-      if (srErr && isOptionalInboxThreadColumnMissingError(srErr.message)) {
-        srErr = (
-          await sr
-            .from("inbox_threads")
-            .update({
-              last_message_at: params.now,
-              snippet,
-              subject: subj,
-              updated_at: params.now,
-            })
-            .eq("id", threadId)
-            .eq("user_id", params.userId)
-        ).error;
-      }
-      if (!srErr) {
-        console.warn("[AgentForge] recordNewComposeMessageInInbox thread update via service role");
-        upErr = null;
-      }
-    }
-  }
-  if (upErr) {
-    console.error("[AgentForge] recordNewComposeMessageInInbox thread update", upErr.message);
-  }
+  const threadId = ins.threadId;
+  inboxPostSendLog("compose:4:insertInboxMessageReliable_ok", { userId: params.userId, threadId });
 
+  inboxPostSendLog("compose:5:complete", { userId: params.userId, threadId });
   return { ok: true, threadId };
 }
 

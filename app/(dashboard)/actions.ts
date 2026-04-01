@@ -4448,16 +4448,12 @@ export async function sendInboxReplyAction(
     received_at: now,
     raw: { source: "inbox_reply_composer" },
   };
-  let msgIns = await insertInboxMessageReliable(supabase, msgPayload);
+  const msgIns = await insertInboxMessageReliable(supabase, msgPayload);
   if (!msgIns.ok) {
-    const srIns = getServiceRoleSupabaseOrNull();
-    if (srIns) {
-      await ensureInboxSchemaReady();
-      msgIns = await insertInboxMessageReliable(srIns, msgPayload);
-    }
-  }
-  if (!msgIns.ok) {
-    console.error("[AgentForge] sendInboxReplyAction insert", msgIns.error);
+    console.error(
+      "[AgentForge] sendInboxReplyAction insert",
+      JSON.stringify({ error: msgIns.error, threadId: row.id, userId: user.id }),
+    );
     return {
       ok: false,
       error:
@@ -4465,33 +4461,54 @@ export async function sendInboxReplyAction(
     };
   }
 
-  let upErr = (
-    await supabase
-      .from("inbox_threads")
-      .update({
-        last_message_at: now,
-        snippet,
-        updated_at: now,
-        user_last_read_at: now,
-      })
-      .eq("id", row.id)
-      .eq("user_id", user.id)
-  ).error;
-  if (upErr && isOptionalInboxThreadColumnMissingError(upErr.message)) {
-    upErr = (
-      await supabase
+  const runReplyThreadUpdate = async (cl: typeof supabase) => {
+    let upErr = (
+      await cl
         .from("inbox_threads")
         .update({
           last_message_at: now,
           snippet,
           updated_at: now,
+          user_last_read_at: now,
         })
         .eq("id", row.id)
         .eq("user_id", user.id)
     ).error;
+    if (upErr && isOptionalInboxThreadColumnMissingError(upErr.message)) {
+      upErr = (
+        await cl
+          .from("inbox_threads")
+          .update({
+            last_message_at: now,
+            snippet,
+            updated_at: now,
+          })
+          .eq("id", row.id)
+          .eq("user_id", user.id)
+      ).error;
+    }
+    return upErr;
+  };
+
+  let upErr = await runReplyThreadUpdate(supabase);
+  if (upErr) {
+    const srUp = getServiceRoleSupabaseOrNull();
+    if (srUp) {
+      await ensureInboxSchemaReady();
+      const srUpErr = await runReplyThreadUpdate(srUp);
+      if (!srUpErr) {
+        console.warn("[AgentForge] sendInboxReplyAction thread update via service role");
+        upErr = null;
+      } else {
+        upErr = srUpErr;
+      }
+    }
   }
   if (upErr) {
-    console.error("[AgentForge] sendInboxReplyAction thread update", upErr.message);
+    console.error(
+      "[AgentForge] sendInboxReplyAction thread update",
+      JSON.stringify({ message: upErr.message, code: upErr.code, threadId: row.id }),
+    );
   }
 
   await linkInboxThreadToCampaignIfKnown(supabase, {

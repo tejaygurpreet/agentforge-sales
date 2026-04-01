@@ -14,6 +14,8 @@ type Props = {
 
 /**
  * Prompt 137 — Onyx Copper inbox masthead; `?compose=1` opens compose.
+ * Prompt 141 — `useInboxUnread` is satisfied by `InboxUnreadProvider` in `(dashboard)/layout.tsx`
+ * (wraps `DashboardShell`, header + main), not a nested provider on this route alone.
  */
 export function InboxPageClient({ initialThreads, initialDrafts }: Props) {
   const { setCount } = useInboxUnread();

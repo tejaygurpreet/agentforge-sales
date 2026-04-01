@@ -3,6 +3,7 @@ import { getInboxDraftCountAction, getInboxUnreadCountAction } from "@/app/(dash
 import { DashboardMotionShell } from "@/components/dashboard/dashboard-motion-shell";
 import type { DashboardNavLink } from "@/components/dashboard/dashboard-shell";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { InboxUnreadProvider } from "@/components/dashboard/inbox-unread-context";
 import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { fetchWhiteLabelSettings } from "@/lib/white-label";
@@ -81,20 +82,23 @@ export default async function DashboardLayout({
   ]);
 
   return (
-    <DashboardShell
-      email={user.email ?? ""}
-      displayName={displayName}
-      whiteLabel={{
-        appName: wl.appName,
-        logoUrl: wl.logoUrl,
-        primaryColor: wl.primaryColor,
-        secondaryColor: wl.secondaryColor,
-      }}
-      navLinks={DASHBOARD_NAV}
-      initialInboxUnreadCount={initialInboxUnreadCount}
+    <InboxUnreadProvider
+      initialCount={initialInboxUnreadCount}
       initialDraftCount={initialDraftCount}
     >
-      <DashboardMotionShell>{children}</DashboardMotionShell>
-    </DashboardShell>
+      <DashboardShell
+        email={user.email ?? ""}
+        displayName={displayName}
+        whiteLabel={{
+          appName: wl.appName,
+          logoUrl: wl.logoUrl,
+          primaryColor: wl.primaryColor,
+          secondaryColor: wl.secondaryColor,
+        }}
+        navLinks={DASHBOARD_NAV}
+      >
+        <DashboardMotionShell>{children}</DashboardMotionShell>
+      </DashboardShell>
+    </InboxUnreadProvider>
   );
 }

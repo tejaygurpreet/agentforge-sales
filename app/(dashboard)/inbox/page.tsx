@@ -12,6 +12,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /**
  * Prompt 138 — Onyx Copper inbox; `?compose=1` via Suspense; compose FAB softened in `ProfessionalInbox`.
+ * Prompt 141 — `InboxUnreadProvider` wraps the dashboard from `(dashboard)/layout.tsx` so this page’s
+ * `InboxPageClient` / `ProfessionalInbox` (`useInboxUnread`) stay inside the same tree as the header.
  */
 export default async function InboxPage() {
   const [initialThreads, initialDrafts] = await Promise.all([
