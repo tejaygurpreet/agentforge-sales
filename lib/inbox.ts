@@ -545,29 +545,6 @@ async function ensureInboxThreadRowInsertFirst(
   return { ok: false, error: errMsg };
 }
 
-async function ensureInboxThreadForOutbox(
-  db: SupabaseClient,
-  args: {
-    userId: string;
-    prospectEmail: string;
-    subject: string;
-    snippet: string;
-    lastMessageAt: string;
-  },
-): Promise<{ ok: true; threadId: string } | { ok: false; error: string }> {
-  return ensureInboxThreadRowInsertFirst(
-    db,
-    {
-      userId: args.userId,
-      prospectEmail: args.prospectEmail,
-      subject: args.subject,
-      snippet: args.snippet,
-      lastMessageAt: args.lastMessageAt,
-    },
-    "compose_null_thread",
-  );
-}
-
 export type InsertInboxMessageReliablePayload = {
   /** Omit or null while sending brand-new outbound mail; use `outboundThread` then. */
   thread_id?: string | null;
@@ -589,8 +566,24 @@ export type InsertInboxMessageReliablePayload = {
   };
 };
 
+function parseInsertOutboundInboxMessageRpcResult(data: unknown): { threadId: string } | null {
+  if (data === null || data === undefined) return null;
+  if (typeof data === "string") {
+    const threadId = data.trim();
+    return threadId.length > 0 ? { threadId } : null;
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (row === null || typeof row !== "object") return null;
+  const o = row as Record<string, unknown>;
+  const rawId = o.thread_id ?? o.inbox_thread_id ?? o.outbox_inbox_thread_id;
+  const threadId = typeof rawId === "string" ? rawId.trim() : "";
+  if (threadId.length === 0) return null;
+  return { threadId };
+}
+
 /**
- * Insert one `inbox_messages` row using the service-role client only (API-compatible unused first arg).
+ * Atomic outbound save: `insert_outbound_inbox_message` RPC (service role). Creates/finds thread + inserts
+ * message in one DB transaction when `p_inbox_thread_id` is null; otherwise inserts message only.
  */
 export async function insertInboxMessageReliable(
   _supabase: SupabaseClient,
@@ -618,10 +611,25 @@ export async function insertInboxMessageReliable(
   await runEnsureInboxSchemaRpcEveryWrite(sr, "reliable");
   inboxPostSendLog("reliable:2:schema_rpc_flow_done", { userId: payload.user_id });
 
-  let threadId = (payload.thread_id != null && String(payload.thread_id).trim()) || "";
+  if (payload.direction !== "outbound") {
+    inboxPostSendLog("reliable:FAIL:rpc_outbound_only", { direction: payload.direction, userId: payload.user_id });
+    return {
+      ok: false,
+      error: "insert_outbound_inbox_message RPC supports outbound direction only; use webhook ingest for inbound.",
+    };
+  }
 
-  if (!threadId) {
-    if (payload.direction !== "outbound" || !payload.outboundThread) {
+  const pInboxThreadId: string | null =
+    payload.thread_id != null && String(payload.thread_id).trim() !== ""
+      ? String(payload.thread_id).trim()
+      : null;
+  let pProspectEmail: string | null = null;
+  let pThreadSnippet = "";
+  let pThreadLastMessageAt = payload.received_at;
+  const pThreadSubject = (payload.subject.trim().length > 0 ? payload.subject.trim() : "(no subject)");
+
+  if (!pInboxThreadId) {
+    if (!payload.outboundThread) {
       inboxPostSendLog("reliable:FAIL:missing_thread_id", {
         direction: payload.direction,
         userId: payload.user_id,
@@ -630,9 +638,7 @@ export async function insertInboxMessageReliable(
       return {
         ok: false,
         error:
-          payload.direction === "outbound"
-            ? "thread_id or outboundThread is required for outbound inbox_messages insert."
-            : "thread_id is required for inbound inbox_messages insert.",
+          "thread_id or outboundThread is required for outbound inbox_messages insert.",
       };
     }
     inboxPostSendLog("reliable:3:deferred_thread_null", {
@@ -640,32 +646,23 @@ export async function insertInboxMessageReliable(
       prospectEmail: payload.outboundThread.prospect_email,
     });
     inboxPostSendLog("reliable:4:ensure_thread_before_message_sequential");
-    const ensured = await ensureInboxThreadForOutbox(sr, {
-      userId: payload.user_id,
-      prospectEmail: payload.outboundThread.prospect_email,
-      subject: payload.subject,
-      snippet: payload.outboundThread.snippet,
-      lastMessageAt: payload.outboundThread.last_message_at,
-    });
-    if (!ensured.ok) {
-      inboxPostSendLog("reliable:FAIL:ensure_thread", { error: ensured.error, userId: payload.user_id });
-      return { ok: false, error: ensured.error };
+    pProspectEmail = normalizeEmail(payload.outboundThread.prospect_email);
+    pThreadSnippet = payload.outboundThread.snippet;
+    pThreadLastMessageAt = payload.outboundThread.last_message_at;
+    if (!pProspectEmail.includes("@")) {
+      inboxPostSendLog("reliable:FAIL:invalid_prospect_for_rpc", {
+        userId: payload.user_id,
+        prospectEmail: pProspectEmail,
+      });
+      return { ok: false, error: "Invalid prospect email for atomic thread create." };
     }
-    threadId = ensured.threadId;
-    inboxPostSendLog("reliable:5:thread_resolved_after_ensure", { threadId, userId: payload.user_id });
   } else {
-    inboxPostSendLog("reliable:3:thread_id_from_payload", { threadId, userId: payload.user_id });
-  }
-
-  const verifyThread = await assertInboxThreadRowVisible(sr, payload.user_id, threadId, "reliable");
-  if (!verifyThread.ok) {
-    inboxPostSendLog("reliable:FAIL:thread_not_committed", { error: verifyThread.error, threadId, userId: payload.user_id });
-    return { ok: false, error: verifyThread.error };
+    inboxPostSendLog("reliable:3:thread_id_from_payload", { threadId: pInboxThreadId, userId: payload.user_id });
   }
 
   const from_email = normalizeMailboxForInboxStorage(payload.from_email);
   const to_email = normalizeMailboxForInboxStorage(payload.to_email);
-  if (payload.direction === "outbound" && !from_email.includes("@")) {
+  if (!from_email.includes("@")) {
     inboxPostSendLog("reliable:FAIL:invalid_from_email", {
       raw: payload.from_email,
       normalized: from_email,
@@ -682,9 +679,10 @@ export async function insertInboxMessageReliable(
     return { ok: false, error: "Invalid to_email for inbox_messages insert." };
   }
 
+  const threadIdForLog = pInboxThreadId !== null ? pInboxThreadId : "";
   inboxPostSendLog("reliable:6:addresses_normalized_pre_message", {
     userId: payload.user_id,
-    threadId,
+    threadId: threadIdForLog,
     from_email,
     to_email,
   });
@@ -715,52 +713,70 @@ export async function insertInboxMessageReliable(
     providerId = null;
   }
 
-  const messageRow = {
-    thread_id: threadId,
+  const ctx = {
+    thread_id: pInboxThreadId ?? "",
     user_id: payload.user_id,
-    direction: payload.direction,
     from_email,
     to_email,
-    subject: payload.subject,
-    body_text: payload.body_text,
-    body_html: bodyHtml,
-    raw: rawObj,
-    received_at: payload.received_at,
-    provider_message_id: providerId,
   };
 
-  const ctx = { thread_id: threadId, user_id: payload.user_id, from_email, to_email };
-
   inboxPostSendLog("reliable:7:inbox_messages_insert_after_thread_verified", {
-    threadId,
+    threadId: threadIdForLog,
     userId: payload.user_id,
     direction: payload.direction,
     client: "service_role",
   });
 
-  const insMsg = await sr.from("inbox_messages").insert(messageRow).select("id").single();
-  if (!insMsg.error) {
-    inboxPostSendLog("reliable:8:message_insert_ok", { threadId, userId: payload.user_id });
-    inboxPostSendLog("reliable:9:complete", { threadId, userId: payload.user_id });
-    return { ok: true, threadId };
+  const { data: rpcData, error: rpcErr } = await sr.rpc("insert_outbound_inbox_message", {
+    p_user_id: payload.user_id,
+    p_prospect_email: pProspectEmail,
+    p_from_email: from_email,
+    p_to_email: to_email,
+    p_subject: payload.subject,
+    p_body_text: payload.body_text,
+    p_inbox_thread_id: pInboxThreadId,
+    p_body_html: bodyHtml,
+    p_provider_message_id: providerId,
+    p_raw: rawObj,
+    p_received_at: payload.received_at,
+    p_thread_last_message_at: pThreadLastMessageAt,
+    p_thread_snippet: pThreadSnippet,
+    p_thread_subject: pThreadSubject,
+  });
+
+  if (rpcErr) {
+    const errText = rpcErr.message ? rpcErr.message : "insert_outbound_inbox_message RPC failed";
+    const isFk =
+      rpcErr.code === "23503" ||
+      errText.toLowerCase().includes("foreign key") ||
+      errText.toLowerCase().includes("violates foreign key");
+    inboxPostSendLog("reliable:FAIL:message_insert", {
+      thread_id: threadIdForLog,
+      user_id: payload.user_id,
+      from_email,
+      to_email,
+      code: rpcErr.code,
+      message: errText,
+      likely_fk_violation: isFk,
+    });
+    logInboxDbError("insertInboxMessageReliable RPC failed", rpcErr, ctx);
+    return { ok: false, error: errText };
   }
 
-  const errText = insMsg.error.message ? insMsg.error.message : "inbox_messages insert failed";
-  const isFk =
-    insMsg.error.code === "23503" ||
-    errText.toLowerCase().includes("foreign key") ||
-    errText.toLowerCase().includes("violates foreign key");
-  inboxPostSendLog("reliable:FAIL:message_insert", {
-    thread_id: threadId,
-    user_id: payload.user_id,
-    from_email,
-    to_email,
-    code: insMsg.error.code,
-    message: errText,
-    likely_fk_violation: isFk,
-  });
-  logInboxDbError("insertInboxMessageReliable write failed", insMsg.error, ctx);
-  return { ok: false, error: errText };
+  const parsed = parseInsertOutboundInboxMessageRpcResult(rpcData);
+  if (parsed === null) {
+    inboxPostSendLog("reliable:FAIL:rpc_empty_result", { userId: payload.user_id, rpcData });
+    return { ok: false, error: "insert_outbound_inbox_message returned no inbox_thread_id." };
+  }
+  const threadId = parsed.threadId;
+
+  if (!pInboxThreadId) {
+    inboxPostSendLog("reliable:5:thread_resolved_after_ensure", { threadId, userId: payload.user_id });
+  }
+
+  inboxPostSendLog("reliable:8:message_insert_ok", { threadId, userId: payload.user_id });
+  inboxPostSendLog("reliable:9:complete", { threadId, userId: payload.user_id });
+  return { ok: true, threadId };
 }
 
 /**
