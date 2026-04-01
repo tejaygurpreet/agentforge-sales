@@ -43,22 +43,16 @@ const NAV_ICONS: Record<string, LucideIcon> = {
 };
 
 interface DashboardShellProps {
-  /** Kept for sign-out / account flows; not shown in header (Prompt 136 beta). */
   email: string;
-  /** Shown alone on the right — no email in the header (Prompt 136 beta). */
   displayName?: string;
-  /** Prompt 79 — header product name + optional mark. Prompt 112 — full palette for CSS variables. */
   whiteLabel?: {
     appName: string;
     logoUrl: string;
     primaryColor: string;
     secondaryColor?: string;
   };
-  /** Prompt 84 — primary nav (desktop + mobile sheet). */
   navLinks: DashboardNavLink[];
-  /** Prompt 123 — seed unread badge (`getInboxUnreadCountAction`). */
   initialInboxUnreadCount: number;
-  /** Prompt 129 — seed draft badge (`getInboxDraftCountAction`). */
   initialDraftCount: number;
   children: React.ReactNode;
 }
@@ -68,23 +62,48 @@ function navLinkActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function NavLinkList({
+/** Prompt 138 — Full desktop nav: Dashboard · Setup · Agents · Replies · Analytics with copper underline. */
+function DesktopMainNav({ links }: { links: DashboardNavLink[] }) {
+  const pathname = usePathname();
+  return (
+    <nav aria-label="Main" className="hidden min-w-0 flex-1 justify-center md:flex">
+      <ul className="flex flex-wrap items-center justify-center gap-x-0.5 lg:gap-x-1">
+        {links.map((l) => {
+          const active = navLinkActive(pathname, l.href);
+          return (
+            <li key={l.href}>
+              <Link
+                href={l.href}
+                className={cn(
+                  "relative block px-3 py-2 text-[13px] font-bold tracking-tight transition-colors duration-200 lg:text-sm",
+                  "after:absolute after:inset-x-3 after:bottom-1 after:h-px after:origin-center after:scale-x-0 after:bg-[#B45309] after:transition-transform after:duration-200 after:ease-out",
+                  active
+                    ? "text-[#111827] after:scale-x-100"
+                    : "text-[#111827]/72 hover:text-[#111827] hover:after:scale-x-100 hover:after:bg-[#B45309]/55",
+                )}
+                aria-current={active ? "page" : undefined}
+              >
+                {l.label}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
+function NavLinkListMobile({
   links,
-  stacked,
   onNavigate,
 }: {
   links: DashboardNavLink[];
-  stacked: boolean;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
 
   return (
-    <ul
-      className={cn(
-        stacked ? "flex flex-col gap-1.5" : "flex flex-row flex-wrap items-center gap-0.5 md:gap-1.5",
-      )}
-    >
+    <ul className="flex flex-col gap-1.5">
       {links.map((l) => {
         const active = navLinkActive(pathname, l.href);
         const Icon = NAV_ICONS[l.href] ?? LayoutDashboard;
@@ -94,20 +113,18 @@ function NavLinkList({
               href={l.href}
               onClick={onNavigate}
               className={cn(
-                "group/nav flex items-center gap-2 rounded-[var(--card-radius)] text-sm font-medium outline-none transition-[transform,box-shadow,background-color,color] duration-200 ease-in-out",
-                "focus-visible:ring-2 focus-visible:ring-sage/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
-                stacked ? "px-3 py-3" : "px-3 py-2",
+                "group/nav flex items-center gap-2 rounded-[var(--card-radius)] px-3 py-3 text-sm font-semibold outline-none transition-colors duration-200",
+                "focus-visible:ring-2 focus-visible:ring-terracotta/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#F9F6F0]",
                 active
-                  ? "bg-sage/[0.12] text-foreground shadow-soft ring-1 ring-sage/22"
-                  : "text-muted-foreground hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-sage/[0.08] hover:text-foreground hover:shadow-soft",
-                "active:scale-[0.98]",
+                  ? "bg-[#111827]/[0.07] text-foreground ring-1 ring-[#B45309]/20"
+                  : "text-muted-foreground hover:bg-[#EDE0D4]/40 hover:text-foreground",
               )}
               aria-current={active ? "page" : undefined}
             >
               <Icon
                 className={cn(
-                  "h-4 w-4 shrink-0 opacity-90 transition-transform duration-200 ease-out group-hover/nav:translate-x-0.5",
-                  active && "text-sage",
+                  "h-4 w-4 shrink-0 opacity-90",
+                  active && "text-[#B45309]",
                 )}
                 aria-hidden
               />
@@ -117,6 +134,26 @@ function NavLinkList({
         );
       })}
     </ul>
+  );
+}
+
+function HeaderBrandTitle({
+  whiteLabel,
+}: {
+  whiteLabel?: DashboardShellProps["whiteLabel"];
+}) {
+  const custom = whiteLabel?.appName?.trim();
+  if (custom) {
+    return (
+      <span className="truncate text-[0.95rem] font-bold leading-tight tracking-[-0.02em] text-[#111827]">
+        {custom}
+      </span>
+    );
+  }
+  return (
+    <span className="whitespace-nowrap text-[0.95rem] font-bold leading-tight tracking-[-0.02em] text-[#111827]">
+      Agent<span className="text-[#B45309]">Forge</span> Sales
+    </span>
   );
 }
 
@@ -143,6 +180,7 @@ export function DashboardShell({
   }
 
   const brandLabel = whiteLabel?.appName?.trim() || DEFAULT_BRAND_DISPLAY_NAME;
+  const userName = displayName?.trim() || "Member";
 
   const brandCssVars = useMemo((): CSSProperties | undefined => {
     const p = whiteLabel?.primaryColor?.trim();
@@ -154,26 +192,26 @@ export function DashboardShell({
     };
   }, [whiteLabel?.primaryColor, whiteLabel?.secondaryColor]);
 
+  const logoUsesWhiteLabelColor = Boolean(whiteLabel?.primaryColor?.trim());
+
   return (
     <InboxUnreadProvider initialCount={initialInboxUnreadCount} initialDraftCount={initialDraftCount}>
       <div
-        className="flex min-h-screen min-h-[100dvh] flex-col bg-background text-foreground antialiased selection:bg-sage/15 selection:text-foreground"
+        className="flex min-h-screen min-h-[100dvh] flex-col bg-background text-foreground antialiased selection:bg-[#EDE0D4]/80 selection:text-foreground"
         style={brandCssVars}
       >
-        <header className="energetic-banner-wash sticky top-0 z-30 border-b border-coral/25 bg-[#faf8f4]/92 shadow-[0_1px_0_0_hsl(9_100%_77%_/0.14),0_20px_56px_-24px_hsl(30_12%_15%_/0.12)] backdrop-blur-xl supports-[backdrop-filter]:bg-[#faf8f4]/85">
-          <div className="mx-auto flex min-h-[3.5rem] max-w-7xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-5 py-3 sm:h-[3.75rem] sm:px-8 sm:py-0">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 sm:gap-x-6 md:gap-x-8">
+        <header className="sticky top-0 z-30 border-b border-[#111827]/10 bg-[#F9F6F0]/96 shadow-[0_1px_0_0_rgba(17,24,39,0.06),0_18px_48px_-28px_rgba(17,24,39,0.1)] backdrop-blur-xl supports-[backdrop-filter]:bg-[#F9F6F0]/90">
+          <div className="mx-auto flex min-h-[3.5rem] max-w-7xl items-center gap-3 px-5 py-3 sm:h-[3.65rem] sm:gap-4 sm:px-8 sm:py-0">
             <Link
               href="/"
-              className="group flex min-w-0 max-w-[min(100%,min(280px,92vw))] shrink-0 items-center gap-2.5 text-[0.95rem] font-bold tracking-[-0.02em] text-[color-mix(in_srgb,hsl(var(--foreground))_92%,#5c5348)] transition-all duration-300 ease-out hover:text-foreground hover:[text-shadow:0_1px_0_rgba(255,255,255,0.5)] active:scale-[0.995] sm:max-w-md md:max-w-lg sm:text-lg"
-              style={
-                whiteLabel?.primaryColor
-                  ? { color: whiteLabel.primaryColor }
-                  : undefined
-              }
+              className={cn(
+                "group flex min-w-0 shrink-0 items-center gap-2.5 transition-opacity duration-200 hover:opacity-92",
+                !logoUsesWhiteLabelColor && "text-[#111827]",
+              )}
+              style={logoUsesWhiteLabelColor ? { color: whiteLabel!.primaryColor } : undefined}
             >
               {whiteLabel?.logoUrl?.trim() ? (
-                <span className="relative h-9 w-9 shrink-0 overflow-hidden rounded-[var(--card-radius)] border border-sage/35 bg-card shadow-soft ring-1 ring-black/[0.04] transition-[transform,box-shadow] duration-200 ease-in-out group-hover:scale-[1.02] group-hover:shadow-card group-hover:ring-sage/25">
+                <span className="relative h-9 w-9 shrink-0 overflow-hidden rounded-[var(--card-radius)] border border-[#111827]/12 bg-card shadow-soft ring-1 ring-black/[0.04] transition-transform duration-200 ease-out group-hover:scale-[1.02]">
                   <Image
                     src={whiteLabel.logoUrl.trim()}
                     alt=""
@@ -184,64 +222,66 @@ export function DashboardShell({
                   />
                 </span>
               ) : (
-                <AgentForgeLogoMark className="h-9 w-9 transition-transform duration-200 ease-out group-hover:scale-[1.04]" />
+                <AgentForgeLogoMark className="h-8 w-8 shrink-0 text-[#111827] transition-transform duration-200 ease-out group-hover:scale-[1.03]" />
               )}
-              <span className="min-w-0 break-words text-balance sm:whitespace-normal sm:tracking-[-0.03em]">
-                {whiteLabel?.appName?.trim() || DEFAULT_BRAND_DISPLAY_NAME}
-              </span>
+              <HeaderBrandTitle whiteLabel={whiteLabel} />
             </Link>
 
-            <nav className="hidden min-w-0 flex-1 md:block md:max-w-none" aria-label="Main">
-              <NavLinkList links={navLinks} stacked={false} />
-            </nav>
+            <DesktopMainNav links={navLinks} />
 
-            <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
-              <DialogTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="shrink-0 rounded-xl border-border/60 shadow-sm md:hidden"
-                  aria-label="Open menu"
-                >
-                  <Menu className="h-5 w-5" />
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-sm border-border/60 p-0 sm:max-w-md">
-                <DialogHeader className="border-b border-border/50 bg-muted/20 px-4 py-4">
-                  <DialogTitle className="text-left text-base font-semibold tracking-tight">Navigate</DialogTitle>
-                  <p className="text-left text-xs text-muted-foreground">Jump to any area of the app</p>
-                </DialogHeader>
-                <nav className="px-3 py-4" aria-label="Mobile main">
-                  <NavLinkList
-                    links={navLinks}
-                    stacked
-                    onNavigate={() => setMobileOpen(false)}
-                  />
-                </nav>
-              </DialogContent>
-            </Dialog>
-            </div>
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3 md:ml-auto">
+              <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9 shrink-0 rounded-xl border-[#111827]/14 bg-white/85 shadow-sm hover:bg-white md:hidden"
+                    aria-label="Open navigation"
+                  >
+                    <Menu className="h-[18px] w-[18px] text-[#111827]" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-sm border-border/50 p-0 sm:max-w-md">
+                  <DialogHeader className="border-b border-border/40 bg-[#F9F6F0]/80 px-4 py-4">
+                    <DialogTitle className="text-left text-[15px] font-semibold tracking-tight text-[#111827]">
+                      Navigation
+                    </DialogTitle>
+                  </DialogHeader>
+                  <nav className="px-3 py-4" aria-label="Mobile main">
+                    <NavLinkListMobile links={navLinks} onNavigate={() => setMobileOpen(false)} />
+                  </nav>
+                </DialogContent>
+              </Dialog>
 
-            <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3 md:pl-1">
-            <HeaderInboxButton />
-            <span
-              className="hidden max-w-[min(100%,200px)] truncate text-right text-sm font-semibold tracking-tight text-foreground md:block"
-              title={displayName?.trim() || "Gurpreet Singh"}
-            >
-              {displayName?.trim() || "Gurpreet Singh"}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0 rounded-xl border-border/60 shadow-sm transition-all duration-200 hover:scale-[1.02] hover:border-sage/35 hover:bg-sage/[0.08]"
-              onClick={handleSignOut}
-              disabled={pending}
-              aria-label={email ? `Sign out (${email})` : "Sign out"}
-            >
-              <LogOut className="mr-1 h-4 w-4 sm:mr-1" />
-              <span className="hidden sm:inline">Sign out</span>
-            </Button>
+              <HeaderInboxButton />
+              <span
+                className="hidden max-w-[160px] truncate text-right text-sm font-semibold tracking-tight text-[#111827] lg:block"
+                title={userName}
+              >
+                {userName}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 shrink-0 rounded-xl border-[#111827]/14 bg-white/85 shadow-sm hover:bg-white lg:hidden"
+                onClick={handleSignOut}
+                disabled={pending}
+                aria-label={email ? `Sign out (${email})` : "Sign out"}
+              >
+                <LogOut className="h-[18px] w-[18px] text-[#111827]" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="hidden h-9 shrink-0 rounded-xl border-[#111827]/14 bg-white/85 px-3 text-[13px] font-semibold shadow-sm hover:bg-white lg:inline-flex"
+                onClick={handleSignOut}
+                disabled={pending}
+                aria-label={email ? `Sign out (${email})` : "Sign out"}
+              >
+                <LogOut className="mr-1.5 h-3.5 w-3.5" />
+                Sign out
+              </Button>
             </div>
           </div>
         </header>
@@ -249,12 +289,12 @@ export function DashboardShell({
           <ReplyIntelProvider>{children}</ReplyIntelProvider>
         </main>
         <footer
-          className="mt-auto border-t border-border/35 bg-gradient-to-t from-muted/30 via-transparent to-transparent [border-top-color:color-mix(in_srgb,var(--brand-primary,transparent)_6%,hsl(var(--border)))]"
+          className="mt-auto border-t border-border/35 bg-gradient-to-t from-muted/25 via-transparent to-transparent [border-top-color:color-mix(in_srgb,var(--brand-primary,transparent)_5%,hsl(var(--border)))]"
           role="contentinfo"
         >
           <div className="mx-auto max-w-7xl px-5 py-6 sm:px-8">
             <p className="text-center text-[11px] leading-relaxed tracking-wide text-muted-foreground/90">
-              <span className="font-medium text-foreground/80">{brandLabel}</span>
+              <span className="font-medium text-foreground/85">{brandLabel}</span>
               <span className="mx-2 inline-block h-0.5 w-0.5 rounded-full bg-border align-middle opacity-70" aria-hidden />
               <span className="text-muted-foreground/80">Campaign intelligence workspace</span>
             </p>

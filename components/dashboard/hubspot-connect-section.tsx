@@ -76,8 +76,8 @@ export function HubSpotConnectSection({ connected: initialConnected }: Props) {
       )}
     >
       <div className="grid min-h-[280px] md:grid-cols-[minmax(200px,0.95fr)_minmax(0,1.15fr)]">
-        <div className="relative flex min-h-[200px] items-center justify-center border-b border-border/40 bg-gradient-to-br from-sage/[0.12] via-coral/[0.08] to-terracotta/[0.1] p-6 md:border-b-0 md:border-r md:min-h-full">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_50%_40%,hsl(var(--coral)_/_0.12),transparent_65%)]" aria-hidden />
+        <div className="relative flex min-h-[200px] items-center justify-center border-b border-border/40 bg-gradient-to-br from-sage/[0.12] via-highlight/[0.08] to-terracotta/[0.1] p-6 md:border-b-0 md:border-r md:min-h-full">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_50%_40%,hsl(var(--highlight)_/_0.12),transparent_65%)]" aria-hidden />
           <motion.div
             className="relative z-[1] w-full max-w-[300px]"
             initial={{ opacity: 0, scale: 0.96 }}
@@ -92,7 +92,7 @@ export function HubSpotConnectSection({ connected: initialConnected }: Props) {
           <div className="space-y-4 border-b border-border/35 px-6 py-6 sm:px-8 sm:py-7">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-sage">CRM sync</p>
             <div className="flex flex-wrap items-start gap-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--card-radius)] border border-sage/35 bg-white/80 shadow-inner ring-1 ring-coral/15">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--card-radius)] border border-sage/35 bg-white/80 shadow-inner ring-1 ring-highlight/15">
                 <Link2 className="h-5 w-5 text-sage" aria-hidden />
               </span>
               <div className="min-w-0 flex-1 space-y-2">
@@ -155,7 +155,7 @@ export function HubSpotConnectSection({ connected: initialConnected }: Props) {
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col gap-4 rounded-[var(--card-radius)] border border-sage/30 bg-gradient-to-br from-sage/[0.08] to-coral/[0.06] px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-4 rounded-[var(--card-radius)] border border-sage/30 bg-gradient-to-br from-sage/[0.08] to-highlight/[0.06] px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
                 <Button
                   type="button"
                   variant="outline"

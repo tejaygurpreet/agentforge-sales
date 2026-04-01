@@ -86,7 +86,7 @@ const items = [
     href: "/setup",
     title: "Setup",
     desc: "Brand, integrations, and workspace preferences.",
-    accent: "text-coral",
+    accent: "text-highlight",
     art: SvgAgentSpark,
   },
 ] as const;
@@ -130,7 +130,7 @@ export function DashboardQuickNavCards() {
                 </p>
               </div>
               <div
-                className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br from-coral/15 to-terracotta/10 blur-2xl"
+                className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br from-highlight/14 to-terracotta/10 blur-2xl"
                 aria-hidden
               />
             </Link>

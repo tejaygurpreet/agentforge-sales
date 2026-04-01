@@ -30,8 +30,8 @@ export function DashboardStatsBanner({ analytics }: Props) {
           : "—",
       hint: "Composite",
       icon: BarChart3,
-      accent: "text-coral",
-      chip: "from-coral/20 to-terracotta/10 border-coral/30",
+      accent: "text-highlight",
+      chip: "from-highlight/18 to-terracotta/10 border-highlight/28",
     },
     {
       label: "Replies analyzed",
@@ -39,7 +39,7 @@ export function DashboardStatsBanner({ analytics }: Props) {
       hint: "AI insights",
       icon: Sparkles,
       accent: "text-terracotta",
-      chip: "from-terracotta/15 to-coral/10 border-terracotta/25",
+      chip: "from-terracotta/15 to-highlight/10 border-terracotta/25",
     },
     {
       label: "Forecast deals",
@@ -47,7 +47,7 @@ export function DashboardStatsBanner({ analytics }: Props) {
       hint: "In pipeline model",
       icon: MessageSquare,
       accent: "text-sage",
-      chip: "from-sage/12 to-coral/12 border-sage/20",
+      chip: "from-sage/12 to-highlight/12 border-sage/20",
     },
   ];
 

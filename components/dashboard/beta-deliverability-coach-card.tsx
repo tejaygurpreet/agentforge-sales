@@ -9,7 +9,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { dashboardOutlineActionClass } from "@/lib/dashboard-action-classes";
 import { cn } from "@/lib/utils";
 import type { DeliverabilitySuitePayload } from "@/types";
 import { Gauge, HeartPulse, Sparkles } from "lucide-react";
@@ -25,7 +24,7 @@ function pctLabel(n: number | null | undefined): string {
 }
 
 /**
- * Prompt 136 — Compact deliverability summary + “Open Coach” dialog (tips).
+ * Prompt 137 — Deliverability card (onyx + copper).
  */
 export function BetaDeliverabilityCoachCard({ suite }: Props) {
   const coach = suite?.coach;
@@ -40,29 +39,33 @@ export function BetaDeliverabilityCoachCard({ suite }: Props) {
   return (
     <div
       className={cn(
-        "premium-card-spec flex flex-col gap-6 rounded-[var(--card-radius)] border border-border/40 bg-[#FAF7F2] p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8",
-        "shadow-[var(--card-shadow-spec)] transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5 hover:shadow-glow",
+        "premium-card-spec warm-card-veil flex flex-col gap-6 rounded-[var(--card-radius)] border border-[#111827]/10 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8",
+        "shadow-[var(--card-shadow-spec)] transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5 hover:shadow-glow-copper",
       )}
     >
       <div className="min-w-0 space-y-3">
-        <div className="flex items-center gap-2 text-sage">
+        <div className="flex items-center gap-2 text-[#B45309]">
           <Sparkles className="h-5 w-5 shrink-0" aria-hidden />
           <h2 className="text-lg font-bold tracking-tight text-foreground">Deliverability coach</h2>
         </div>
         <p className="max-w-md text-sm leading-relaxed text-muted-foreground">
           Health score and warm-up status at a glance. Open the coach for actionable tips — reply analysis
-          lives on <Link className="font-medium text-sage underline-offset-4 hover:underline" href="/replies">Replies</Link>.
+          lives on{" "}
+          <Link className="font-semibold text-[#B45309] underline-offset-4 hover:underline" href="/replies">
+            Replies
+          </Link>
+          .
         </p>
         <div className="flex flex-wrap gap-4 text-sm">
-          <div className="flex items-center gap-2 rounded-[var(--card-radius)] border border-sage/25 bg-white/70 px-3 py-2">
-            <HeartPulse className="h-4 w-4 text-coral" aria-hidden />
+          <div className="flex items-center gap-2 rounded-[var(--card-radius)] border border-[#111827]/12 bg-white/90 px-3 py-2">
+            <HeartPulse className="h-4 w-4 text-[#B45309]" aria-hidden />
             <span className="text-muted-foreground">Health</span>
             <span className="font-semibold tabular-nums text-foreground">
               {hasCoach ? `${pctLabel(health)}/100` : "—"}
             </span>
           </div>
-          <div className="flex items-center gap-2 rounded-[var(--card-radius)] border border-terracotta/25 bg-white/70 px-3 py-2">
-            <Gauge className="h-4 w-4 text-terracotta" aria-hidden />
+          <div className="flex items-center gap-2 rounded-[var(--card-radius)] border border-[#B45309]/28 bg-[#EDE0D4]/25 px-3 py-2">
+            <Gauge className="h-4 w-4 text-[#B45309]" aria-hidden />
             <span className="text-muted-foreground">Warm-up</span>
             <span className="font-semibold text-foreground">{suite ? warmupLabel : "—"}</span>
             <span className="tabular-nums text-muted-foreground">
@@ -84,7 +87,7 @@ export function BetaDeliverabilityCoachCard({ suite }: Props) {
           <Button
             type="button"
             size="lg"
-            className={cn("h-12 shrink-0 rounded-[var(--card-radius)] px-8 font-semibold shadow-soft", dashboardOutlineActionClass)}
+            className="h-12 shrink-0 rounded-[var(--card-radius)] border border-[#B45309]/35 bg-[#111827] px-8 font-semibold text-white shadow-glow-onyx hover:bg-[#1e293b]"
           >
             Open Coach
           </Button>
@@ -103,7 +106,7 @@ export function BetaDeliverabilityCoachCard({ suite }: Props) {
           </ul>
           <p className="text-xs text-muted-foreground">
             Full warm-up logs and DNS checks live under{" "}
-            <Link href="/setup" className="font-medium text-sage underline-offset-4 hover:underline">
+            <Link href="/setup" className="font-semibold text-[#B45309] underline-offset-4 hover:underline">
               Setup
             </Link>
             .

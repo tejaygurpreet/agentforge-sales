@@ -691,12 +691,12 @@ export function ProfessionalInbox({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
     >
-      <div className="relative overflow-hidden rounded-[var(--card-radius)] border border-coral/20 bg-gradient-to-br from-card via-white to-coral/[0.06] px-5 py-5 shadow-lift ring-1 ring-sage/12 sm:px-7 sm:py-6">
-        <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-gradient-to-br from-coral/20 to-transparent blur-3xl motion-safe:animate-glow-orb" aria-hidden />
+      <div className="relative overflow-hidden rounded-[var(--card-radius)] border border-highlight/20 bg-gradient-to-br from-card via-white to-highlight/[0.06] px-5 py-5 shadow-lift ring-1 ring-sage/12 sm:px-7 sm:py-6">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-gradient-to-br from-highlight/20 to-transparent blur-3xl motion-safe:animate-glow-orb" aria-hidden />
         <div className="pointer-events-none absolute -bottom-12 -left-10 h-40 w-40 rounded-full bg-gradient-to-tr from-sage/18 to-transparent blur-2xl" aria-hidden />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--card-radius)] border border-coral/30 bg-gradient-to-br from-sage/[0.18] via-coral/[0.1] to-terracotta/[0.1] text-sage shadow-inner ring-1 ring-sage/20">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--card-radius)] border border-highlight/30 bg-gradient-to-br from-sage/[0.18] via-highlight/[0.1] to-terracotta/[0.1] text-sage shadow-inner ring-1 ring-sage/20">
               <Inbox className="h-5 w-5" aria-hidden />
             </span>
             <div>
@@ -718,7 +718,7 @@ export function ProfessionalInbox({
             <Button
               type="button"
               size="sm"
-              className="relative gap-2 rounded-[var(--card-radius)] bg-gradient-to-r from-sage to-sage/90 text-[#F8F5F0] shadow-soft ring-1 ring-coral/25 transition-[transform,box-shadow] duration-200 ease-in-out hover:scale-[1.04] hover:shadow-glow hover:ring-coral/35"
+              className="relative gap-2 rounded-[var(--card-radius)] bg-gradient-to-r from-sage to-sage/90 text-[#F8F5F0] shadow-soft ring-1 ring-highlight/25 transition-[transform,box-shadow] duration-200 ease-in-out hover:scale-[1.04] hover:shadow-glow hover:ring-highlight/35"
               onClick={() => {
                 setComposeIntent("new");
                 setComposeDraftIdToLoad(null);
@@ -1287,7 +1287,7 @@ export function ProfessionalInbox({
       <Button
         type="button"
         size="icon"
-        className="fixed bottom-6 right-5 z-40 h-14 w-14 animate-fab-energetic rounded-full border-2 border-coral/35 bg-gradient-to-br from-sage via-sage to-sage/90 text-[#fafaf8] shadow-lift ring-2 ring-sage/30 transition-[transform,box-shadow] duration-300 ease-out hover:scale-110 hover:shadow-glow active:scale-95 sm:bottom-8 sm:right-8"
+        className="fixed bottom-6 right-5 z-40 h-14 w-14 rounded-full border-2 border-[#B45309]/45 bg-gradient-to-br from-[#EDE0D4] via-[#f3e9dc] to-[#dfc9a8] text-[#111827] shadow-[0_14px_40px_-12px_rgba(180,83,9,0.25)] ring-2 ring-white/90 transition-[transform,box-shadow] duration-300 ease-out hover:scale-105 hover:shadow-glow-copper active:scale-[0.98] sm:bottom-8 sm:right-8"
         onClick={() => {
           setComposeIntent("new");
           setComposeDraftIdToLoad(null);
@@ -1297,7 +1297,7 @@ export function ProfessionalInbox({
       >
         <SquarePen className="h-6 w-6" aria-hidden />
         {draftCount > 0 ? (
-          <span className="absolute -right-1 -top-1 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-terracotta px-1 text-[11px] font-bold tabular-nums text-[#3a322c] shadow-md ring-2 ring-[#F8F5F0]">
+          <span className="absolute -right-1 -top-1 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-[#B45309] px-1 text-[11px] font-bold tabular-nums text-white shadow-md ring-2 ring-[#F9F6F0]">
             {draftCount > 99 ? "99+" : draftCount}
           </span>
         ) : null}

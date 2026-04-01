@@ -13,7 +13,7 @@ type Props = {
 };
 
 /**
- * Prompt 136 — Warm masthead + inbox; `?compose=1` opens compose (floating orb + deep links).
+ * Prompt 137 — Onyx Copper inbox masthead; `?compose=1` opens compose.
  */
 export function InboxPageClient({ initialThreads, initialDrafts }: Props) {
   const { setCount } = useInboxUnread();
@@ -26,7 +26,7 @@ export function InboxPageClient({ initialThreads, initialDrafts }: Props) {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
-        className="warm-card-veil overflow-hidden rounded-[var(--card-radius)] border border-coral/25 shadow-[var(--card-shadow-spec)] ring-1 ring-sage/10"
+        className="warm-card-veil overflow-hidden rounded-[var(--card-radius)] border border-[#111827]/10 shadow-[var(--card-shadow-spec)] ring-1 ring-[#B45309]/12"
       >
         <InboxHeroArt className="h-auto w-full" />
       </motion.div>

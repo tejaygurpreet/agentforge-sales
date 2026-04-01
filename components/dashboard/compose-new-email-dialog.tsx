@@ -351,7 +351,7 @@ export function ComposeNewEmailDialog({
                   transition={{ repeat: Infinity, repeatType: "reverse", duration: 0.65, ease: "easeInOut" }}
                 >
                   <span
-                    className="h-2 w-2 shrink-0 rounded-full bg-coral shadow-[0_0_10px_hsl(9_100%_77%_/0.65)] motion-safe:animate-pulse"
+                    className="h-2 w-2 shrink-0 rounded-full bg-highlight shadow-[0_0_10px_hsl(32_95%_44%_/0.55)] motion-safe:animate-pulse"
                     aria-hidden
                   />
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />

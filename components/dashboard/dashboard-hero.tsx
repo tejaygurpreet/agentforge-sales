@@ -19,7 +19,7 @@ type HeroProps = {
 };
 
 const flyingMailClass =
-  "pointer-events-none absolute text-coral drop-shadow-[0_6px_14px_hsl(9_100%_77%_/0.35)]";
+  "pointer-events-none absolute text-highlight drop-shadow-[0_6px_14px_hsl(32_95%_44%_/0.32)]";
 
 export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
   const title = whiteLabel?.appName?.trim() || DEFAULT_BRAND_DISPLAY_NAME;
@@ -46,12 +46,12 @@ export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        "dashboard-hero-energetic-bg relative overflow-hidden rounded-[var(--card-radius)] border border-coral/20",
+        "dashboard-hero-energetic-bg relative overflow-hidden rounded-[var(--card-radius)] border border-highlight/22",
         "premium-card-spec shadow-lift ring-1 ring-sage/12",
       )}
     >
       <div
-        className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-gradient-to-br from-coral/30 via-terracotta/12 to-transparent blur-3xl motion-safe:animate-glow-orb"
+        className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-gradient-to-br from-highlight/22 via-terracotta/12 to-transparent blur-3xl motion-safe:animate-glow-orb"
         aria-hidden
       />
       <div
@@ -94,7 +94,7 @@ export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
               <motion.div animate={badgePulseAnimate} transition={badgePulseTransition(0)}>
                 <Badge
                   variant="outline"
-                  className="border-coral/40 bg-[#FAF7F2]/95 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-sage shadow-inner"
+                  className="border-highlight/35 bg-[#F9F6F0]/95 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-sage shadow-inner"
                 >
                   Demo mode
                 </Badge>
@@ -127,9 +127,9 @@ export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
                   >
                     <Badge
                       variant="secondary"
-                      className="cursor-default gap-1 border border-coral/25 bg-[#FAF7F2] px-2.5 py-1 text-[11px] font-medium text-accent-foreground shadow-inner"
+                      className="cursor-default gap-1 border border-highlight/22 bg-[#FAF7F2] px-2.5 py-1 text-[11px] font-medium text-accent-foreground shadow-inner"
                     >
-                      <Sparkles className="h-3 w-3 text-coral" aria-hidden />
+                      <Sparkles className="h-3 w-3 text-highlight" aria-hidden />
                       5 SDR voices
                     </Badge>
                   </motion.div>
@@ -190,9 +190,9 @@ export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
                   >
                     <Badge
                       variant="secondary"
-                      className="cursor-default gap-1 border border-coral/35 bg-gradient-to-r from-[#FAF7F2] to-[#fff5f0] px-2.5 py-1 text-[11px] font-medium text-foreground shadow-inner"
+                      className="cursor-default gap-1 border border-highlight/28 bg-gradient-to-r from-[#F8F4ED] to-[#fff9f3] px-2.5 py-1 text-[11px] font-medium text-foreground shadow-inner"
                     >
-                      <Radio className="h-3 w-3 text-coral" aria-hidden />
+                      <Radio className="h-3 w-3 text-highlight" aria-hidden />
                       Live signals
                     </Badge>
                   </motion.div>
@@ -230,7 +230,7 @@ export function DashboardHero({ outboundFromPreview, whiteLabel }: HeroProps) {
             transition={{ duration: 0.52, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
           >
             <motion.div
-              className="rounded-[var(--card-radius)] border border-coral/25 bg-[#FAF7F2]/95 p-2 shadow-inner shadow-glow-coral ring-1 ring-sage/18 backdrop-blur-[1px] sm:p-3"
+              className="rounded-[var(--card-radius)] border border-highlight/22 bg-[#F9F6F0]/95 p-2 shadow-inner shadow-glow-copper ring-1 ring-sage/16 backdrop-blur-[1px] sm:p-3"
               whileHover={{ y: -4, boxShadow: "0 24px 56px -12px hsl(9 100% 77% / 0.35)" }}
               transition={{ type: "spring", stiffness: 280, damping: 22 }}
             >

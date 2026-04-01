@@ -27,7 +27,7 @@ type Props = {
 };
 
 /**
- * Prompt 136 — Warm-depth setup hub + full `GuidedSetupWizard` + integration cards.
+ * Prompt 137 — Quiet Luxury setup hub: guided wizard, premium hero, teal/gold accents.
  */
 export function SetupPageClient({
   hubspotConnected,
@@ -50,15 +50,15 @@ export function SetupPageClient({
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
-        className="warm-card-veil overflow-hidden rounded-[var(--card-radius)] border border-coral/25 shadow-lift ring-1 ring-sage/12"
+        className="warm-card-veil overflow-hidden rounded-[var(--card-radius)] border border-[#111827]/10 shadow-lift ring-1 ring-[#B45309]/12"
       >
         <div className="relative grid gap-8 px-5 py-8 sm:px-8 sm:py-10 lg:grid-cols-[1fr_minmax(260px,1fr)] lg:items-center">
           <div
-            className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-gradient-to-br from-coral/25 via-terracotta/12 to-transparent blur-3xl motion-safe:animate-glow-orb"
+            className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-gradient-to-br from-highlight/18 via-terracotta/10 to-transparent blur-3xl motion-safe:animate-glow-orb"
             aria-hidden
           />
           <div
-            className="pointer-events-none absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-gradient-to-tr from-sage/25 to-coral/10 blur-3xl"
+            className="pointer-events-none absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-gradient-to-tr from-sage/22 to-highlight/10 blur-3xl"
             aria-hidden
           />
           <div className="relative z-[1] space-y-4">
@@ -99,7 +99,7 @@ export function SetupPageClient({
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
           >
-            <div className="animate-float-y rounded-[var(--card-radius)] border border-coral/25 bg-[#FAF7F2] p-4 shadow-inner shadow-glow-coral ring-1 ring-sage/15 backdrop-blur-[2px]">
+            <div className="animate-float-y rounded-[var(--card-radius)] border border-[#111827]/12 bg-[#F9F6F0] p-4 shadow-inner shadow-glow-copper ring-1 ring-[#B45309]/12 backdrop-blur-[2px]">
               <SetupIntegrationsHero className="h-auto w-full" />
             </div>
           </motion.div>

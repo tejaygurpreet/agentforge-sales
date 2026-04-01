@@ -42,8 +42,7 @@ function formatUsd(n: number): string {
 }
 
 /**
- * Prompt 136 — Beta-tester dashboard: Command Center hero, four KPIs, quick actions, recent five,
- * deliverability coach, then campaign runner (reply analyzer removed from workspace; lives on /replies).
+ * Prompt 137 — Onyx Copper dashboard: focused hero, metrics, batch mode, last five + Show more.
  */
 export function BetaDashboardClient({
   analytics,
@@ -68,14 +67,14 @@ export function BetaDashboardClient({
         value: analytics.campaignCount.toLocaleString(),
         hint: "Workspace threads",
         icon: Target,
-        accent: "text-sage",
+        accent: "text-[#111827]",
       },
       {
         label: "Pipeline value",
         value: formatUsd(pipelineUsd),
         hint: "Forecast total",
         icon: LineChart,
-        accent: "text-terracotta",
+        accent: "text-[#B45309]",
       },
       {
         label: "Avg score",
@@ -83,7 +82,7 @@ export function BetaDashboardClient({
           analytics.avgCompositeScore != null ? `${Math.round(analytics.avgCompositeScore)}/100` : "—",
         hint: "Composite fit",
         icon: Layers,
-        accent: "text-coral",
+        accent: "text-[#B45309]/80",
       },
       {
         label: "ROI",
@@ -93,7 +92,7 @@ export function BetaDashboardClient({
             : "—",
         hint: "Est. vs tooling",
         icon: TrendingUp,
-        accent: "text-sage",
+        accent: "text-foreground/70",
       },
     ],
     [analytics, pipelineUsd],
@@ -119,8 +118,8 @@ export function BetaDashboardClient({
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 * i, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
             className={cn(
-              "premium-card-spec flex flex-col gap-1 rounded-[var(--card-radius)] border border-border/35 bg-[#FAF7F2] px-5 py-5",
-              "transition-[transform,box-shadow] duration-300 hover:-translate-y-1 hover:shadow-glow",
+              "premium-card-spec warm-card-veil flex flex-col gap-1 rounded-[var(--card-radius)] border border-[#111827]/08 px-5 py-5",
+              "shadow-card transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5 hover:shadow-glow-onyx",
             )}
           >
             <div className="flex items-center justify-between gap-2">
@@ -141,8 +140,8 @@ export function BetaDashboardClient({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.08, duration: 0.4 }}
           className={cn(
-            "flex flex-col justify-center gap-4 rounded-[var(--card-radius)] border border-coral/25 bg-gradient-to-br from-white via-[#FAF7F2] to-[#fff5f0] p-6 shadow-lift sm:p-8",
-            "ring-1 ring-sage/10",
+            "flex flex-col justify-center gap-4 rounded-[var(--card-radius)] border border-[#111827]/12 bg-white bg-gradient-to-br from-white via-[#F9F6F0] to-[#EDE0D4]/35 p-6 shadow-lift sm:p-8",
+            "ring-1 ring-[#B45309]/10",
           )}
         >
           <div>
@@ -153,7 +152,7 @@ export function BetaDashboardClient({
           </div>
           <Button
             size="lg"
-            className="h-14 rounded-[var(--card-radius)] text-base font-semibold shadow-glow sm:max-w-xs"
+            className="h-14 rounded-[var(--card-radius)] border border-[#B45309]/30 bg-[#111827] text-base font-semibold text-white shadow-glow-onyx hover:bg-[#1e293b] sm:max-w-xs"
             asChild
           >
             <a href="#campaign-workspace">
@@ -168,17 +167,21 @@ export function BetaDashboardClient({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.12, duration: 0.4 }}
           className={cn(
-            "flex flex-col justify-between gap-4 rounded-[var(--card-radius)] border-2 border-terracotta/35 bg-[#FAF7F2] p-6 shadow-[var(--card-shadow-spec)] sm:p-8",
-            "transition-[transform,box-shadow] duration-300 hover:-translate-y-1 hover:shadow-glow",
+            "flex flex-col justify-between gap-4 rounded-[var(--card-radius)] border-2 border-[#B45309]/40 bg-white bg-gradient-to-br from-white to-[#EDE0D4]/25 p-6 shadow-[var(--card-shadow-spec)] sm:p-8",
+            "transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5 hover:shadow-glow-copper",
           )}
         >
           <div>
             <h2 className="text-lg font-bold text-foreground">Batch mode</h2>
             <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-              Run parallel campaigns from JSON or saved lead snapshots — power users only.
+              Run parallel campaigns from JSON or saved lead snapshots — built for operators.
             </p>
           </div>
-          <Button variant="secondary" size="lg" className="h-12 rounded-[var(--card-radius)] font-semibold" asChild>
+          <Button
+            size="lg"
+            className="h-12 rounded-[var(--card-radius)] bg-[#B45309] font-semibold text-white shadow-lg hover:bg-[#9a4508]"
+            asChild
+          >
             <a href="#batch-mode-anchor">Open batch tools</a>
           </Button>
         </motion.div>
@@ -188,7 +191,7 @@ export function BetaDashboardClient({
 
       <BetaDeliverabilityCoachCard suite={deliverabilitySuite} />
 
-      <section id="beta-runner" className="space-y-6 scroll-mt-28 border-t border-border/30 pt-10">
+      <section id="beta-runner" className="space-y-6 scroll-mt-28 border-t border-[#111827]/10 pt-10">
         <div className="space-y-1">
           <h2 className="text-xl font-bold tracking-tight text-foreground">Campaign workspace</h2>
           <p className="text-sm text-muted-foreground">
@@ -207,19 +210,19 @@ export function BetaDashboardClient({
       </section>
 
       <p className="pb-4 text-center text-xs text-muted-foreground">
-        Looking for templates, reports, or coaching? Use the top nav —{" "}
-        <Link className="font-medium text-sage underline-offset-4 hover:underline" href="/analytics">
+        Templates, reports, and specialized tools —{" "}
+        <Link className="font-semibold text-[#B45309] underline-offset-4 hover:underline" href="/analytics">
           Analytics
         </Link>
         ,{" "}
-        <Link className="font-medium text-sage underline-offset-4 hover:underline" href="/setup">
+        <Link className="font-semibold text-[#B45309] underline-offset-4 hover:underline" href="/setup">
           Setup
         </Link>
         , and{" "}
-        <Link className="font-medium text-sage underline-offset-4 hover:underline" href="/replies">
+        <Link className="font-semibold text-[#B45309] underline-offset-4 hover:underline" href="/replies">
           Replies
-        </Link>{" "}
-        hold specialized tools.
+        </Link>
+        .
       </p>
     </motion.div>
   );

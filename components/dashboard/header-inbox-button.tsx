@@ -34,8 +34,8 @@ export function HeaderInboxButton() {
         variant="outline"
         size="icon"
         className={cn(
-          "relative h-9 w-9 shrink-0 overflow-visible rounded-[var(--card-radius)] border border-sage/35 bg-card/95 shadow-soft ring-1 ring-coral/15 transition-[transform,box-shadow,border-color,background-color] duration-200 ease-in-out hover:border-coral/40 hover:bg-gradient-to-br hover:from-sage/10 hover:to-coral/10 hover:shadow-glow hover:scale-[1.06]",
-          inboxActive && "border-coral/45 bg-sage/12 shadow-glow-coral ring-2 ring-sage/25",
+          "relative h-9 w-9 shrink-0 overflow-visible rounded-[var(--card-radius)] border border-sage/35 bg-card/95 shadow-soft ring-1 ring-highlight/14 transition-[transform,box-shadow,border-color,background-color] duration-200 ease-in-out hover:border-highlight/35 hover:bg-gradient-to-br hover:from-sage/10 hover:to-highlight/10 hover:shadow-glow hover:scale-[1.06]",
+          inboxActive && "border-highlight/40 bg-sage/12 shadow-glow-gold ring-2 ring-sage/22",
         )}
         asChild
       >

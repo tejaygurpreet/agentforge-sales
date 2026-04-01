@@ -7,7 +7,7 @@ import "./globals.css";
 
 export { viewport } from "./viewport";
 
-/** Prompt 136 — Inter (400–700); warm cream canvas via `globals.css` `--background` / `bg-background`. */
+/** Prompt 138 — Onyx Copper: Inter · canvas #F9F6F0 · tokens in `globals.css`. */
 const fontSans = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
@@ -45,7 +45,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className="scroll-smooth">
       <body
-        className={`${fontSans.variable} ${fontMono.variable} min-h-screen bg-background font-sans font-normal text-[15px] leading-relaxed tracking-[-0.01em]`}
+        className={`${fontSans.variable} ${fontMono.variable} min-h-screen bg-background font-sans font-normal text-[15px] leading-relaxed tracking-[-0.01em] text-foreground`}
       >
         <TooltipProvider delayDuration={260} skipDelayDuration={120}>
           {children}

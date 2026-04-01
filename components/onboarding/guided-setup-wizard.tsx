@@ -184,7 +184,7 @@ const STEPS = [
 ] as const;
 
 /**
- * Prompt 136 — Full guided setup wizard with progress rail + warm illustrations.
+ * Prompt 137 — Guided setup wizard: premium progress rail (teal → amber → gold).
  */
 export function GuidedSetupWizard() {
   const [step, setStep] = useState(0);
@@ -202,9 +202,9 @@ export function GuidedSetupWizard() {
           Step {step + 1} / {total} · {pct}%
         </span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-[#e8e2d8] shadow-inner">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-[#e4ded4] shadow-inner">
         <motion.div
-          className="h-full rounded-full bg-gradient-to-r from-sage via-terracotta to-coral"
+          className="h-full rounded-full bg-gradient-to-r from-sage via-terracotta to-highlight"
           initial={false}
           animate={{ width: `${pct}%` }}
           transition={{ type: "spring", stiffness: 120, damping: 20 }}
@@ -222,7 +222,7 @@ export function GuidedSetupWizard() {
                 ? "border-sage bg-sage/15 text-foreground shadow-glow ring-1 ring-sage/25"
                 : i < step
                   ? "border-sage/40 bg-sage/10 text-foreground"
-                  : "border-border/50 bg-[#FAF7F2]/80 text-muted-foreground hover:bg-[#FAF7F2]",
+                  : "border-border/50 bg-[#F9F6F0]/95 text-muted-foreground hover:bg-[#F9F6F0]",
             )}
             aria-label={`Step ${i + 1}: ${s.title}`}
             aria-current={i === step ? "step" : undefined}
@@ -240,7 +240,7 @@ export function GuidedSetupWizard() {
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
           className={cn(
-            "grid gap-8 rounded-[var(--card-radius)] border border-coral/20 bg-[#FAF7F2] p-6 shadow-[var(--card-shadow-spec)] ring-1 ring-sage/10 sm:p-8 lg:grid-cols-[1fr_200px]",
+            "grid gap-8 rounded-[var(--card-radius)] border border-[#111827]/10 bg-[#F9F6F0] p-6 shadow-[var(--card-shadow-spec)] ring-1 ring-highlight/25 sm:p-8 lg:grid-cols-[1fr_200px]",
             "creative-card-surface",
           )}
         >

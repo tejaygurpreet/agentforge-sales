@@ -16,8 +16,8 @@ import type { CampaignSequenceRow, CustomVoiceRow, WhiteLabelClientSettingsDTO }
 export const dynamic = "force-dynamic";
 
 /**
- * Prompt 136 — Beta-tester dashboard (`BetaDashboardClient`): Command Center hero, KPI row, quick actions,
- * last five campaigns, deliverability coach with dialog, campaign runner. Reply analyzer lives on `/replies`.
+ * Prompt 138 — Onyx Copper beta dashboard: hero, last five + Show more, batch mode, coach;
+ * reply analysis on `/replies`. Smart orb + full header from `DashboardShell`.
  */
 export default async function DashboardPage() {
   const supabase = await createServerSupabaseClient();

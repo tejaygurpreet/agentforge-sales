@@ -127,6 +127,7 @@ import {
 import {
   ensureInboxSchemaReady,
   getOrSyncInboxLocalPart,
+  insertInboxMessageReliable,
   isInboxOptionalColumnOrSchemaError,
   isInboxRelationMissingError,
   isOptionalInboxThreadColumnMissingError,
@@ -4435,21 +4436,33 @@ export async function sendInboxReplyAction(
   const snippet = snippetFromBodyText(parsed.data.body, 220);
   const fromAddr = replyBare ?? userSignupEmail ?? "";
 
-  const { error: insErr } = await supabase.from("inbox_messages").insert({
+  const msgPayload = {
     thread_id: row.id,
     user_id: user.id,
-    direction: "outbound",
+    direction: "outbound" as const,
     from_email: fromAddr,
     to_email: prospectEmail,
     subject,
     body_text: parsed.data.body.slice(0, 50_000),
-    body_html: null,
+    body_html: null as string | null,
     received_at: now,
     raw: { source: "inbox_reply_composer" },
-  });
-  if (insErr) {
-    console.error("[AgentForge] sendInboxReplyAction insert", insErr.message);
-    return { ok: false, error: "Email sent but failed to save to thread." };
+  };
+  let msgIns = await insertInboxMessageReliable(supabase, msgPayload);
+  if (!msgIns.ok) {
+    const srIns = getServiceRoleSupabaseOrNull();
+    if (srIns) {
+      await ensureInboxSchemaReady();
+      msgIns = await insertInboxMessageReliable(srIns, msgPayload);
+    }
+  }
+  if (!msgIns.ok) {
+    console.error("[AgentForge] sendInboxReplyAction insert", msgIns.error);
+    return {
+      ok: false,
+      error:
+        "Email was sent, but we could not save a copy to your inbox. Try refreshing; if it persists, check Supabase RLS and the inbox migration.",
+    };
   }
 
   let upErr = (

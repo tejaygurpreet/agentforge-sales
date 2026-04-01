@@ -37,7 +37,7 @@ export function AuthSplitLayout({ children, tagline }: Props) {
           aria-hidden
         />
         <div
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_50%_40%_at_70%_15%,hsl(var(--coral)_/_0.14),transparent_45%)]"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_50%_40%_at_70%_15%,hsl(var(--highlight)_/_0.11),transparent_45%)]"
           aria-hidden
         />
         <div className="relative z-[1] flex flex-1 flex-col justify-center">
@@ -93,8 +93,8 @@ export function AuthSplitLayout({ children, tagline }: Props) {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
           >
-            <div className="premium-card-spec relative rounded-[var(--card-radius)] border border-coral/20 bg-gradient-to-br from-card via-white to-coral/[0.06] p-6 shadow-lift ring-1 ring-sage/15 motion-safe:animate-float-y">
-              <div className="absolute -right-2 -top-2 flex h-10 w-10 items-center justify-center rounded-full border border-coral/35 bg-gradient-to-br from-coral/25 to-terracotta/20 text-[#5c4a42] shadow-glow-coral">
+            <div className="premium-card-spec relative rounded-[var(--card-radius)] border border-highlight/20 bg-gradient-to-br from-card via-white to-highlight/[0.06] p-6 shadow-lift ring-1 ring-sage/14 motion-safe:animate-float-y">
+              <div className="absolute -right-2 -top-2 flex h-10 w-10 items-center justify-center rounded-full border border-highlight/32 bg-gradient-to-br from-highlight/22 to-terracotta/18 text-[#374151] shadow-glow-gold">
                 <Zap className="h-5 w-5" aria-hidden />
               </div>
               <AuthHeroIllustration className="h-auto w-full max-h-[260px] sm:max-h-[280px]" />

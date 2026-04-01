@@ -21,8 +21,8 @@ import "server-only";
  * - **Prompt 128 — Narrow schema detection (no false “inbox missing” on unrelated `column` errors) +
  *   `ensureInboxSchemaReady()` + `supabase/inbox_ensure_p128.sql` RPC when service role is available.
  * - **Prompt 129 — `inbox_drafts` for compose auto-save (localStorage + Supabase every 3s).
- * - **Prompt 133–136 — `insertInboxMessageReliable` + service-role + ultra-minimal insert + thread update
- *   fallback so compose/outreach rows persist when Resend succeeds (RLS / schema edge cases).
+ * - **Prompt 133–138 — `insertInboxMessageReliable` (exported) + normalized `from`/`to` + schema ensure +
+ *   service-role + ultra-minimal insert so every sent mail can persist (RLS / schema / reply composer).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { slugifyLocalPartFromName } from "@/lib/resend";
@@ -319,7 +319,7 @@ function isInboxMessageInsertRetryable(message: string): boolean {
  * Prompt 133 — If the user-scoped client still cannot insert (RLS / policy edge cases), retry with the
  * service-role client so a successful Resend send always leaves a matching `inbox_messages` row.
  */
-async function insertInboxMessageReliable(
+export async function insertInboxMessageReliable(
   supabase: SupabaseClient,
   payload: {
     thread_id: string;
@@ -335,6 +335,8 @@ async function insertInboxMessageReliable(
     provider_message_id?: string | null;
   },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  await ensureInboxSchemaReady();
+
   /** Prompt 136 — Canonical addresses for reliable matching + RLS-friendly inserts. */
   const from_email = normalizeEmail(payload.from_email);
   const to_email = normalizeEmail(payload.to_email);
@@ -417,7 +419,7 @@ async function insertInboxMessageReliable(
     return { ok: true };
   }
 
-  return { ok: false, error: res.error.message };
+  return { ok: false, error: ur.error?.message ?? res.error?.message ?? "inbox_messages insert failed" };
 }
 
 async function tryInsertInboxMessageWithClient(
@@ -428,9 +430,32 @@ async function tryInsertInboxMessageWithClient(
   let r = await client.from("inbox_messages").insert(full as never);
   if (!r.error) return { ok: true };
   if (!isInboxMessageInsertRetryable(r.error.message)) {
-    return { ok: false };
+    const ultra: Record<string, unknown> = {
+      thread_id: minimal.thread_id,
+      user_id: minimal.user_id,
+      direction: minimal.direction,
+      from_email: minimal.from_email,
+      to_email: minimal.to_email,
+      subject: minimal.subject,
+      body_text: minimal.body_text,
+      received_at: minimal.received_at,
+    };
+    const u = await client.from("inbox_messages").insert(ultra as never);
+    return u.error ? { ok: false } : { ok: true };
   }
   r = await client.from("inbox_messages").insert(minimal as never);
+  if (!r.error) return { ok: true };
+  const ultra: Record<string, unknown> = {
+    thread_id: minimal.thread_id,
+    user_id: minimal.user_id,
+    direction: minimal.direction,
+    from_email: minimal.from_email,
+    to_email: minimal.to_email,
+    subject: minimal.subject,
+    body_text: minimal.body_text,
+    received_at: minimal.received_at,
+  };
+  r = await client.from("inbox_messages").insert(ultra as never);
   return r.error ? { ok: false } : { ok: true };
 }
 

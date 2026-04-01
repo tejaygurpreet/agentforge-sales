@@ -25,13 +25,13 @@ export function SettingsIntegrationsSection({ children }: { children: ReactNode 
       <div
         className={cn(
           "rounded-[var(--card-radius)] border border-border/45 bg-gradient-to-br from-white via-[#FAF7F2] to-muted/35",
-          "p-6 shadow-lift ring-1 ring-coral/10 sm:p-8 lg:p-10",
+          "p-6 shadow-lift ring-1 ring-highlight/10 sm:p-8 lg:p-10",
           "animate-in fade-in slide-in-from-bottom-1 duration-500",
         )}
       >
         <header className="mb-8 flex flex-col gap-4 border-b border-border/35 pb-7 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-4">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--card-radius)] bg-gradient-to-br from-sage/15 to-coral/10 text-sage shadow-inner ring-1 ring-sage/20 transition-transform duration-300 hover:scale-[1.03]">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--card-radius)] bg-gradient-to-br from-sage/15 to-highlight/10 text-sage shadow-inner ring-1 ring-sage/20 transition-transform duration-300 hover:scale-[1.03]">
               <Sparkles className="h-6 w-6" aria-hidden />
             </span>
             <div className="space-y-1.5">
@@ -155,7 +155,7 @@ export function TwilioVoiceIntegrationCard({ onViewObjectionLibrary }: TwilioCar
       )}
     >
       <div className="grid min-h-[240px] md:grid-cols-[minmax(160px,0.9fr)_1.1fr]">
-        <div className="flex items-center justify-center border-b border-border/40 bg-gradient-to-br from-terracotta/[0.08] via-card to-coral/[0.08] p-5 md:border-b-0 md:border-r">
+        <div className="flex items-center justify-center border-b border-border/40 bg-gradient-to-br from-terracotta/[0.08] via-card to-highlight/[0.08] p-5 md:border-b-0 md:border-r">
           <motion.div
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}

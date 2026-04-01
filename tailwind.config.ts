@@ -1,6 +1,6 @@
 import type { Config } from "tailwindcss";
 
-// Prompt 136 — Sage + terracotta + coral; glow shadows + energetic motion.
+// Prompt 138 — Onyx Copper palette locked (see globals.css).
 const config: Config = {
   darkMode: ["class"],
   content: [
@@ -11,19 +11,20 @@ const config: Config = {
   theme: {
     extend: {
       transitionDuration: {
-        premium: "200ms",
+        premium: "240ms",
       },
       fontFamily: {
         sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
         mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
       boxShadow: {
-        soft: "0 12px 40px -10px hsl(30 10% 18% / 0.1), 0 4px 16px hsl(30 8% 12% / 0.06)",
-        card: "0 12px 40px -10px hsl(30 10% 18% / 0.1), 0 4px 16px hsl(30 8% 12% / 0.06)",
-        lift: "0 22px 56px -14px hsl(30 12% 15% / 0.16), 0 0 40px -12px hsl(9 100% 77% / 0.2)",
-        inner: "inset 0 2px 8px hsl(30 10% 18% / 0.07), inset 0 1px 0 hsl(0 0% 100% / 0.9)",
-        glow: "0 0 52px -8px hsl(9 100% 77% / 0.45), 0 0 28px -4px hsl(82 14% 56% / 0.25)",
-        "glow-coral": "0 0 36px -6px hsl(9 100% 77% / 0.55)",
+        soft: "0 12px 40px -10px hsl(221 25% 8% / 0.08), 0 4px 16px hsl(221 20% 6% / 0.05)",
+        card: "0 12px 40px -10px hsl(221 25% 8% / 0.08), 0 4px 16px hsl(221 20% 6% / 0.05)",
+        lift: "0 22px 56px -14px hsl(221 30% 6% / 0.12), 0 0 40px -12px hsl(21 91% 38% / 0.14)",
+        inner: "inset 0 2px 8px hsl(221 25% 8% / 0.06), inset 0 1px 0 hsl(0 0% 100% / 0.92)",
+        glow: "0 0 48px -8px hsl(21 91% 38% / 0.32), 0 0 28px -4px hsl(221 39% 11% / 0.18)",
+        "glow-copper": "0 0 44px -6px hsl(21 91% 40% / 0.42)",
+        "glow-onyx": "0 0 36px -8px hsl(221 39% 8% / 0.35)",
       },
       colors: {
         border: "hsl(var(--border))",
@@ -61,11 +62,10 @@ const config: Config = {
         },
         sage: "hsl(var(--sage) / <alpha-value>)",
         terracotta: "hsl(var(--terracotta) / <alpha-value>)",
-        coral: "hsl(var(--coral) / <alpha-value>)",
-        /** Prompt 136 — explicit warm cream for arbitrary utilities */
+        highlight: "hsl(var(--highlight) / <alpha-value>)",
         warm: {
-          cream: "#F4F0E8",
-          card: "#FAF7F2",
+          cream: "#F9F6F0",
+          card: "#FFFFFF",
         },
       },
       borderRadius: {
@@ -80,51 +80,46 @@ const config: Config = {
           "0%": { opacity: "0", transform: "translateY(8px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
-        /** Prompt 111 — soft loading sheen (skeletons, placeholders). */
         "shimmer-slide": {
           "0%": { backgroundPosition: "200% 0" },
           "100%": { backgroundPosition: "-200% 0" },
         },
-        /** Prompt 113 — gentle content entrance (sections, fallbacks). */
         "content-settle": {
           "0%": { opacity: "0", transform: "translateY(6px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
-        /** Prompt 135 — FAB / emphasis pulse (sage glow) */
         "pulse-sage": {
-          "0%, 100%": { boxShadow: "0 0 0 0 hsl(82 14% 56% / 0.45)" },
-          "50%": { boxShadow: "0 0 0 14px hsl(82 14% 56% / 0)" },
+          "0%, 100%": { boxShadow: "0 0 0 0 hsl(21 91% 38% / 0.4)" },
+          "50%": { boxShadow: "0 0 0 14px hsl(21 91% 38% / 0)" },
         },
         "float-y": {
           "0%, 100%": { transform: "translateY(0)" },
           "50%": { transform: "translateY(-6px)" },
         },
-        /** Prompt 136 — header mail icon life */
         "pulse-mail": {
           "0%, 100%": {
             transform: "scale(1)",
             filter: "drop-shadow(0 0 0 transparent)",
           },
           "50%": {
-            transform: "scale(1.12)",
-            filter: "drop-shadow(0 0 10px hsl(9 100% 77% / 0.65))",
+            transform: "scale(1.08)",
+            filter: "drop-shadow(0 0 10px hsl(21 91% 38% / 0.38))",
           },
         },
         "glow-orb": {
-          "0%, 100%": { opacity: "0.45", transform: "scale(1)" },
-          "50%": { opacity: "0.85", transform: "scale(1.08)" },
+          "0%, 100%": { opacity: "0.38", transform: "scale(1)" },
+          "50%": { opacity: "0.72", transform: "scale(1.06)" },
         },
         "fab-energetic": {
           "0%, 100%": {
             boxShadow:
-              "0 0 0 0 hsl(82 14% 56% / 0.5), 0 0 0 0 hsl(9 100% 77% / 0.35), 0 18px 48px -12px hsl(30 12% 15% / 0.2)",
+              "0 0 0 0 hsl(221 39% 11% / 0.35), 0 0 0 0 hsl(21 91% 38% / 0.28), 0 18px 48px -12px hsl(221 25% 8% / 0.16)",
           },
           "50%": {
             boxShadow:
-              "0 0 0 10px hsl(82 14% 56% / 0), 0 0 0 16px hsl(9 100% 77% / 0), 0 22px 56px -10px hsl(30 12% 15% / 0.22)",
+              "0 0 0 10px hsl(221 39% 11% / 0), 0 0 0 14px hsl(21 91% 38% / 0), 0 22px 56px -10px hsl(221 25% 8% / 0.16)",
           },
         },
-        /** Prompt 136 — flying mail paths in hero */
         "hero-fly-a": {
           "0%, 100%": { transform: "translate(0, 0) rotate(-12deg) scale(1)" },
           "50%": { transform: "translate(28px, -22px) rotate(6deg) scale(1.05)" },
@@ -140,21 +135,31 @@ const config: Config = {
         },
         "badge-energetic-pulse": {
           "0%, 100%": {
-            boxShadow: "0 0 0 0 hsl(9 100% 77% / 0.35), inset 0 1px 0 hsl(0 0% 100% / 0.5)",
+            boxShadow: "0 0 0 0 hsl(21 91% 38% / 0.28), inset 0 1px 0 hsl(0 0% 100% / 0.5)",
             transform: "scale(1)",
           },
           "50%": {
-            boxShadow: "0 0 0 8px hsl(9 100% 77% / 0), inset 0 1px 0 hsl(0 0% 100% / 0.55)",
+            boxShadow: "0 0 0 8px hsl(21 91% 38% / 0), inset 0 1px 0 hsl(0 0% 100% / 0.55)",
             transform: "scale(1.02)",
           },
         },
-        /** Prompt 136 — quick-access orb idle shimmer */
+        /** Prompt 138 — Onyx orb: soft lift + subtle copper outer glow (breathing). */
         "orb-idle": {
-          "0%, 100%": { filter: "drop-shadow(0 0 0 transparent)", transform: "scale(1)" },
-          "50%": {
-            filter: "drop-shadow(0 4px 14px hsl(9 100% 77% / 0.45))",
-            transform: "scale(1.03)",
+          "0%, 100%": {
+            boxShadow:
+              "0 12px 40px -10px rgba(17, 24, 39, 0.42), 0 0 32px -12px rgba(180, 83, 9, 0.2)",
+            transform: "scale(1)",
           },
+          "50%": {
+            boxShadow:
+              "0 14px 48px -10px rgba(17, 24, 39, 0.46), 0 0 44px -10px rgba(180, 83, 9, 0.32)",
+            transform: "scale(1.01)",
+          },
+        },
+        /** Gold lightning / menu icons: gentle opacity breathe (no harsh blink). */
+        "orb-spark-soft": {
+          "0%, 100%": { opacity: "0.88" },
+          "50%": { opacity: "1" },
         },
       },
       animation: {
@@ -170,7 +175,8 @@ const config: Config = {
         "hero-fly-b": "hero-fly-b 6.2s ease-in-out infinite",
         "hero-fly-c": "hero-fly-c 4.4s ease-in-out infinite",
         "badge-energetic-pulse": "badge-energetic-pulse 2.2s ease-in-out infinite",
-        "orb-idle": "orb-idle 3s ease-in-out infinite",
+        "orb-idle": "orb-idle 4.2s ease-in-out infinite",
+        "orb-spark-soft": "orb-spark-soft 3.4s ease-in-out infinite",
       },
     },
   },

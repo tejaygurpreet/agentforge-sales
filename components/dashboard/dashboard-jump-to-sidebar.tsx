@@ -56,7 +56,7 @@ export function DashboardJumpToSidebar({ onSelectTab }: Props) {
         </motion.div>
         <motion.div whileHover={{ x: 2 }} transition={{ type: "spring", stiffness: 400, damping: 28 }}>
           <Link href="/setup" className={linkClass}>
-            <Settings className="h-4 w-4 shrink-0 text-coral" aria-hidden />
+            <Settings className="h-4 w-4 shrink-0 text-highlight" aria-hidden />
             Setup
           </Link>
         </motion.div>
@@ -74,7 +74,7 @@ export function DashboardJumpToSidebar({ onSelectTab }: Props) {
         </motion.div>
         <motion.div whileHover={{ x: 2 }} transition={{ type: "spring", stiffness: 400, damping: 28 }}>
           <button type="button" onClick={() => onSelectTab("playbooks")} className={cn(linkClass, "w-full text-left")}>
-            <BookOpen className="h-4 w-4 shrink-0 text-coral" aria-hidden />
+            <BookOpen className="h-4 w-4 shrink-0 text-highlight" aria-hidden />
             Playbooks
           </button>
         </motion.div>

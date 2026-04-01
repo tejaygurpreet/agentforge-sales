@@ -11,7 +11,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * Prompt 136 — `useSearchParams` for `?compose=1` requires Suspense around `InboxPageClient`.
+ * Prompt 138 — Onyx Copper inbox; `?compose=1` via Suspense; smart orb from layout; compose FAB softened in `ProfessionalInbox`.
  */
 export default async function InboxPage() {
   const [initialThreads, initialDrafts] = await Promise.all([
@@ -21,7 +21,7 @@ export default async function InboxPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-[50vh] animate-pulse rounded-[var(--card-radius)] border border-border/40 bg-[#FAF7F2]/80 shadow-inner" />
+        <div className="min-h-[50vh] animate-pulse rounded-[var(--card-radius)] border border-[#111827]/08 bg-[#F9F6F0]/95 shadow-inner" />
       }
     >
       <InboxPageClient initialThreads={initialThreads} initialDrafts={initialDrafts} />
