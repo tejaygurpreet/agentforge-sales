@@ -24,6 +24,11 @@ import "server-only";
  */
 import { randomUUID } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  computeThreadUnread,
+  threadIsArchived,
+  threadIsSnoozed,
+} from "@/lib/inbox-filters";
 import { extractBareEmailFromFromHeader, slugifyLocalPartFromName } from "@/lib/resend";
 import { getServiceRoleSupabaseOrNull } from "@/lib/supabase-server";
 
@@ -815,6 +820,613 @@ export async function ensureInboxSchemaReady(): Promise<void> {
     return;
   }
   console.warn("[AgentForge] ensureInboxSchemaReady", msg);
+}
+
+/** Prompt 148 / 149 — Mirrors dashboard thread list options (`listInboxThreadsAction`). */
+export type InboxThreadsListOptions = {
+  includeArchived?: boolean;
+  folder?: "inbox" | "sent";
+};
+
+function normalizeInboxMessageRowsFromSelect(
+  rows: unknown[],
+  sel: string,
+): InboxMessageRow[] {
+  const has = (col: string) => sel.includes(col);
+  return (rows as Record<string, unknown>[]).map((r) => {
+    const { inbox_threads: _join, ...rflat } = r;
+    void _join;
+    const dirRaw = rflat.direction;
+    const direction: "inbound" | "outbound" =
+      dirRaw === "outbound" ? "outbound" : "inbound";
+    const receivedAt = String(rflat.received_at ?? "");
+    return {
+      id: String(rflat.id ?? ""),
+      thread_id: String(rflat.thread_id ?? ""),
+      user_id: String(rflat.user_id ?? ""),
+      direction,
+      from_email: String(rflat.from_email ?? ""),
+      to_email: String(rflat.to_email ?? ""),
+      subject: String(rflat.subject ?? ""),
+      body_text: String(rflat.body_text ?? ""),
+      body_html:
+        has("body_html") && rflat.body_html != null && String(rflat.body_html).trim() !== ""
+          ? String(rflat.body_html)
+          : null,
+      received_at: receivedAt,
+      reply_analysis_id:
+        has("reply_analysis_id") && rflat.reply_analysis_id != null
+          ? String(rflat.reply_analysis_id)
+          : null,
+      analyzed_at:
+        has("analyzed_at") && rflat.analyzed_at != null ? String(rflat.analyzed_at) : null,
+      created_at:
+        has("created_at") && rflat.created_at != null ? String(rflat.created_at) : receivedAt,
+    };
+  });
+}
+
+/**
+ * Prompt 148 — Load all `inbox_messages` for a thread owned by the user via `inbox_threads!inner` join
+ * (thread ownership), with column fallbacks; service-role read if RLS still hides rows.
+ */
+export async function fetchInboxMessagesForThreadDisplay(
+  userScoped: SupabaseClient,
+  userId: string,
+  threadId: string,
+): Promise<InboxMessageRow[]> {
+  const tid = threadId.trim();
+  if (!tid) return [];
+
+  const innerThread = "inbox_threads!inner ( id, user_id )";
+  const selectVariants = [
+    "id, thread_id, user_id, direction, from_email, to_email, subject, body_text, body_html, received_at, reply_analysis_id, analyzed_at, created_at",
+    "id, thread_id, user_id, direction, from_email, to_email, subject, body_text, body_html, received_at",
+    "id, thread_id, user_id, direction, from_email, to_email, subject, body_text, received_at",
+  ] as const;
+
+  const tryUserJoin = async (sel: string) =>
+    userScoped
+      .from("inbox_messages")
+      .select(`${sel}, ${innerThread}`)
+      .eq("thread_id", tid)
+      .eq("inbox_threads.user_id", userId)
+      .order("received_at", { ascending: true })
+      .limit(200);
+
+  for (const sel of selectVariants) {
+    const { data, error } = await tryUserJoin(sel);
+    if (!error) {
+      return normalizeInboxMessageRowsFromSelect(data ?? [], sel);
+    }
+    if (!isInboxRelationMissingError(error.message) && !isInboxOptionalColumnOrSchemaError(error.message)) {
+      break;
+    }
+  }
+
+  for (const sel of selectVariants) {
+    const { data, error } = await userScoped
+      .from("inbox_messages")
+      .select(sel)
+      .eq("thread_id", tid)
+      .eq("user_id", userId)
+      .order("received_at", { ascending: true })
+      .limit(200);
+    if (!error) {
+      return normalizeInboxMessageRowsFromSelect(data ?? [], sel);
+    }
+    if (!isInboxRelationMissingError(error.message) && !isInboxOptionalColumnOrSchemaError(error.message)) {
+      console.error("[AgentForge] fetchInboxMessagesForThreadDisplay", error.message);
+      return [];
+    }
+  }
+
+  const sr = getServiceRoleSupabaseOrNull();
+  if (!sr) return [];
+
+  const { data: threadOwned } = await sr
+    .from("inbox_threads")
+    .select("id")
+    .eq("id", tid)
+    .eq("user_id", userId)
+    .maybeSingle();
+  let allowSrRead = Boolean(threadOwned);
+  if (!allowSrRead) {
+    const { data: msgOwned } = await sr
+      .from("inbox_messages")
+      .select("id")
+      .eq("thread_id", tid)
+      .eq("user_id", userId)
+      .limit(1)
+      .maybeSingle();
+    allowSrRead = Boolean(msgOwned);
+  }
+  if (!allowSrRead) return [];
+
+  for (const sel of selectVariants) {
+    const { data, error } = await sr
+      .from("inbox_messages")
+      .select(sel)
+      .eq("thread_id", tid)
+      .order("received_at", { ascending: true })
+      .limit(200);
+    if (!error) {
+      return normalizeInboxMessageRowsFromSelect(data ?? [], sel);
+    }
+    if (!isInboxRelationMissingError(error.message) && !isInboxOptionalColumnOrSchemaError(error.message)) {
+      console.error("[AgentForge] fetchInboxMessagesForThreadDisplay (sr)", error.message);
+      return [];
+    }
+  }
+  return [];
+}
+
+type InboxMessageThreadSynthRow = {
+  thread_id?: string;
+  direction?: string;
+  from_email?: string;
+  to_email?: string;
+  subject?: string;
+  body_text?: string;
+  received_at?: string;
+};
+
+/**
+ * Prompt 151 — Last resort when `inbox_threads` rows are not visible to the user client (RLS / `user_id` skew) but
+ * `inbox_messages` are: build sidebar threads from the user’s messages with `user_id = auth user`, keyed by
+ * `thread_id`, so the list matches rows counted in `countInboxMessagesVisibleToUser`.
+ */
+async function synthesizeInboxThreadsFromUserMessages(
+  userScoped: SupabaseClient,
+  userId: string,
+): Promise<InboxThreadRow[]> {
+  const selectVariants = [
+    "thread_id, direction, from_email, to_email, subject, body_text, received_at",
+    "thread_id, direction, from_email, to_email, subject, received_at",
+  ] as const;
+
+  let rows: InboxMessageThreadSynthRow[] = [];
+  for (const sel of selectVariants) {
+    const { data, error } = await userScoped
+      .from("inbox_messages")
+      .select(sel)
+      .eq("user_id", userId)
+      .order("received_at", { ascending: false })
+      .limit(500);
+    if (!error && data?.length) {
+      rows = data as InboxMessageThreadSynthRow[];
+      break;
+    }
+    if (
+      error &&
+      !isInboxRelationMissingError(error.message) &&
+      !isInboxOptionalColumnOrSchemaError(error.message)
+    ) {
+      break;
+    }
+  }
+  if (!rows.length) return [];
+
+  const byThread = new Map<string, InboxMessageThreadSynthRow[]>();
+  for (const m of rows) {
+    const tid = m.thread_id;
+    if (typeof tid !== "string" || tid.length === 0) continue;
+    const arr = byThread.get(tid) ?? [];
+    arr.push(m);
+    byThread.set(tid, arr);
+  }
+
+  const out: InboxThreadRow[] = [];
+  for (const [threadId, msgs] of byThread) {
+    const chronological = [...msgs].sort(
+      (a, b) =>
+        new Date(a.received_at ?? 0).getTime() - new Date(b.received_at ?? 0).getTime(),
+    );
+    const latest = chronological[chronological.length - 1] ?? msgs[0];
+    const first = chronological[0] ?? latest;
+    let prospect = "";
+    for (let i = chronological.length - 1; i >= 0; i--) {
+      const m = chronological[i];
+      if (m.direction === "outbound") {
+        const e = normalizeMailboxForInboxStorage(m.to_email ?? "");
+        if (e.includes("@")) {
+          prospect = e;
+          break;
+        }
+      } else {
+        const e = normalizeMailboxForInboxStorage(m.from_email ?? "");
+        if (e.includes("@")) {
+          prospect = e;
+          break;
+        }
+      }
+    }
+    if (!prospect.includes("@")) {
+      prospect = normalizeMailboxForInboxStorage(
+        (latest.to_email && latest.to_email.length > 0 ? latest.to_email : latest.from_email) ?? "",
+      );
+    }
+
+    const subj = String(latest.subject ?? "").trim() || "(no subject)";
+    const body = String(latest.body_text ?? "");
+    const snippet = snippetFromBodyText(body.length > 0 ? body : subj, 140);
+    const lastAt = latest.received_at ?? new Date().toISOString();
+    const createdAt = first.received_at ?? lastAt;
+
+    out.push({
+      id: threadId,
+      user_id: userId,
+      prospect_email: prospect,
+      subject: subj,
+      snippet,
+      last_message_at: lastAt,
+      campaign_thread_id: null,
+      created_at: createdAt,
+    });
+  }
+
+  out.sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
+  return out;
+}
+
+/**
+ * Prompt 149 — `inbox_threads` LEFT JOIN `inbox_messages` via `inbox_messages!left(...)` embed (all user threads,
+ * including rows with no visible messages under RLS); retries thread-only select if embed fails.
+ *
+ * Prompt 150 — If `inbox_threads.user_id = …` returns no rows but the user has `inbox_messages`, load threads by
+ * distinct `thread_id` from those messages (user-scoped), then service-role `in('id', …)` when RLS still hides rows.
+ *
+ * Prompt 151 — If thread rows still cannot be read (e.g. no service role), synthesize thread list from the user’s
+ * messages so `inbox_threads` count aligns with `inbox_messages` visible to `auth.uid()`.
+ */
+export async function fetchInboxThreadsForUserDisplay(
+  userScoped: SupabaseClient,
+  userId: string,
+  search?: string,
+  opts?: InboxThreadsListOptions,
+): Promise<InboxThreadRow[]> {
+  const msgNestLite = "inbox_messages!left(id, thread_id, direction, received_at)";
+  const baseThread =
+    "id, user_id, prospect_email, subject, snippet, last_message_at, campaign_thread_id, created_at";
+  const extendedThread = `${baseThread}, user_last_read_at`;
+  const fullThread = `${extendedThread}, archived_at, snoozed_until, labels`;
+
+  const term = search?.trim();
+  const esc = term
+    ? term.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")
+    : "";
+
+  type Tier = { cols: string; hasRead: boolean; hasArchive: boolean };
+  const tiers: Tier[] = [
+    { cols: fullThread, hasRead: true, hasArchive: true },
+    { cols: extendedThread, hasRead: true, hasArchive: false },
+    { cols: baseThread, hasRead: false, hasArchive: false },
+  ];
+
+  const mapRowsToThreads = (raw: unknown): InboxThreadRow[] =>
+    ((raw ?? []) as unknown[]).map((row) => {
+      const r = row as Record<string, unknown>;
+      const { inbox_messages: _msgs, ...threadRest } = r;
+      void _msgs;
+      return threadRest;
+    }) as unknown as InboxThreadRow[];
+
+  async function runTieredInboxThreadSelect(
+    client: SupabaseClient,
+    threadIds: string[] | null,
+    eqThreadUserWhenFiltered: boolean,
+  ): Promise<{
+    data: unknown;
+    hasReadColumn: boolean;
+    hasArchiveCols: boolean;
+    resolved: boolean;
+    error: { message: string } | null;
+  }> {
+    const runQuery = async (threadCols: string, withMessageJoin: boolean) => {
+      const selectStr = withMessageJoin ? `${threadCols}, ${msgNestLite}` : threadCols;
+      let qq = client.from("inbox_threads").select(selectStr);
+      if (threadIds && threadIds.length > 0) {
+        qq = qq.in("id", threadIds);
+        if (eqThreadUserWhenFiltered) qq = qq.eq("user_id", userId);
+      } else {
+        qq = qq.eq("user_id", userId);
+      }
+      qq = qq.order("last_message_at", { ascending: false }).limit(300);
+      if (term) {
+        qq = qq.or(`subject.ilike.%${esc}%,snippet.ilike.%${esc}%,prospect_email.ilike.%${esc}%`);
+      }
+      return qq;
+    };
+
+    let data: unknown = null;
+    let error: { message: string } | null = null;
+    let hasReadColumn = true;
+    let hasArchiveCols = true;
+    let resolved = false;
+
+    for (const tier of tiers) {
+      let res = await runQuery(tier.cols, true);
+      if (!res.error) {
+        data = res.data;
+        error = null;
+        hasReadColumn = tier.hasRead;
+        hasArchiveCols = tier.hasArchive;
+        resolved = true;
+        break;
+      }
+      if (!isInboxOptionalColumnOrSchemaError(res.error.message)) {
+        error = res.error;
+        break;
+      }
+      res = await runQuery(tier.cols, false);
+      if (!res.error) {
+        data = res.data;
+        error = null;
+        hasReadColumn = tier.hasRead;
+        hasArchiveCols = tier.hasArchive;
+        resolved = true;
+        break;
+      }
+      error = res.error;
+      if (!isInboxOptionalColumnOrSchemaError(res.error.message)) {
+        break;
+      }
+    }
+
+    return { data, hasReadColumn, hasArchiveCols, resolved, error };
+  }
+
+  const primary = await runTieredInboxThreadSelect(userScoped, null, false);
+  let data = primary.data;
+  let hasReadColumn = primary.hasReadColumn;
+  let hasArchiveCols = primary.hasArchiveCols;
+  let threads = mapRowsToThreads(data);
+
+  if (threads.length === 0) {
+    const joinThreadCols =
+      "id, user_id, prospect_email, subject, snippet, last_message_at, campaign_thread_id, created_at";
+    const { data: viaJoin, error: joinErr } = await userScoped
+      .from("inbox_messages")
+      .select(`received_at, thread_id, inbox_threads!inner(${joinThreadCols})`)
+      .eq("user_id", userId)
+      .eq("inbox_threads.user_id", userId)
+      .order("received_at", { ascending: false })
+      .limit(400);
+    if (!joinErr && viaJoin?.length) {
+      const seen = new Set<string>();
+      const acc: InboxThreadRow[] = [];
+      for (const row of viaJoin as Record<string, unknown>[]) {
+        const t = row.inbox_threads;
+        if (!t || typeof t !== "object") continue;
+        const id = String((t as { id?: string }).id ?? "");
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        acc.push(t as InboxThreadRow);
+      }
+      if (acc.length > 0) {
+        acc.sort(
+          (a, b) =>
+            new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime(),
+        );
+        threads = acc;
+        hasReadColumn = false;
+        hasArchiveCols = false;
+      }
+    }
+  }
+
+  if (threads.length === 0) {
+    const { data: msgThreadRows, error: msgErr } = await userScoped
+      .from("inbox_messages")
+      .select("thread_id")
+      .eq("user_id", userId);
+    if (!msgErr) {
+      const idSet = new Set<string>();
+      for (const r of msgThreadRows ?? []) {
+        const tid = (r as { thread_id?: string }).thread_id;
+        if (typeof tid === "string" && tid.length > 0) idSet.add(tid);
+      }
+      const fromMessageIds = [...idSet];
+      if (fromMessageIds.length > 0) {
+        let fb = await runTieredInboxThreadSelect(userScoped, fromMessageIds, true);
+        if (!fb.resolved && fb.error) {
+          if (
+            !isInboxRelationMissingError(fb.error.message) &&
+            !isInboxOptionalColumnOrSchemaError(fb.error.message)
+          ) {
+            console.error("[AgentForge] fetchInboxThreadsForUserDisplay fallback(user)", fb.error.message);
+          }
+        }
+        if (mapRowsToThreads(fb.data).length === 0) {
+          const sr = getServiceRoleSupabaseOrNull();
+          if (sr) {
+            fb = await runTieredInboxThreadSelect(sr, fromMessageIds, false);
+            if (!fb.resolved && fb.error) {
+              if (
+                !isInboxRelationMissingError(fb.error.message) &&
+                !isInboxOptionalColumnOrSchemaError(fb.error.message)
+              ) {
+                console.error("[AgentForge] fetchInboxThreadsForUserDisplay fallback(sr)", fb.error.message);
+              }
+            }
+          }
+        }
+        if (mapRowsToThreads(fb.data).length > 0) {
+          data = fb.data;
+          hasReadColumn = fb.hasReadColumn;
+          hasArchiveCols = fb.hasArchiveCols;
+          threads = mapRowsToThreads(data);
+        }
+      }
+    }
+  }
+
+  if (threads.length === 0) {
+    const synthetic = await synthesizeInboxThreadsFromUserMessages(userScoped, userId);
+    if (synthetic.length > 0) {
+      threads = synthetic;
+      hasReadColumn = true;
+      hasArchiveCols = false;
+    }
+  }
+
+  if (threads.length === 0) {
+    if (primary.error && !primary.resolved) {
+      if (
+        !isInboxRelationMissingError(primary.error.message) &&
+        !isInboxOptionalColumnOrSchemaError(primary.error.message)
+      ) {
+        console.error("[AgentForge] fetchInboxThreadsForUserDisplay", primary.error.message);
+      }
+    }
+    return [];
+  }
+
+  const { data: pendingRows, error: pendErr } = await userScoped
+    .from("inbox_messages")
+    .select("thread_id")
+    .eq("user_id", userId)
+    .eq("direction", "inbound")
+    .is("reply_analysis_id", null);
+  if (pendErr) {
+    if (!isInboxOptionalColumnOrSchemaError(pendErr.message)) {
+      console.error("[AgentForge] fetchInboxThreadsForUserDisplay needs_review", pendErr.message);
+    }
+    threads = threads.map((t) => ({
+      ...t,
+      has_unread: hasReadColumn ? computeThreadUnread(t.last_message_at, t.user_last_read_at ?? null) : false,
+      needs_review: false,
+    }));
+  } else {
+    const needsReview = new Set(
+      (pendingRows ?? [])
+        .map((r) => (r as { thread_id?: string }).thread_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    );
+    threads = threads.map((t) => ({
+      ...t,
+      has_unread: hasReadColumn ? computeThreadUnread(t.last_message_at, t.user_last_read_at ?? null) : false,
+      needs_review: needsReview.has(t.id),
+    }));
+  }
+
+  if (hasArchiveCols) {
+    const wantArchived = opts?.includeArchived === true;
+    threads = threads.filter((t) => (wantArchived ? threadIsArchived(t) : !threadIsArchived(t)));
+    threads = threads.filter((t) => !threadIsSnoozed(t));
+  }
+
+  if (opts?.folder === "sent" && threads.length > 0) {
+    const sentJoin = "inbox_threads!inner(user_id)";
+    let msgRows: unknown[] =
+      (
+        await userScoped
+          .from("inbox_messages")
+          .select(`thread_id, direction, received_at, ${sentJoin}`)
+          .eq("inbox_threads.user_id", userId)
+          .order("received_at", { ascending: false })
+          .limit(1000)
+      ).data ?? [];
+    if (msgRows.length === 0) {
+      const byMsgUser = await userScoped
+        .from("inbox_messages")
+        .select("thread_id, direction, received_at")
+        .eq("user_id", userId)
+        .order("received_at", { ascending: false })
+        .limit(1000);
+      msgRows = (byMsgUser.data ?? []) as unknown[];
+    }
+    if (msgRows.length === 0) {
+      const sr = getServiceRoleSupabaseOrNull();
+      const threadIds = threads.map((t) => t.id);
+      if (sr && threadIds.length > 0) {
+        const alt = await sr
+          .from("inbox_messages")
+          .select("thread_id, direction, received_at")
+          .in("thread_id", threadIds)
+          .order("received_at", { ascending: false })
+          .limit(1000);
+        msgRows = (alt.data ?? []) as unknown[];
+      }
+    }
+    const seen = new Set<string>();
+    const sentIds = new Set<string>();
+    for (const r of msgRows) {
+      const row = r as { thread_id?: string; direction?: string };
+      const tid = row.thread_id;
+      if (!tid || seen.has(tid)) continue;
+      seen.add(tid);
+      if (row.direction === "outbound") sentIds.add(tid);
+    }
+    threads = threads.filter((t) => sentIds.has(t.id));
+  }
+
+  return threads;
+}
+
+/**
+ * Prompt 149 — Server `/inbox` prefetch: joined thread list + message count (same rules as dashboard list).
+ */
+export async function fetchInboxPageInitialData(
+  userScoped: SupabaseClient,
+  userId: string,
+): Promise<{ threads: InboxThreadRow[]; messageCount: number }> {
+  await ensureInboxSchemaReady();
+  const [threads, messageCount] = await Promise.all([
+    fetchInboxThreadsForUserDisplay(userScoped, userId),
+    countInboxMessagesVisibleToUser(userScoped, userId),
+  ]);
+  return { threads, messageCount };
+}
+
+/**
+ * Prompt 148 / 149 — Count `inbox_messages` rows for the user’s threads (`inbox_threads!inner`), with fallbacks.
+ */
+export async function countInboxMessagesVisibleToUser(
+  userScoped: SupabaseClient,
+  userId: string,
+): Promise<number> {
+  const countJoin = "inbox_threads!inner(user_id)";
+  const joined = await userScoped
+    .from("inbox_messages")
+    .select(`id, ${countJoin}`, { count: "exact", head: true })
+    .eq("inbox_threads.user_id", userId);
+
+  if (!joined.error) {
+    const n = joined.count ?? 0;
+    if (n > 0) return n;
+  }
+
+  const direct = await userScoped
+    .from("inbox_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if (direct.error && !isInboxRelationMissingError(direct.error.message)) {
+    return 0;
+  }
+  const directCount = direct.count ?? 0;
+  if (directCount > 0) return directCount;
+
+  const sr = getServiceRoleSupabaseOrNull();
+  if (!sr) return 0;
+
+  const { data: threadRows, error: tErr } = await userScoped
+    .from("inbox_threads")
+    .select("id")
+    .eq("user_id", userId)
+    .limit(2000);
+  if (tErr || !threadRows?.length) return 0;
+
+  const ids = threadRows
+    .map((t) => (t as { id?: string }).id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  if (!ids.length) return 0;
+
+  const c = await sr
+    .from("inbox_messages")
+    .select("id", { count: "exact", head: true })
+    .in("thread_id", ids);
+  return c.count ?? 0;
 }
 
 /**

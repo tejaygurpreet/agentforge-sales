@@ -89,11 +89,7 @@ import type {
   SdrManagerPayloadDTO,
 } from "@/types";
 import { computeCampaignStrength } from "@/lib/campaign-strength";
-import {
-  computeThreadUnread,
-  threadIsArchived,
-  threadIsSnoozed,
-} from "@/lib/inbox-filters";
+import { threadIsSnoozed } from "@/lib/inbox-filters";
 import { mergeTemplatePayloadIntoLeadForm } from "@/lib/campaign-templates-merge";
 import { computeForecastFromSnapshot } from "@/lib/forecast";
 import { buildDashboardOptimizerFeedFromRows } from "@/lib/optimizer";
@@ -126,9 +122,10 @@ import {
 } from "@/lib/resend";
 import {
   ensureInboxSchemaReady,
+  fetchInboxMessagesForThreadDisplay,
+  fetchInboxThreadsForUserDisplay,
   getOrSyncInboxLocalPart,
   insertInboxMessageReliable,
-  isInboxOptionalColumnOrSchemaError,
   isInboxRelationMissingError,
   isOptionalInboxThreadColumnMissingError,
   normalizeComposeRecipientEmail,
@@ -141,6 +138,7 @@ import {
   type InboxDraftRow,
   type InboxMessageRow,
   type InboxThreadRow,
+  type InboxThreadsListOptions,
 } from "@/lib/inbox";
 import {
   analyzeDeliverability,
@@ -3784,16 +3782,12 @@ export async function listProspectReplies(): Promise<PersistedReplyAnalysisRow[]
   return out;
 }
 
-export type ListInboxThreadsOptions = {
-  /** Prompt 119 — list only archived threads (otherwise archived are excluded). */
-  includeArchived?: boolean;
-  /** Prompt 132 — `sent` = threads whose latest message is outbound. */
-  folder?: "inbox" | "sent";
-};
+export type ListInboxThreadsOptions = InboxThreadsListOptions;
 
 /**
  * Prompt 115 — Inbox threads for the signed-in user (newest activity first).
  * Prompt 119 — Optional archive/snooze columns + view filter.
+ * Prompt 148 — Implemented in `lib/inbox.ts` (`fetchInboxThreadsForUserDisplay`).
  */
 export async function listInboxThreadsAction(
   search?: string,
@@ -3806,108 +3800,7 @@ export async function listInboxThreadsAction(
   } = await supabase.auth.getUser();
   if (authError || !user) return [];
   await ensureInboxSchemaReady();
-  const baseSelect =
-    "id, user_id, prospect_email, subject, snippet, last_message_at, campaign_thread_id, created_at";
-  const extendedSelect = `${baseSelect}, user_last_read_at`;
-  const fullSelect = `${extendedSelect}, archived_at, snoozed_until, labels`;
-
-  const term = search?.trim();
-  const esc = term
-    ? term.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")
-    : "";
-
-  const runQuery = async (selectStr: string) => {
-    let qq = supabase
-      .from("inbox_threads")
-      .select(selectStr)
-      .eq("user_id", user.id)
-      .order("last_message_at", { ascending: false })
-      .limit(100);
-    if (term) {
-      qq = qq.or(`subject.ilike.%${esc}%,snippet.ilike.%${esc}%,prospect_email.ilike.%${esc}%`);
-    }
-    return qq;
-  };
-
-  let { data, error } = await runQuery(fullSelect);
-  let hasReadColumn = true;
-  let hasArchiveCols = true;
-  if (error && isInboxOptionalColumnOrSchemaError(error.message)) {
-    hasArchiveCols = false;
-    const second = await runQuery(extendedSelect);
-    data = second.data;
-    error = second.error;
-  }
-  if (error && isInboxOptionalColumnOrSchemaError(error.message)) {
-    hasReadColumn = false;
-    const third = await runQuery(baseSelect);
-    data = third.data;
-    error = third.error;
-  }
-  if (error) {
-    if (isInboxRelationMissingError(error.message) || isInboxOptionalColumnOrSchemaError(error.message)) {
-      return [];
-    }
-    console.error("[AgentForge] listInboxThreadsAction", error.message);
-    return [];
-  }
-  let threads = (data ?? []) as unknown as InboxThreadRow[];
-  if (threads.length === 0) return threads;
-
-  const { data: pendingRows, error: pendErr } = await supabase
-    .from("inbox_messages")
-    .select("thread_id")
-    .eq("user_id", user.id)
-    .eq("direction", "inbound")
-    .is("reply_analysis_id", null);
-  if (pendErr) {
-    if (!isInboxOptionalColumnOrSchemaError(pendErr.message)) {
-      console.error("[AgentForge] listInboxThreadsAction needs_review", pendErr.message);
-    }
-    threads = threads.map((t) => ({
-      ...t,
-      has_unread: hasReadColumn ? computeThreadUnread(t.last_message_at, t.user_last_read_at ?? null) : false,
-      needs_review: false,
-    }));
-  } else {
-    const needsReview = new Set(
-      (pendingRows ?? [])
-        .map((r) => (r as { thread_id?: string }).thread_id)
-        .filter((id): id is string => typeof id === "string" && id.length > 0),
-    );
-    threads = threads.map((t) => ({
-      ...t,
-      has_unread: hasReadColumn ? computeThreadUnread(t.last_message_at, t.user_last_read_at ?? null) : false,
-      needs_review: needsReview.has(t.id),
-    }));
-  }
-
-  if (hasArchiveCols) {
-    const wantArchived = opts?.includeArchived === true;
-    threads = threads.filter((t) => (wantArchived ? threadIsArchived(t) : !threadIsArchived(t)));
-    threads = threads.filter((t) => !threadIsSnoozed(t));
-  }
-
-  if (opts?.folder === "sent" && threads.length > 0) {
-    const { data: msgRows } = await supabase
-      .from("inbox_messages")
-      .select("thread_id, direction, received_at")
-      .eq("user_id", user.id)
-      .order("received_at", { ascending: false })
-      .limit(1000);
-    const seen = new Set<string>();
-    const sentIds = new Set<string>();
-    for (const r of msgRows ?? []) {
-      const row = r as { thread_id?: string; direction?: string };
-      const tid = row.thread_id;
-      if (!tid || seen.has(tid)) continue;
-      seen.add(tid);
-      if (row.direction === "outbound") sentIds.add(tid);
-    }
-    threads = threads.filter((t) => sentIds.has(t.id));
-  }
-
-  return threads;
+  return fetchInboxThreadsForUserDisplay(supabase, user.id, search, opts);
 }
 
 const inboxDraftUpsertSchema = z.object({
@@ -4216,23 +4109,7 @@ export async function listInboxMessagesAction(threadId: string): Promise<InboxMe
   if (authError || !user) return [];
   if (!threadId.trim()) return [];
   await ensureInboxSchemaReady();
-  const { data, error } = await supabase
-    .from("inbox_messages")
-    .select(
-      "id, thread_id, user_id, direction, from_email, to_email, subject, body_text, body_html, received_at, reply_analysis_id, analyzed_at, created_at",
-    )
-    .eq("user_id", user.id)
-    .eq("thread_id", threadId.trim())
-    .order("received_at", { ascending: true })
-    .limit(200);
-  if (error) {
-    if (isInboxRelationMissingError(error.message) || isInboxOptionalColumnOrSchemaError(error.message)) {
-      return [];
-    }
-    console.error("[AgentForge] listInboxMessagesAction", error.message);
-    return [];
-  }
-  const messages = (data ?? []) as InboxMessageRow[];
+  const messages = await fetchInboxMessagesForThreadDisplay(supabase, user.id, threadId);
   const analysisIds = [
     ...new Set(
       messages.map((m) => m.reply_analysis_id).filter((id): id is string => typeof id === "string" && id.length > 0),
