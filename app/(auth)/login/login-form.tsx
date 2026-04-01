@@ -25,6 +25,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
 import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
+import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase";
 import { Loader2, Lock, LogIn, Mail, Sparkles } from "lucide-react";
@@ -86,18 +87,19 @@ export function LoginForm() {
     next !== "/" ? `/signup?next=${encodeURIComponent(next)}` : "/signup";
 
   return (
+    <AuthSplitLayout tagline="Welcome back. Your pipeline, inbox, and campaigns — in one calm workspace.">
     <Card
       className={cn(
-        "w-full max-w-[420px] overflow-hidden rounded-2xl border-border/55 bg-card/95 shadow-lift ring-1 ring-border/25",
-        "animate-in fade-in zoom-in-95 duration-500",
+        "w-full overflow-hidden rounded-[var(--card-radius)] border-border/50 bg-card shadow-soft ring-1 ring-black/[0.04]",
+        "bg-gradient-to-br from-card via-card to-muted/25",
       )}
     >
       <CardHeader className="space-y-4 border-b border-border/40 bg-gradient-to-br from-primary/[0.08] via-card to-accent/[0.06] px-8 pb-8 pt-9 text-center sm:text-left">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/25 bg-card shadow-sm sm:mx-0">
-          <Sparkles className="h-7 w-7 text-primary" aria-hidden />
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[var(--card-radius)] border border-sage/25 bg-white shadow-inner sm:mx-0">
+          <Sparkles className="h-7 w-7 text-sage" aria-hidden />
         </div>
         <div className="space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary/80">Welcome back</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-sage/90">Welcome back</p>
           <CardTitle className="text-2xl font-semibold tracking-tight">{DEFAULT_BRAND_DISPLAY_NAME}</CardTitle>
           <CardDescription className="text-[15px] leading-relaxed">
             Sign in with your work email. New here? Create an account in under a minute.
@@ -121,7 +123,7 @@ export function LoginForm() {
                         autoComplete="email"
                         placeholder="you@company.com"
                         disabled={isPending}
-                        className="h-11 rounded-xl border-border/60 pl-10 shadow-sm transition-shadow focus-visible:ring-2 focus-visible:ring-primary/25"
+                        className="h-11 rounded-xl border-border/60 bg-white pl-10 shadow-inner transition-shadow focus-visible:ring-2 focus-visible:ring-sage/30"
                         {...field}
                       />
                     </div>
@@ -143,7 +145,7 @@ export function LoginForm() {
                         type="password"
                         autoComplete="current-password"
                         disabled={isPending}
-                        className="h-11 rounded-xl border-border/60 pl-10 shadow-sm transition-shadow focus-visible:ring-2 focus-visible:ring-primary/25"
+                        className="h-11 rounded-xl border-border/60 bg-white pl-10 shadow-inner transition-shadow focus-visible:ring-2 focus-visible:ring-sage/30"
                         {...field}
                       />
                     </div>
@@ -175,7 +177,7 @@ export function LoginForm() {
           New here?{" "}
           <Link
             href={signupHref}
-            className="font-semibold text-primary underline-offset-4 transition-colors hover:text-primary/90 hover:underline"
+            className="font-semibold text-sage underline-offset-4 transition-colors hover:text-sage/85 hover:underline"
           >
             Create an account
           </Link>
@@ -186,5 +188,6 @@ export function LoginForm() {
         </p>
       </CardContent>
     </Card>
+    </AuthSplitLayout>
   );
 }

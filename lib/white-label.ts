@@ -36,11 +36,11 @@ export function mergeWhiteLabelRow(row: Partial<WhiteLabelRow> | null): WhiteLab
   const primary =
     typeof row?.primary_color === "string" && isHexColor(row.primary_color)
       ? row.primary_color.trim()
-      : "#3b82f6";
+      : "#8F9E7E";
   const secondary =
     typeof row?.secondary_color === "string" && isHexColor(row.secondary_color)
       ? row.secondary_color.trim()
-      : "#0f172a";
+      : "#3D3832";
   const support = typeof row?.support_email === "string" ? row.support_email.trim() : "";
   const logo = typeof row?.logo_url === "string" ? row.logo_url.trim() : "";
 

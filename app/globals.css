@@ -3,41 +3,49 @@
 @tailwind utilities;
 
 /**
- * Prompt 133 — World-class light redesign (exact spec):
- * Background #F8F5F0 · Cards #FAF7F2 · 20px radius · 12px soft shadow
- * Sage #8F9E7E · Terracotta #D4A373 · Inter · 200ms hover lift
+ * Prompt 136 — Energetic system: #FFFFFF + sage→terracotta→coral gradients on surfaces
+ * Cards #FAF7F2 · 24px radius · strong inner shadow + outer glow (no blue)
  */
 @layer base {
   :root {
-    --background: 40 33% 96%;
-    --foreground: 30 8% 22%;
-    /* Card surface #FAF7F2 */
+    --background: 0 0% 100%;
+    --foreground: 30 8% 18%;
+    /* Warm card #FAF7F2 */
     --card: 40 35% 97%;
     --card-foreground: 30 8% 22%;
-    --popover: 40 35% 97%;
+    --popover: 0 0% 100%;
     --popover-foreground: 30 8% 22%;
-    /* Sage #8F9E7E */
+    /* Sage #8F9E7E — primary UI */
     --primary: 82 14% 56%;
     --primary-foreground: 40 40% 98%;
     --sage: 82 14% 56%;
     /* Terracotta #D4A373 */
-    --secondary: 28 52% 94%;
-    --secondary-foreground: 28 35% 28%;
+    --secondary: 28 45% 94%;
+    --secondary-foreground: 28 32% 28%;
     --terracotta: 28 52% 62%;
-    --muted: 38 22% 93%;
+    /* Energetic coral #FF9A8B */
+    --coral: 9 100% 77%;
+    --muted: 40 20% 96%;
     --muted-foreground: 30 6% 42%;
-    --accent: 28 45% 94%;
-    --accent-foreground: 28 32% 30%;
+    --accent: 32 40% 96%;
+    --accent-foreground: 28 30% 28%;
     --destructive: 0 58% 46%;
     --destructive-foreground: 40 40% 98%;
-    --border: 36 16% 86%;
-    --input: 36 18% 88%;
+    --border: 36 14% 90%;
+    --input: 36 16% 92%;
     --ring: 82 14% 56%;
-    --radius: 1.25rem;
-    --card-radius: 20px;
-    --card-shadow-spec: 0 12px 36px -8px hsl(30 12% 18% / 0.1), 0 4px 14px hsl(30 10% 15% / 0.06);
-    --canvas-mid: 38 28% 96%;
-    --canvas-btm: 34 22% 94%;
+    --radius: 1.35rem;
+    --card-radius: 24px;
+    --card-shadow-spec:
+      inset 0 2px 6px hsl(30 10% 18% / 0.06),
+      inset 0 -1px 0 hsl(0 0% 100% / 0.95),
+      0 0 0 1px hsl(82 14% 56% / 0.08),
+      0 22px 56px -18px hsl(30 12% 15% / 0.14),
+      0 10px 28px -8px hsl(28 52% 62% / 0.12),
+      0 0 48px -20px hsl(9 100% 77% / 0.18);
+    --canvas-mid: 0 0% 100%;
+    --canvas-btm: 40 25% 98%;
+    --canvas-end: #ffffff;
   }
 
   .dark {
@@ -53,6 +61,7 @@
     --secondary: 24 14% 18%;
     --secondary-foreground: 40 30% 92%;
     --terracotta: 28 45% 58%;
+    --coral: 9 70% 68%;
     --muted: 24 12% 16%;
     --muted-foreground: 40 12% 68%;
     --accent: 24 18% 20%;
@@ -65,6 +74,21 @@
     --canvas-mid: 28 11% 10%;
     --canvas-btm: 30 12% 8%;
   }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-semibold tracking-tight text-foreground;
+  }
+  h1 {
+    @apply text-3xl sm:text-4xl sm:font-bold;
+  }
+  h2 {
+    @apply text-2xl sm:font-bold;
+  }
+  h3 {
+    @apply text-xl font-semibold;
+  }
 }
 
 @layer base {
@@ -72,34 +96,87 @@
     @apply border-border;
   }
   body {
-    @apply text-foreground antialiased;
+    @apply text-[15px] font-normal leading-relaxed text-foreground antialiased;
     font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
     font-feature-settings: "rlig" 1, "calt" 1;
-    background-color: #f8f5f0;
-    background-image: linear-gradient(180deg, #f8f5f0 0%, hsl(var(--canvas-mid)) 48%, hsl(var(--canvas-btm)) 100%);
-    background-attachment: fixed;
+    /** Prompt 136 — flat #FFFFFF canvas; energetic gradients live on `.dashboard-hero-energetic-bg` only */
+    background-color: #ffffff;
+    background-image: none;
+  }
+
+  /** Unstyled links: sage, not browser blue (Prompt 135). */
+  main a:not([class*="text-"]):not([class*="bg-"]) {
+    @apply text-sage underline-offset-4 transition-colors hover:text-sage/85;
+  }
+
+  /**
+   * Prompt 136 — Default keyboard focus uses sage (components may add ring-* on top).
+   * Prevents residual system blue on native controls without Tailwind classes.
+   */
+  :where(input, textarea, select, button):focus-visible {
+    outline: 2px solid hsl(var(--sage) / 0.45);
+    outline-offset: 2px;
   }
 }
 
 @layer utilities {
+  /**
+   * Prompt 136 — Hero banner only: subtle sage → terracotta → coral wash (page body stays #FFFFFF).
+   */
+  .dashboard-hero-energetic-bg {
+    background-color: #ffffff;
+    background-image:
+      radial-gradient(ellipse 120% 100% at 92% -8%, hsl(var(--coral) / 0.16), transparent 55%),
+      radial-gradient(ellipse 95% 85% at 0% 102%, hsl(var(--sage) / 0.14), transparent 52%),
+      radial-gradient(ellipse 70% 55% at 48% 40%, hsl(var(--terracotta) / 0.08), transparent 60%),
+      linear-gradient(165deg, #ffffff 0%, #fffdfb 42%, #faf7f2 100%);
+  }
+
   .premium-card-spec {
     box-shadow: var(--card-shadow-spec);
     border-radius: var(--card-radius);
   }
+  /** Energetic warm card: sage → terracotta → coral wash + inner depth (Prompt 136) */
+  .creative-card-surface {
+    background-image: linear-gradient(
+      148deg,
+      hsl(var(--card)) 0%,
+      color-mix(in srgb, hsl(var(--card)) 92%, hsl(var(--coral)) 8%) 38%,
+      color-mix(in srgb, hsl(var(--card)) 94%, hsl(var(--terracotta)) 6%) 62%,
+      color-mix(in srgb, hsl(var(--card)) 93%, hsl(var(--sage)) 7%) 100%
+    );
+    box-shadow:
+      inset 0 2px 8px hsl(30 10% 18% / 0.07),
+      inset 0 1px 0 hsl(0 0% 100% / 0.92),
+      0 0 0 1px hsl(82 14% 56% / 0.07),
+      0 16px 44px -14px hsl(30 12% 15% / 0.12),
+      0 0 40px -18px hsl(9 100% 77% / 0.22);
+  }
   .premium-surface {
-    @apply transition-[box-shadow,transform,border-color] duration-200 ease-in-out;
+    @apply transition-[box-shadow,transform,border-color] duration-300 ease-out;
   }
   .premium-card-interactive {
-    @apply transition-[box-shadow,transform] duration-200 ease-in-out hover:-translate-y-0.5 hover:shadow-[var(--card-shadow-spec)];
+    @apply transition-[box-shadow,transform] duration-300 ease-out hover:-translate-y-1 hover:scale-[1.02] hover:shadow-[var(--card-shadow-spec)];
+  }
+
+  /** Full-bleed energetic strip (headers, heroes) */
+  .energetic-banner-wash {
+    background-image: linear-gradient(
+      125deg,
+      hsl(0 0% 100%) 0%,
+      color-mix(in srgb, #ffffff 88%, hsl(var(--sage)) 12%) 35%,
+      color-mix(in srgb, #ffffff 85%, hsl(var(--terracotta)) 15%) 68%,
+      color-mix(in srgb, #ffffff 90%, hsl(var(--coral)) 10%) 100%
+    );
   }
   .text-balance-safe {
     text-wrap: balance;
   }
   .motion-tap {
-    @apply transition-transform duration-200 ease-in-out active:scale-[0.98];
+    @apply transition-transform duration-200 ease-out active:scale-[0.98];
   }
-  .focus-ring-calm {
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  .focus-ring-sage {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white;
   }
   .ux-field-error {
     @apply mt-1.5 rounded-[var(--card-radius)] border border-destructive/20 bg-gradient-to-r from-destructive/[0.07] to-destructive/[0.04] px-2.5 py-1.5 text-[0.8rem] font-medium leading-snug text-destructive shadow-sm ring-1 ring-destructive/10;
@@ -114,18 +191,18 @@
     @apply border-amber-500/40 bg-gradient-to-br from-amber-500/10 via-card to-amber-950/30 text-amber-50 ring-amber-500/25;
   }
   .ux-inline-success {
-    @apply rounded-[var(--card-radius)] border border-primary/35 bg-gradient-to-br from-primary/[0.1] via-card to-muted/30 px-3.5 py-2.5 text-sm leading-relaxed text-foreground shadow-sm ring-1 ring-primary/25;
+    @apply rounded-[var(--card-radius)] border border-sage/35 bg-gradient-to-br from-sage/[0.1] via-card to-muted/30 px-3.5 py-2.5 text-sm leading-relaxed text-foreground shadow-sm ring-1 ring-sage/25;
   }
   .dark .ux-inline-success {
-    @apply border-primary/35 bg-gradient-to-br from-primary/[0.12] via-card to-muted/15 text-primary-foreground ring-primary/25;
+    @apply border-sage/35 bg-gradient-to-br from-sage/[0.12] via-card to-muted/15 text-foreground ring-sage/25;
   }
   .ux-loading-canvas {
-    @apply min-h-screen min-h-[100dvh] bg-[#f8f5f0] bg-[linear-gradient(180deg,#f8f5f0_0%,hsl(var(--canvas-mid))_42%,hsl(var(--canvas-btm))_100%)] bg-fixed;
+    @apply min-h-screen min-h-[100dvh] bg-white;
   }
   .ux-loading-overlay {
-    @apply fixed inset-0 z-40 flex items-center justify-center bg-background/80 backdrop-blur-[3px];
+    @apply fixed inset-0 z-40 flex items-center justify-center bg-white/80 backdrop-blur-[3px];
   }
   .ux-loading-panel {
-    @apply flex max-w-md flex-col items-center gap-4 rounded-[var(--card-radius)] border border-border/55 bg-gradient-to-b from-card via-card to-muted/25 px-8 py-7 text-center shadow-[var(--card-shadow-spec)] ring-1 ring-primary/15 backdrop-blur-sm motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-300;
+    @apply flex max-w-md flex-col items-center gap-4 rounded-[var(--card-radius)] border border-border/55 bg-gradient-to-b from-card via-card to-muted/25 px-8 py-7 text-center shadow-[var(--card-shadow-spec)] ring-1 ring-sage/15 backdrop-blur-sm motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-300;
   }
 }

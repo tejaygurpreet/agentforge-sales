@@ -183,6 +183,10 @@ export const dynamic = "force-dynamic";
  * Prompt 124 — Compose new email from `/inbox` (`sendNewInboxEmailAction`, `ComposeNewEmailDialog`).
  * Prompt 125 — Global warm cream + sage + terracotta palette (`globals.css`); PDF export colors; component class cleanup (no blue/purple accents).
  * Prompt 126 — Dashboard shell + home stack spacing cohesion (`DashboardShell`, `DashboardHomeClient`); shared tab chrome (`tabs.tsx`).
+ * Prompt 134 — Creative gradient shell + `DashboardHero` banner + Framer route template; `DashboardHomeClient` layout.
+ * Prompt 135 — White-base + sage/terracotta system, illustrated hero, `/setup` integrations hub, inbox persistence hardening.
+ * Prompt 136 — Energetic main dashboard: `#FFFFFF` page canvas, hero-only gradient (`dashboard-hero-energetic-bg`),
+ * `#FAF7F2` cards, sage/terracotta/coral accents, `DashboardQuickNavCards` + `DashboardJumpToSidebar`, Framer motion.
  */
 export default async function DashboardPage() {
   const envWarnings = getDashboardEnvWarnings();

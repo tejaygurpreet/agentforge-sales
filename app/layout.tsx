@@ -7,7 +7,7 @@ import "./globals.css";
 
 export { viewport } from "./viewport";
 
-/** Prompt 133 — Inter (premium spec). */
+/** Prompt 136 — Inter 400–700; energetic canvas (sage/coral washes in globals). */
 const fontSans = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
@@ -45,7 +45,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className="scroll-smooth">
       <body
-        className={`${fontSans.variable} ${fontMono.variable} min-h-screen font-sans text-[15px] leading-relaxed tracking-[-0.01em]`}
+        className={`${fontSans.variable} ${fontMono.variable} min-h-screen bg-white font-sans font-normal text-[15px] leading-relaxed tracking-[-0.01em]`}
       >
         <TooltipProvider delayDuration={260} skipDelayDuration={120}>
           {children}

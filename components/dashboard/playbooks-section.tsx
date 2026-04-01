@@ -127,7 +127,7 @@ export function PlaybooksSection({
               </label>
               <select
                 id="playbook-thread"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 value={threadPick}
                 onChange={(e) => setThreadPick(e.target.value)}
                 aria-label="Select campaign thread"

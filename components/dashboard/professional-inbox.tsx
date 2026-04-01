@@ -64,8 +64,8 @@ import {
   SquarePen,
   Sparkles,
   Trash2,
-  User,
 } from "lucide-react";
+import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
   useCallback,
@@ -75,6 +75,16 @@ import {
   useState,
   useTransition,
 } from "react";
+
+function prospectInitials(email: string): string {
+  const local = email.split("@")[0] ?? "?";
+  const cleaned = local.replace(/[^a-zA-Z0-9.]/g, " ").trim();
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0]!.slice(0, 1)}${parts[1]!.slice(0, 1)}`.toUpperCase().slice(0, 2);
+  }
+  return local.slice(0, 2).toUpperCase() || "?";
+}
 
 export type ProfessionalInboxProps = {
   /** Prompt 116 — server-prefetched threads for instant first paint. */
@@ -114,7 +124,7 @@ function InboxAnalysisInline({
         <Badge variant="secondary" className="font-medium capitalize shadow-sm">
           Sentiment · {analysis.sentiment}
         </Badge>
-        <Badge className="border border-primary/20 bg-primary font-medium text-white shadow-sm hover:bg-primary">
+        <Badge className="border border-sage/25 bg-sage font-medium text-[#fafaf8] shadow-sm hover:bg-sage/95">
           Interest · {analysis.interest_level_0_to_10}/10
         </Badge>
         <Badge
@@ -665,11 +675,18 @@ export function ProfessionalInbox({
   }, [filteredThreads, selectedId, debouncedSearch, loadThreads, loadMessages]);
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-2xl border border-border/50 bg-gradient-to-br from-card via-[hsl(var(--card))] to-primary/[0.03] px-5 py-5 shadow-soft ring-1 ring-border/25 sm:px-7 sm:py-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+    <motion.div
+      className="space-y-6"
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
+    >
+      <div className="relative overflow-hidden rounded-[var(--card-radius)] border border-coral/20 bg-gradient-to-br from-card via-white to-coral/[0.06] px-5 py-5 shadow-lift ring-1 ring-sage/12 sm:px-7 sm:py-6">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-gradient-to-br from-coral/20 to-transparent blur-3xl motion-safe:animate-glow-orb" aria-hidden />
+        <div className="pointer-events-none absolute -bottom-12 -left-10 h-40 w-40 rounded-full bg-gradient-to-tr from-sage/18 to-transparent blur-2xl" aria-hidden />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.12] to-primary/[0.05] text-primary shadow-sm ring-1 ring-primary/12">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--card-radius)] border border-coral/30 bg-gradient-to-br from-sage/[0.18] via-coral/[0.1] to-terracotta/[0.1] text-sage shadow-inner ring-1 ring-sage/20">
               <Inbox className="h-5 w-5" aria-hidden />
             </span>
             <div>
@@ -680,7 +697,7 @@ export function ProfessionalInbox({
                 Campaign sends are linked here automatically; prospect replies land via your Resend inbound
                 webhook, then surface through{" "}
                 <span className="inline-flex items-center gap-1 font-medium text-foreground">
-                  <Radio className="h-3.5 w-3.5 text-primary" aria-hidden />
+                  <Radio className="h-3.5 w-3.5 text-sage" aria-hidden />
                   Realtime
                 </span>{" "}
                 when enabled, with gentle backup polling.
@@ -691,7 +708,7 @@ export function ProfessionalInbox({
             <Button
               type="button"
               size="sm"
-              className="relative gap-2 rounded-[var(--card-radius)] bg-sage text-[#F8F5F0] shadow-soft transition-[transform,box-shadow] duration-200 ease-in-out hover:scale-[1.02] hover:bg-sage/90 hover:shadow-card"
+              className="relative gap-2 rounded-[var(--card-radius)] bg-gradient-to-r from-sage to-sage/90 text-[#F8F5F0] shadow-soft ring-1 ring-coral/25 transition-[transform,box-shadow] duration-200 ease-in-out hover:scale-[1.04] hover:shadow-glow hover:ring-coral/35"
               onClick={() => {
                 setComposeIntent("new");
                 setComposeDraftIdToLoad(null);
@@ -728,7 +745,7 @@ export function ProfessionalInbox({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search subject, preview, or address…"
-              className="h-11 rounded-xl border-border/60 bg-card/80 pl-10 shadow-inner transition-shadow duration-200 focus-visible:ring-primary/25"
+              className="h-11 rounded-xl border-border/60 bg-card/80 pl-10 shadow-inner transition-shadow duration-200 focus-visible:ring-sage/30"
               autoComplete="off"
               name="inbox-search"
             />
@@ -783,7 +800,7 @@ export function ProfessionalInbox({
 
       <div className="grid min-h-[min(85vh,640px)] grid-cols-1 gap-4 lg:grid-cols-[minmax(200px,220px)_minmax(260px,360px)_minmax(0,1fr)]">
         <nav
-          className="premium-card-spec flex flex-row gap-2 overflow-x-auto rounded-[var(--card-radius)] border border-border/45 bg-card p-3 shadow-soft ring-1 ring-black/[0.03] lg:flex-col lg:gap-1 lg:overflow-visible lg:p-4"
+          className="premium-card-spec flex flex-row gap-2 overflow-x-auto rounded-[var(--card-radius)] border border-border/40 bg-white p-3 shadow-soft ring-1 ring-black/[0.04] lg:flex-col lg:gap-1 lg:overflow-visible lg:p-4"
           aria-label="Mail folders"
         >
           {(
@@ -906,7 +923,7 @@ export function ProfessionalInbox({
             ) : filteredThreads.length === 0 ? (
               <div className="animate-in fade-in zoom-in-95 flex flex-col items-center justify-center px-4 py-14 text-center duration-300">
                 <div className="mb-4 rounded-2xl border border-border/40 bg-gradient-to-br from-primary/[0.08] via-card to-accent/[0.06] p-5 shadow-inner ring-1 ring-black/[0.04]">
-                  <Mail className="mx-auto h-9 w-9 text-primary/70" aria-hidden />
+                  <Mail className="mx-auto h-9 w-9 text-sage/75" aria-hidden />
                 </div>
                 <p className="text-sm font-medium text-foreground/90">
                   {threads.length === 0 ? "Your inbox is ready" : "Nothing matches"}
@@ -950,7 +967,12 @@ export function ProfessionalInbox({
                             ) : (
                               <span className="h-2 w-2 shrink-0 rounded-full bg-transparent" aria-hidden />
                             )}
-                            <User className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                            <span
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sage/25 to-terracotta/15 text-[10px] font-bold uppercase text-foreground ring-2 ring-white shadow-sm"
+                              aria-hidden
+                            >
+                              {prospectInitials(t.prospect_email)}
+                            </span>
                             <span
                               className={cn(
                                 "truncate text-sm",
@@ -1022,7 +1044,7 @@ export function ProfessionalInbox({
           {!selectedId ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-16 text-center text-muted-foreground animate-in fade-in duration-500">
               <div className="rounded-2xl border border-border/45 bg-gradient-to-br from-muted/30 to-card p-6 shadow-soft ring-1 ring-black/[0.03]">
-                <Mail className="h-11 w-11 text-primary/45" aria-hidden />
+                <Mail className="h-11 w-11 text-sage/50" aria-hidden />
               </div>
               <p className="text-sm font-medium text-foreground/85">Select a conversation</p>
               <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
@@ -1085,10 +1107,10 @@ export function ProfessionalInbox({
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/[0.04] via-transparent to-transparent px-3 py-5 touch-pan-y sm:px-5">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-sage/[0.05] via-transparent to-transparent px-3 py-5 touch-pan-y sm:px-5">
                 {loadingMsgs ? (
                   <div className="flex justify-center py-12">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary/70" aria-hidden />
+                    <Loader2 className="h-8 w-8 animate-spin text-sage/70" aria-hidden />
                   </div>
                 ) : (
                   <div className="mx-auto flex max-w-3xl flex-col gap-4">
@@ -1100,14 +1122,28 @@ export function ProfessionalInbox({
                       return (
                         <div
                           key={m.id}
-                          className={cn("flex w-full", inbound ? "justify-start" : "justify-end")}
+                          className={cn(
+                            "flex w-full gap-2",
+                            inbound ? "flex-row justify-start" : "flex-row-reverse justify-end",
+                          )}
                         >
+                          <span
+                            className={cn(
+                              "mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[10px] font-bold uppercase shadow-sm ring-2 ring-white",
+                              inbound
+                                ? "bg-gradient-to-br from-sage/30 to-terracotta/20 text-foreground"
+                                : "bg-sage/25 text-foreground",
+                            )}
+                            aria-hidden
+                          >
+                            {inbound ? prospectInitials(m.from_email) : "Me"}
+                          </span>
                           <div
                             className={cn(
-                              "max-w-[min(100%,28rem)] rounded-[1.25rem] px-4 py-3.5 shadow-sm ring-1 transition-all duration-200",
+                              "max-w-[min(100%,26rem)] rounded-[1.25rem] px-4 py-3.5 shadow-inner ring-1 transition-all duration-300",
                               inbound
-                                ? "border border-border/40 bg-gradient-to-br from-card to-muted/30 ring-black/[0.04]"
-                                : "border border-primary/20 bg-gradient-to-br from-primary/[0.14] via-primary/[0.08] to-card ring-primary/15",
+                                ? "border border-border/40 bg-gradient-to-br from-card to-muted/25 ring-black/[0.05]"
+                                : "border border-sage/25 bg-gradient-to-br from-sage/[0.18] via-sage/[0.1] to-card ring-sage/15",
                             )}
                           >
                             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1138,7 +1174,7 @@ export function ProfessionalInbox({
                                   Analyze with AI
                                 </Button>
                                 {m.reply_analysis_id || localAnalysis[m.id] ? (
-                                  <span className="rounded-full border border-primary/50 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-foreground">
+                                  <span className="rounded-full border border-sage/40 bg-sage/10 px-2 py-0.5 text-[10px] font-medium text-foreground">
                                     Analyzed
                                   </span>
                                 ) : null}
@@ -1185,7 +1221,7 @@ export function ProfessionalInbox({
                     placeholder="Write a calm, professional reply…"
                     rows={5}
                     disabled={sendPending}
-                    className="min-h-[130px] resize-y rounded-2xl border-border/55 bg-card/90 text-[15px] leading-relaxed shadow-inner ring-1 ring-black/[0.03] transition-shadow focus-visible:border-primary/35 focus-visible:ring-primary/20"
+                    className="min-h-[130px] resize-y rounded-2xl border-border/55 bg-card/90 text-[15px] leading-relaxed shadow-inner ring-1 ring-black/[0.03] transition-shadow focus-visible:border-sage/35 focus-visible:ring-sage/25"
                     aria-label="Reply message"
                   />
                   <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1241,7 +1277,7 @@ export function ProfessionalInbox({
       <Button
         type="button"
         size="icon"
-        className="fixed bottom-6 right-5 z-40 h-14 w-14 rounded-full border border-sage/35 bg-sage text-[#F8F5F0] shadow-lift ring-2 ring-sage/20 transition-[transform,box-shadow] duration-200 ease-in-out hover:scale-[1.02] hover:shadow-card active:scale-[0.98] sm:bottom-8 sm:right-8"
+        className="fixed bottom-6 right-5 z-40 h-14 w-14 animate-fab-energetic rounded-full border-2 border-coral/35 bg-gradient-to-br from-sage via-sage to-sage/90 text-[#fafaf8] shadow-lift ring-2 ring-sage/30 transition-[transform,box-shadow] duration-300 ease-out hover:scale-110 hover:shadow-glow active:scale-95 sm:bottom-8 sm:right-8"
         onClick={() => {
           setComposeIntent("new");
           setComposeDraftIdToLoad(null);
@@ -1256,6 +1292,6 @@ export function ProfessionalInbox({
           </span>
         ) : null}
       </Button>
-    </div>
+    </motion.div>
   );
 }

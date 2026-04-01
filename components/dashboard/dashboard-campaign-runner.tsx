@@ -316,7 +316,7 @@ export function DashboardCampaignRunner({
                 </p>
                 <select
                   id="batch-sequence"
-                  className="mt-2 flex h-10 w-full max-w-md rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-2 flex h-10 w-full max-w-md rounded-lg border border-input bg-card px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50"
                   value={batchSequenceId}
                   onChange={(e) => setBatchSequenceId(e.target.value)}
                   disabled={batchBusy}

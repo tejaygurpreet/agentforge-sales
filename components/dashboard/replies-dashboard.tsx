@@ -72,7 +72,7 @@ export function RepliesDashboard({ rows }: Props) {
           onChange={(e) => setFilterThread(e.target.value)}
           className={cn(
             "h-9 w-[min(100%,320px)] rounded-md border border-input bg-background px-3 text-sm shadow-sm",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
           )}
         >
           <option value="all">All replies</option>

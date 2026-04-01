@@ -23,6 +23,7 @@ import { toast } from "@/hooks/use-toast";
 import { INBOX_COMPOSE_LOCAL_STORAGE_KEY, INBOX_DRAFT_AUTOSAVE_MS } from "@/lib/inbox-shared";
 import { isLikelyValidRecipientEmail } from "@/lib/inbox-shared";
 import { Loader2, Save, Send } from "lucide-react";
+import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 type LocalCompose = {
@@ -69,6 +70,7 @@ type Props = {
  * Prompt 129 — Auto-save every 3s to Supabase + localStorage while typing.
  * Prompt 130 — New compose never auto-loads a draft; only opening from Drafts loads `draftIdToLoad`.
  * Prompt 133 — Clean modal on card surface (#FAF7F2), sage actions, 20px radius.
+ * Prompt 135 — Animated “Saving…” pulse on 3s autosave ticks.
  */
 export function ComposeNewEmailDialog({
   open,
@@ -342,17 +344,29 @@ export function ComposeNewEmailDialog({
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-4">
             <div className="flex min-h-[1.25rem] items-center gap-2 text-[11px] text-muted-foreground">
               {savePending ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin opacity-70" aria-hidden />
-                  Saving…
-                </span>
+                <motion.span
+                  className="inline-flex items-center gap-2 rounded-full border border-sage/25 bg-sage/[0.08] px-2.5 py-1 text-sage shadow-inner"
+                  initial={{ opacity: 0.75 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ repeat: Infinity, repeatType: "reverse", duration: 0.65, ease: "easeInOut" }}
+                >
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full bg-coral shadow-[0_0_10px_hsl(9_100%_77%_/0.65)] motion-safe:animate-pulse"
+                    aria-hidden
+                  />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  <span className="font-semibold tracking-wide">Saving draft…</span>
+                </motion.span>
               ) : lastSavedAt ? (
-                <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-sage/20 bg-muted/30 px-2 py-0.5 text-muted-foreground">
                   <Save className="h-3.5 w-3.5 text-sage" aria-hidden />
-                  Saved {new Date(lastSavedAt).toLocaleTimeString()}
+                  Synced {new Date(lastSavedAt).toLocaleTimeString()}
                 </span>
               ) : (
-                <span className="text-muted-foreground/80">Auto-save every 3s</span>
+                <span className="inline-flex items-center gap-1.5 text-muted-foreground/85">
+                  <span className="h-1.5 w-1.5 rounded-full bg-terracotta/60" aria-hidden />
+                  Auto-save every 3s when you type
+                </span>
               )}
             </div>
           </div>

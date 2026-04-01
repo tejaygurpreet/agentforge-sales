@@ -25,6 +25,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
 import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
+import { AuthSplitLayout } from "@/components/auth/auth-split-layout";
 import { signupSchema, type SignupFormValues } from "@/lib/signup-schema";
 import { cn } from "@/lib/utils";
 import { Loader2, Lock, Mail, Rocket, User } from "lucide-react";
@@ -70,18 +71,19 @@ export function SignupForm() {
   const loginHref = next !== "/" ? `/login?next=${encodeURIComponent(next)}` : "/login";
 
   return (
+    <AuthSplitLayout tagline="Create your workspace. One sign-up — then Setup, campaigns, and inbox unlock.">
     <Card
       className={cn(
-        "w-full max-w-[420px] overflow-hidden rounded-2xl border-border/55 bg-card/95 shadow-lift ring-1 ring-border/25",
-        "animate-in fade-in zoom-in-95 duration-500",
+        "w-full overflow-hidden rounded-[var(--card-radius)] border-border/50 bg-card shadow-soft ring-1 ring-black/[0.04]",
+        "bg-gradient-to-br from-card via-card to-muted/25",
       )}
     >
       <CardHeader className="space-y-4 border-b border-border/40 bg-gradient-to-br from-primary/[0.07] via-card to-primary/[0.05] px-8 pb-8 pt-9 text-center sm:text-left">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/30 bg-card shadow-sm sm:mx-0">
-          <Rocket className="h-7 w-7 text-primary" aria-hidden />
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[var(--card-radius)] border border-sage/30 bg-white shadow-inner sm:mx-0">
+          <Rocket className="h-7 w-7 text-sage" aria-hidden />
         </div>
         <div className="space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary/85">Get started</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-sage/90">Get started</p>
           <CardTitle className="text-2xl font-semibold tracking-tight">Create your account</CardTitle>
           <CardDescription className="text-[15px] leading-relaxed">
             Join {DEFAULT_BRAND_DISPLAY_NAME} — your name is saved to your profile. You&apos;re signed in
@@ -109,7 +111,7 @@ export function SignupForm() {
                         autoComplete="name"
                         placeholder="Jordan Lee"
                         disabled={isPending}
-                        className="h-11 rounded-xl border-border/60 pl-10 shadow-sm transition-shadow focus-visible:ring-2 focus-visible:ring-primary/25"
+                        className="h-11 rounded-xl border-border/60 bg-white pl-10 shadow-inner transition-shadow focus-visible:ring-2 focus-visible:ring-sage/30"
                         {...field}
                       />
                     </div>
@@ -132,7 +134,7 @@ export function SignupForm() {
                         autoComplete="email"
                         placeholder="you@company.com"
                         disabled={isPending}
-                        className="h-11 rounded-xl border-border/60 pl-10 shadow-sm transition-shadow focus-visible:ring-2 focus-visible:ring-primary/25"
+                        className="h-11 rounded-xl border-border/60 bg-white pl-10 shadow-inner transition-shadow focus-visible:ring-2 focus-visible:ring-sage/30"
                         {...field}
                       />
                     </div>
@@ -154,7 +156,7 @@ export function SignupForm() {
                         type="password"
                         autoComplete="new-password"
                         disabled={isPending}
-                        className="h-11 rounded-xl border-border/60 pl-10 shadow-sm transition-shadow focus-visible:ring-2 focus-visible:ring-primary/25"
+                        className="h-11 rounded-xl border-border/60 bg-white pl-10 shadow-inner transition-shadow focus-visible:ring-2 focus-visible:ring-sage/30"
                         {...field}
                       />
                     </div>
@@ -176,7 +178,7 @@ export function SignupForm() {
                         type="password"
                         autoComplete="new-password"
                         disabled={isPending}
-                        className="h-11 rounded-xl border-border/60 pl-10 shadow-sm transition-shadow focus-visible:ring-2 focus-visible:ring-primary/25"
+                        className="h-11 rounded-xl border-border/60 bg-white pl-10 shadow-inner transition-shadow focus-visible:ring-2 focus-visible:ring-sage/30"
                         {...field}
                       />
                     </div>
@@ -208,12 +210,13 @@ export function SignupForm() {
           Already have an account?{" "}
           <Link
             href={loginHref}
-            className="font-semibold text-primary underline-offset-4 transition-colors hover:text-primary/90 hover:underline"
+            className="font-semibold text-sage underline-offset-4 transition-colors hover:text-sage/85 hover:underline"
           >
             Sign in
           </Link>
         </p>
       </CardContent>
     </Card>
+    </AuthSplitLayout>
   );
 }

@@ -154,7 +154,7 @@ export function RecentCampaigns({
                     {batchMode && onToggleSelect ? (
                       <input
                         type="checkbox"
-                        className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                        className="h-4 w-4 rounded border-border text-sage focus:ring-sage"
                         checked={selectedIds?.has(c.id) ?? false}
                         disabled={!c.rerun_lead}
                         title={

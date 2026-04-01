@@ -21,6 +21,8 @@ import "server-only";
  * - **Prompt 128 — Narrow schema detection (no false “inbox missing” on unrelated `column` errors) +
  *   `ensureInboxSchemaReady()` + `supabase/inbox_ensure_p128.sql` RPC when service role is available.
  * - **Prompt 129 — `inbox_drafts` for compose auto-save (localStorage + Supabase every 3s).
+ * - **Prompt 133–136 — `insertInboxMessageReliable` + service-role + ultra-minimal insert + thread update
+ *   fallback so compose/outreach rows persist when Resend succeeds (RLS / schema edge cases).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { slugifyLocalPartFromName } from "@/lib/resend";
@@ -394,6 +396,23 @@ async function insertInboxMessageReliable(
     return { ok: true };
   }
 
+  /** Last resort: omit `raw` if jsonb / defaults differ between environments (Prompt 135). */
+  const ultra: Record<string, unknown> = {
+    thread_id: payload.thread_id,
+    user_id: payload.user_id,
+    direction: payload.direction,
+    from_email: payload.from_email,
+    to_email: payload.to_email,
+    subject: payload.subject,
+    body_text: payload.body_text,
+    received_at: payload.received_at,
+  };
+  const ur = await sr.from("inbox_messages").insert(ultra as never);
+  if (!ur.error) {
+    console.warn("[AgentForge] insertInboxMessageReliable: persisted via service role (ultra-minimal, no raw)");
+    return { ok: true };
+  }
+
   return { ok: false, error: res.error.message };
 }
 
@@ -590,15 +609,57 @@ export async function upsertInboxThreadAfterOutreachSend(
         .single();
     }
     if (row.error || !row.data) {
-      return { ok: false, error: row.error?.message ?? "Could not create inbox thread." };
+      const srTh = getServiceRoleSupabaseOrNull();
+      if (srTh) {
+        await ensureInboxSchemaReady();
+        let srIns = await srTh
+          .from("inbox_threads")
+          .insert({
+            user_id: params.userId,
+            prospect_email: email,
+            subject: params.subject,
+            snippet,
+            last_message_at: now,
+            campaign_thread_id: params.campaignThreadId,
+            user_last_read_at: now,
+          })
+          .select("id")
+          .single();
+        if (srIns.error && isOptionalInboxThreadColumnMissingError(srIns.error.message)) {
+          srIns = await srTh
+            .from("inbox_threads")
+            .insert({
+              user_id: params.userId,
+              prospect_email: email,
+              subject: params.subject,
+              snippet,
+              last_message_at: now,
+              campaign_thread_id: params.campaignThreadId,
+            })
+            .select("id")
+            .single();
+        }
+        if (!srIns.error && srIns.data) {
+          console.warn("[AgentForge] upsertInboxThreadAfterOutreachSend: thread created via service role");
+          threadId = String((srIns.data as { id: string }).id);
+        } else {
+          return {
+            ok: false,
+            error: srIns.error?.message ?? row.error?.message ?? "Could not create inbox thread.",
+          };
+        }
+      } else {
+        return { ok: false, error: row.error?.message ?? "Could not create inbox thread." };
+      }
+    } else {
+      threadId = String((row.data as { id: string }).id);
     }
-    threadId = String((row.data as { id: string }).id);
   }
 
-  const msgIns = await insertInboxMessageReliable(params.supabase, {
+  const msgPayload = {
     thread_id: threadId,
     user_id: params.userId,
-    direction: "outbound",
+    direction: "outbound" as const,
     from_email: params.fromEmail,
     to_email: email,
     subject: params.subject,
@@ -606,7 +667,16 @@ export async function upsertInboxThreadAfterOutreachSend(
     body_html: params.htmlBody.slice(0, 200_000),
     received_at: now,
     raw: { source: "campaign_outreach_send", campaign_thread_id: params.campaignThreadId },
-  });
+  };
+
+  let msgIns = await insertInboxMessageReliable(params.supabase, msgPayload);
+  if (!msgIns.ok) {
+    await ensureInboxSchemaReady();
+    const srMsg = getServiceRoleSupabaseOrNull();
+    if (srMsg) {
+      msgIns = await insertInboxMessageReliable(srMsg, msgPayload);
+    }
+  }
 
   if (!msgIns.ok) {
     console.error("[AgentForge] upsertInboxThreadAfterOutreachSend message insert", msgIns.error);
@@ -685,27 +755,80 @@ export async function recordNewComposeMessageInInbox(
         .single();
     }
     if (row.error || !row.data) {
-      return { ok: false, error: row.error?.message ?? "Could not create inbox thread." };
+      const srTh = getServiceRoleSupabaseOrNull();
+      if (srTh) {
+        await ensureInboxSchemaReady();
+        let srIns = await srTh
+          .from("inbox_threads")
+          .insert({
+            user_id: params.userId,
+            prospect_email: email,
+            subject: subj,
+            snippet,
+            last_message_at: params.now,
+            user_last_read_at: params.now,
+          })
+          .select("id")
+          .single();
+        if (srIns.error && isOptionalInboxThreadColumnMissingError(srIns.error.message)) {
+          srIns = await srTh
+            .from("inbox_threads")
+            .insert({
+              user_id: params.userId,
+              prospect_email: email,
+              subject: subj,
+              snippet,
+              last_message_at: params.now,
+            })
+            .select("id")
+            .single();
+        }
+        if (!srIns.error && srIns.data) {
+          console.warn("[AgentForge] recordNewComposeMessageInInbox: thread created via service role");
+          threadId = String((srIns.data as { id: string }).id);
+        } else {
+          return {
+            ok: false,
+            error: srIns.error?.message ?? row.error?.message ?? "Could not create inbox thread.",
+          };
+        }
+      } else {
+        return { ok: false, error: row.error?.message ?? "Could not create inbox thread." };
+      }
+    } else {
+      threadId = String((row.data as { id: string }).id);
     }
-    threadId = String((row.data as { id: string }).id);
   }
 
-  const ins = await insertInboxMessageReliable(supabase, {
+  const payload = {
     thread_id: threadId,
     user_id: params.userId,
-    direction: "outbound",
+    direction: "outbound" as const,
     from_email: params.fromBareForStorage,
     to_email: email,
     subject: subj,
     body_text: params.bodyText.slice(0, 50_000),
-    body_html: null,
+    body_html: null as string | null,
     received_at: params.now,
     raw: { source: "inbox_compose_new" },
-  });
+  };
+
+  let ins = await insertInboxMessageReliable(supabase, payload);
+  if (!ins.ok) {
+    await ensureInboxSchemaReady();
+    const sr = getServiceRoleSupabaseOrNull();
+    if (sr) {
+      ins = await insertInboxMessageReliable(sr, payload);
+    }
+  }
 
   if (!ins.ok) {
     console.error("[AgentForge] recordNewComposeMessageInInbox insert", ins.error);
-    return { ok: false, error: "Email sent but failed to save to inbox." };
+    return {
+      ok: false,
+      error:
+        "Email was delivered, but we could not sync a copy to your inbox. Refresh the inbox page or check your database connection. If this persists, verify the inbox schema migration is applied.",
+    };
   }
 
   let upErr = (

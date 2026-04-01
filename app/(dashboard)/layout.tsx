@@ -37,7 +37,7 @@ export async function generateMetadata(): Promise<Metadata> {
 /** Prompt 126 — Nav labels unchanged; chrome + spacing live in `DashboardShell`. */
 const DASHBOARD_NAV: DashboardNavLink[] = [
   { href: "/", label: "Dashboard" },
-  { href: "/onboarding", label: "Setup" },
+  { href: "/setup", label: "Setup" },
   { href: "/agents", label: "Agents" },
   { href: "/replies", label: "Replies" },
   { href: "/analytics", label: "Analytics" },

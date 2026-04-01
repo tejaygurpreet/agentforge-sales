@@ -32,7 +32,7 @@ const STEPS = [
     headline: `You're in — let's make ${DEFAULT_BRAND_DISPLAY_NAME} yours`,
     body: "This short guide points you to the right places on your dashboard: branding, CRM, and your first AI campaign. You can leave anytime and come back from **Setup** in the top bar.",
     icon: Sparkles,
-    accent: "from-accent/[0.12] via-card to-primary/[0.08]",
+    accent: "from-accent/[0.12] via-card to-sage/[0.08]",
   },
   {
     key: "brand",
@@ -40,8 +40,8 @@ const STEPS = [
     headline: "Match the product to your company",
     body: "Add your logo, colors, and support email so exports and the header feel on-brand. Everything is optional and saved to your workspace only.",
     icon: Palette,
-    accent: "from-primary/[0.1] via-card to-amber-500/[0.06]",
-    cta: { label: "Open brand & integrations", href: "/#workspace-brand-integrations" },
+    accent: "from-sage/[0.1] via-card to-terracotta/[0.06]",
+    cta: { label: "Open brand & integrations", href: "/setup#workspace-brand-integrations" },
   },
   {
     key: "crm",
@@ -49,8 +49,8 @@ const STEPS = [
     headline: "Optional: sync with HubSpot",
     body: "Paste a Private App token once — deals and notes can flow from completed campaigns when you export. Nothing syncs until you choose to.",
     icon: Link2,
-    accent: "from-orange-500/[0.1] via-card to-amber-500/[0.05]",
-    cta: { label: "Jump to HubSpot card", href: "/#workspace-brand-integrations" },
+    accent: "from-terracotta/[0.12] via-card to-sage/[0.05]",
+    cta: { label: "Jump to HubSpot card", href: "/setup#workspace-brand-integrations" },
   },
   {
     key: "campaign",
@@ -58,7 +58,7 @@ const STEPS = [
     headline: "Run research → outreach → qualification → nurture",
     body: "Add a lead, pick a voice, and start. Results land in the Workspace tab — review every step before you send email or LinkedIn.",
     icon: Play,
-    accent: "from-primary/[0.1] via-card to-muted0/[0.06]",
+    accent: "from-sage/[0.1] via-card to-muted/[0.06]",
     cta: { label: "Go to campaign workspace", href: "/#campaign-workspace" },
   },
 ] as const;
@@ -91,9 +91,9 @@ export function OnboardingWizard() {
             className={cn(
               "flex h-8 min-w-[2rem] items-center justify-center rounded-full border px-2 text-xs font-semibold transition-all duration-200",
               i === step
-                ? "border-primary bg-primary/[0.12] text-foreground shadow-sm ring-1 ring-primary/25"
+                ? "border-sage bg-sage/[0.12] text-foreground shadow-sm ring-1 ring-sage/25"
                 : i < step
-                  ? "border-primary/50 bg-primary/[0.1] text-foreground"
+                  ? "border-sage/50 bg-sage/[0.1] text-foreground"
                   : "border-border/60 bg-muted/30 text-muted-foreground hover:bg-muted/50",
             )}
             aria-label={`Step ${i + 1}: ${s.title}`}
@@ -120,7 +120,7 @@ export function OnboardingWizard() {
           )}
         >
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/50 bg-card shadow-sm">
-            <Icon className="h-7 w-7 text-primary" aria-hidden />
+            <Icon className="h-7 w-7 text-sage" aria-hidden />
           </div>
           <div className="space-y-2">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
@@ -181,7 +181,7 @@ export function OnboardingWizard() {
         Prefer to explore alone?{" "}
         <button
           type="button"
-          className="font-semibold text-primary underline-offset-4 hover:underline"
+          className="font-semibold text-sage underline-offset-4 hover:underline"
           onClick={markCompleteAndGoHome}
         >
           Skip for now

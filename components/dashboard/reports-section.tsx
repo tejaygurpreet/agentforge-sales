@@ -227,7 +227,7 @@ export function ReportsSection({
               id="rep-voice"
               className={cn(
                 "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
               )}
               value={filters.voice}
               onChange={(e) => setFilters((f) => ({ ...f, voice: e.target.value }))}
@@ -245,7 +245,7 @@ export function ReportsSection({
               id="rep-member"
               className={cn(
                 "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
               )}
               value={filters.memberUserId}
               onChange={(e) => setFilters((f) => ({ ...f, memberUserId: e.target.value }))}
@@ -312,7 +312,7 @@ export function ReportsSection({
                 id="rep-cadence"
                 className={cn(
                   "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
                 )}
                 value={cadence}
                 onChange={(e) => setCadence(e.target.value as "daily" | "weekly")}
@@ -339,7 +339,7 @@ export function ReportsSection({
                   id="rep-dow"
                   className={cn(
                     "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
                   )}
                   value={weekdayUtc}
                   onChange={(e) => setWeekdayUtc(Number.parseInt(e.target.value, 10))}

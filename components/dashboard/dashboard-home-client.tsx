@@ -33,6 +33,8 @@ import { CustomVoicesSection } from "@/components/dashboard/custom-voices-sectio
 import { HubSpotConnectSection } from "@/components/dashboard/hubspot-connect-section";
 import { CompetitiveEdgePanel } from "@/components/dashboard/competitive-edge-panel";
 import { DashboardHero } from "@/components/dashboard/dashboard-hero";
+import { DashboardJumpToSidebar } from "@/components/dashboard/dashboard-jump-to-sidebar";
+import { DashboardQuickNavCards } from "@/components/dashboard/dashboard-quick-nav-cards";
 import { DashboardStatsBanner } from "@/components/dashboard/dashboard-stats-banner";
 import { ProductRoadmapSection } from "@/components/dashboard/product-roadmap-section";
 import { ReportsSection } from "@/components/dashboard/reports-section";
@@ -54,9 +56,8 @@ import { SdrManagerSection } from "@/components/dashboard/sdr-manager-section";
 import { FirstRunSetupBanner } from "@/components/onboarding/first-run-setup-banner";
 import { PwaBanner } from "@/components/pwa/pwa-banner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart3, Inbox, Sparkles } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
 import type { DeliverabilitySuitePayload, WhiteLabelClientSettingsDTO } from "@/types";
 import type { WorkspaceMemberDTO, WorkspaceMemberRole } from "@/types";
@@ -125,6 +126,7 @@ type Props = {
  * Prompt 119 — Inbox badge, `/?tab=inbox`, realtime toast bridge.
  * Prompt 125 — Home stack inherits global sage/terracotta tokens; spacing unchanged (max-w-6xl rhythm).
  * Prompt 126 — Single-width column inside `layout` main (no nested max-w), tuned vertical rhythm + tab chrome.
+ * Prompt 136 — Energetic dashboard: hero-only gradient, `DashboardQuickNavCards`, `DashboardJumpToSidebar`, Framer page enter.
  */
 export function DashboardHomeClient({
   envWarnings,
@@ -197,14 +199,21 @@ export function DashboardHomeClient({
   }, []);
 
   return (
-    <div className="w-full animate-in fade-in slide-in-from-bottom-2 space-y-8 duration-500 ease-out sm:space-y-10">
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      className="w-full space-y-8 sm:space-y-10"
+    >
       <PwaBanner />
       <FirstRunSetupBanner />
       <DashboardHero outboundFromPreview={outboundFromPreview} whiteLabel={whiteLabel} />
 
+      <DashboardQuickNavCards />
+
       <DashboardStatsBanner analytics={analytics} />
 
-      <div className="grid items-start gap-10 xl:grid-cols-[1fr_minmax(280px,320px)] xl:gap-12">
+      <div className="grid items-start gap-10 lg:grid-cols-[1fr_minmax(260px,300px)] lg:gap-12">
         <div className="min-w-0 space-y-10 sm:space-y-12">
       <SettingsIntegrationsSection>
         <WorkspaceMembersCard members={workspaceMembers} currentRole={workspaceRole} />
@@ -429,39 +438,8 @@ export function DashboardHomeClient({
       </Tabs>
         </div>
 
-        <aside
-          className="premium-card-spec sticky top-28 hidden h-fit flex-col gap-5 rounded-[var(--card-radius)] border border-border/45 bg-card p-8 shadow-soft xl:flex"
-          aria-label="Quick navigation"
-        >
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Jump to
-          </p>
-          <nav className="flex flex-col gap-3">
-            <Link
-              href="/inbox"
-              className="group flex items-center gap-3 rounded-[var(--card-radius)] px-3 py-2.5 text-sm font-medium text-foreground transition-[transform,box-shadow] duration-200 ease-in-out hover:-translate-y-0.5 hover:bg-muted/50 hover:shadow-soft"
-            >
-              <Inbox className="h-4 w-4 text-sage" aria-hidden />
-              Inbox
-            </Link>
-            <Link
-              href="/analytics"
-              className="group flex items-center gap-3 rounded-[var(--card-radius)] px-3 py-2.5 text-sm font-medium text-foreground transition-[transform,box-shadow] duration-200 ease-in-out hover:-translate-y-0.5 hover:bg-muted/50 hover:shadow-soft"
-            >
-              <BarChart3 className="h-4 w-4 text-terracotta" aria-hidden />
-              Analytics
-            </Link>
-            <button
-              type="button"
-              onClick={() => setMainTab("workspace")}
-              className="flex w-full items-center gap-3 rounded-[var(--card-radius)] px-3 py-2.5 text-left text-sm font-medium text-foreground transition-[transform,box-shadow] duration-200 ease-in-out hover:-translate-y-0.5 hover:bg-muted/50 hover:shadow-soft"
-            >
-              <Sparkles className="h-4 w-4 text-sage" aria-hidden />
-              Workspace
-            </button>
-          </nav>
-        </aside>
+        <DashboardJumpToSidebar onSelectTab={setMainTab} />
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -194,7 +194,7 @@ export function CampaignTemplatesSection({
                 onChange={(e) => setSaveCampaignId(e.target.value)}
                 className={cn(
                   "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
                 )}
               >
                 <option value="">Select a saved run…</option>
@@ -301,7 +301,7 @@ export function CampaignTemplatesSection({
                 onChange={(e) => setVoiceA(e.target.value as SdrVoiceTone)}
                 className={cn(
                   "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
                 )}
               >
                 {SDR_VOICE_OPTIONS.map((o) => (
@@ -319,7 +319,7 @@ export function CampaignTemplatesSection({
                 onChange={(e) => setVoiceB(e.target.value as SdrVoiceTone)}
                 className={cn(
                   "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sage/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
                 )}
               >
                 {SDR_VOICE_OPTIONS.map((o) => (
