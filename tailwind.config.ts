@@ -62,6 +62,11 @@ const config: Config = {
         sage: "hsl(var(--sage) / <alpha-value>)",
         terracotta: "hsl(var(--terracotta) / <alpha-value>)",
         coral: "hsl(var(--coral) / <alpha-value>)",
+        /** Prompt 136 — explicit warm cream for arbitrary utilities */
+        warm: {
+          cream: "#F4F0E8",
+          card: "#FAF7F2",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -143,6 +148,14 @@ const config: Config = {
             transform: "scale(1.02)",
           },
         },
+        /** Prompt 136 — quick-access orb idle shimmer */
+        "orb-idle": {
+          "0%, 100%": { filter: "drop-shadow(0 0 0 transparent)", transform: "scale(1)" },
+          "50%": {
+            filter: "drop-shadow(0 4px 14px hsl(9 100% 77% / 0.45))",
+            transform: "scale(1.03)",
+          },
+        },
       },
       animation: {
         "fade-up": "fade-up 0.5s ease-out both",
@@ -157,6 +170,7 @@ const config: Config = {
         "hero-fly-b": "hero-fly-b 6.2s ease-in-out infinite",
         "hero-fly-c": "hero-fly-c 4.4s ease-in-out infinite",
         "badge-energetic-pulse": "badge-energetic-pulse 2.2s ease-in-out infinite",
+        "orb-idle": "orb-idle 3s ease-in-out infinite",
       },
     },
   },

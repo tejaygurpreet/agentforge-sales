@@ -8,7 +8,7 @@ import type { WhiteLabelClientSettingsDTO } from "@/types";
 
 export const dynamic = "force-dynamic";
 
-/** Prompt 135–136 — Integrations hub + tour; Prompt 136 energetic coral/sage shell in `SetupPageClient`. */
+/** Prompt 136 — Guided `GuidedSetupWizard` + integrations grid (`SetupPageClient`). */
 export default async function SetupPage() {
   const supabase = await createServerSupabaseClient();
   const {

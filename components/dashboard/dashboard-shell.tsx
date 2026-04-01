@@ -157,10 +157,10 @@ export function DashboardShell({
   return (
     <InboxUnreadProvider initialCount={initialInboxUnreadCount} initialDraftCount={initialDraftCount}>
       <div
-        className="flex min-h-screen min-h-[100dvh] flex-col bg-white text-foreground antialiased selection:bg-sage/15 selection:text-foreground"
+        className="flex min-h-screen min-h-[100dvh] flex-col bg-background text-foreground antialiased selection:bg-sage/15 selection:text-foreground"
         style={brandCssVars}
       >
-        <header className="energetic-banner-wash sticky top-0 z-30 border-b border-coral/25 bg-white/88 shadow-[0_1px_0_0_hsl(9_100%_77%_/0.14),0_20px_56px_-24px_hsl(30_12%_15%_/0.12)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/82">
+        <header className="energetic-banner-wash sticky top-0 z-30 border-b border-coral/25 bg-[#faf8f4]/92 shadow-[0_1px_0_0_hsl(9_100%_77%_/0.14),0_20px_56px_-24px_hsl(30_12%_15%_/0.12)] backdrop-blur-xl supports-[backdrop-filter]:bg-[#faf8f4]/85">
           <div className="mx-auto flex min-h-[3.5rem] max-w-7xl flex-wrap items-center justify-between gap-x-6 gap-y-3 px-5 py-3 sm:h-[3.75rem] sm:px-8 sm:py-0">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 sm:gap-x-6 md:gap-x-8">
             <Link
@@ -245,7 +245,7 @@ export function DashboardShell({
             </div>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-7xl flex-1 bg-white px-5 py-9 sm:px-8 sm:py-10">
+        <main className="mx-auto w-full max-w-7xl flex-1 bg-transparent px-5 py-9 sm:px-8 sm:py-10">
           <ReplyIntelProvider>{children}</ReplyIntelProvider>
         </main>
         <footer

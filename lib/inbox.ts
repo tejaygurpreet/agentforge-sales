@@ -335,12 +335,16 @@ async function insertInboxMessageReliable(
     provider_message_id?: string | null;
   },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  /** Prompt 136 — Canonical addresses for reliable matching + RLS-friendly inserts. */
+  const from_email = normalizeEmail(payload.from_email);
+  const to_email = normalizeEmail(payload.to_email);
+
   const full: Record<string, unknown> = {
     thread_id: payload.thread_id,
     user_id: payload.user_id,
     direction: payload.direction,
-    from_email: payload.from_email,
-    to_email: payload.to_email,
+    from_email,
+    to_email,
     subject: payload.subject,
     body_text: payload.body_text,
     received_at: payload.received_at,
@@ -355,8 +359,8 @@ async function insertInboxMessageReliable(
     thread_id: payload.thread_id,
     user_id: payload.user_id,
     direction: payload.direction,
-    from_email: payload.from_email,
-    to_email: payload.to_email,
+    from_email,
+    to_email,
     subject: payload.subject,
     body_text: payload.body_text,
     received_at: payload.received_at,
@@ -401,8 +405,8 @@ async function insertInboxMessageReliable(
     thread_id: payload.thread_id,
     user_id: payload.user_id,
     direction: payload.direction,
-    from_email: payload.from_email,
-    to_email: payload.to_email,
+    from_email,
+    to_email,
     subject: payload.subject,
     body_text: payload.body_text,
     received_at: payload.received_at,

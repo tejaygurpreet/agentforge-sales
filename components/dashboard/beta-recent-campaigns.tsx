@@ -34,10 +34,11 @@ export function BetaRecentCampaigns({ campaigns }: Props) {
 
   return (
     <motion.section
+      id="recent-campaigns"
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1], delay: 0.06 }}
-      className="space-y-5"
+      className="scroll-mt-28 space-y-5"
       aria-labelledby="recent-campaigns-heading"
     >
       <div className="flex flex-wrap items-end justify-between gap-3">

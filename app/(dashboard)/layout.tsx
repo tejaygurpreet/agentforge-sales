@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { getInboxDraftCountAction, getInboxUnreadCountAction } from "@/app/(dashboard)/actions";
+import { DashboardMotionShell } from "@/components/dashboard/dashboard-motion-shell";
 import type { DashboardNavLink } from "@/components/dashboard/dashboard-shell";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { FloatingQuickAccessOrb } from "@/components/navigation/floating-quick-access-orb";
 import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { fetchWhiteLabelSettings } from "@/lib/white-label";
@@ -93,7 +95,8 @@ export default async function DashboardLayout({
       initialInboxUnreadCount={initialInboxUnreadCount}
       initialDraftCount={initialDraftCount}
     >
-      {children}
+      <DashboardMotionShell>{children}</DashboardMotionShell>
+      <FloatingQuickAccessOrb />
     </DashboardShell>
   );
 }

@@ -93,6 +93,8 @@ export type ProfessionalInboxProps = {
   initialDrafts?: InboxDraftRow[];
   /** Prompt 119 — sync tab badge when threads refresh on the Inbox tab. */
   onUnreadCountChange?: (count: number) => void;
+  /** Prompt 136 — open compose from `/inbox?compose=1` (orb + quick access). */
+  initialComposeOpen?: boolean;
 };
 
 function InboxAnalysisInline({
@@ -275,6 +277,7 @@ export function ProfessionalInbox({
   initialThreads = [],
   initialDrafts = [],
   onUnreadCountChange,
+  initialComposeOpen = false,
 }: ProfessionalInboxProps) {
   const router = useRouter();
   const { setDraftCount, draftCount } = useInboxUnread();
@@ -312,6 +315,13 @@ export function ProfessionalInbox({
       .auth.getUser()
       .then(({ data }) => setUserId(data.user?.id ?? null));
   }, []);
+
+  useEffect(() => {
+    if (!initialComposeOpen) return;
+    setComposeIntent("new");
+    setComposeDraftIdToLoad(null);
+    setComposeOpen(true);
+  }, [initialComposeOpen]);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
