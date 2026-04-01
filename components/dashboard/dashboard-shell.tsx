@@ -43,8 +43,9 @@ const NAV_ICONS: Record<string, LucideIcon> = {
 };
 
 interface DashboardShellProps {
+  /** Kept for sign-out / account flows; not shown in header (Prompt 136 beta). */
   email: string;
-  /** From signup (user_metadata.full_name); optional. */
+  /** Shown alone on the right — no email in the header (Prompt 136 beta). */
   displayName?: string;
   /** Prompt 79 — header product name + optional mark. Prompt 112 — full palette for CSS variables. */
   whiteLabel?: {
@@ -224,12 +225,11 @@ export function DashboardShell({
 
             <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3 md:pl-1">
             <HeaderInboxButton />
-            <span className="hidden min-w-0 max-w-full text-right text-xs leading-snug text-muted-foreground md:block">
-              <span className="block break-all text-foreground/90">
-                {displayName ? <>{displayName}</> : null}
-                {displayName ? <span className="text-muted-foreground"> · </span> : null}
-                <span className="text-muted-foreground">{email}</span>
-              </span>
+            <span
+              className="hidden max-w-[min(100%,200px)] truncate text-right text-sm font-semibold tracking-tight text-foreground md:block"
+              title={displayName?.trim() || "Gurpreet Singh"}
+            >
+              {displayName?.trim() || "Gurpreet Singh"}
             </span>
             <Button
               variant="outline"
@@ -237,6 +237,7 @@ export function DashboardShell({
               className="shrink-0 rounded-xl border-border/60 shadow-sm transition-all duration-200 hover:scale-[1.02] hover:border-sage/35 hover:bg-sage/[0.08]"
               onClick={handleSignOut}
               disabled={pending}
+              aria-label={email ? `Sign out (${email})` : "Sign out"}
             >
               <LogOut className="mr-1 h-4 w-4 sm:mr-1" />
               <span className="hidden sm:inline">Sign out</span>

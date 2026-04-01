@@ -61,6 +61,8 @@ type Props = {
   sequencePrefillRequest?: { id: string; nonce: number } | null;
   onSequencePrefillConsumed?: () => void;
   calendarStatus?: CalendarConnectionStatusDTO;
+  /** Prompt 136 — hide duplicate list when recent campaigns are shown above the fold. */
+  hideRecentCampaigns?: boolean;
 };
 
 const batchJsonSchema = z.array(leadFormSchema);
@@ -80,6 +82,7 @@ export function DashboardCampaignRunner({
   sequencePrefillRequest = null,
   onSequencePrefillConsumed,
   calendarStatus = { google: false, microsoft: false },
+  hideRecentCampaigns = false,
 }: Props) {
   const router = useRouter();
   const [rerunRequest, setRerunRequest] = useState<CampaignRerunPayload | null>(null);
@@ -241,6 +244,7 @@ export function DashboardCampaignRunner({
       <CampaignFlowGuideStrip />
 
       <div
+        id="batch-mode-anchor"
         className={cn(
           "premium-surface flex flex-col gap-4 rounded-2xl border border-border/50 bg-card/80 px-4 py-4 shadow-soft ring-1 ring-border/20 sm:flex-row sm:items-center sm:justify-between sm:px-5",
         )}
@@ -386,13 +390,15 @@ export function DashboardCampaignRunner({
         recentCampaigns={recentCampaigns}
       />
 
-      <RecentCampaigns
-        campaigns={recentCampaigns}
-        onRerunLead={handleRerun}
-        batchMode={batchMode}
-        selectedIds={selectedCampaignIds}
-        onToggleSelect={toggleSelect}
-      />
+      {!hideRecentCampaigns || batchMode ? (
+        <RecentCampaigns
+          campaigns={recentCampaigns}
+          onRerunLead={handleRerun}
+          batchMode={batchMode}
+          selectedIds={selectedCampaignIds}
+          onToggleSelect={toggleSelect}
+        />
+      ) : null}
     </div>
   );
 }

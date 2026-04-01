@@ -7,7 +7,7 @@ import "./globals.css";
 
 export { viewport } from "./viewport";
 
-/** Prompt 136 — Inter 400–700; energetic canvas (sage/coral washes in globals). */
+/** Prompt 136 — Inter 400–700; root shell. Dashboard chrome + beta header live in `DashboardShell` (dashboard layout). */
 const fontSans = Inter({
   variable: "--font-sans",
   subsets: ["latin"],

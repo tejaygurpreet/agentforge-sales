@@ -50,7 +50,6 @@ import {
   startCampaignWithOptionsAction,
   updateSmartFollowUpStepAction,
 } from "@/app/(dashboard)/actions";
-import { DashboardReplyStrip } from "@/components/dashboard/dashboard-reply-strip";
 import { useReplyIntel } from "@/components/dashboard/reply-intel-context";
 import { CampaignPdfPreviewDialog } from "@/components/dashboard/campaign-pdf-preview-dialog";
 import { MeetingSchedulerPanel } from "@/components/dashboard/meeting-scheduler-panel";
@@ -1295,8 +1294,6 @@ export function CampaignWorkspace({
     >
       <PdfBrandingPanel />
 
-      <DashboardReplyStrip />
-
       {isPending ? (
         <div className="ux-loading-overlay" role="status" aria-live="polite" aria-busy="true">
           <div className="ux-loading-panel">
@@ -1845,8 +1842,11 @@ export function CampaignWorkspace({
           ) : null}
           <OverallCampaignStrength snapshot={snapshot} />
           <p className="text-xs leading-relaxed text-muted-foreground">
-            <span className="font-medium text-foreground">Prospect reply analyzer</span> (above) auto-links to
-            this thread while results are visible — paste their reply for suggested next moves.
+            Use the{" "}
+            <Link href="/replies" className="font-medium text-sage underline-offset-4 hover:underline">
+              Prospect reply analyzer
+            </Link>{" "}
+            on Replies — it links to this thread when a run is loaded — paste their reply for suggested next moves.
           </p>
           {rateLimitFallbackStages.length > 0 ? (
             <p
