@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Prompt 138 — Onyx Copper beta dashboard: hero, last five + Show more, batch mode, coach;
- * reply analysis on `/replies`. Smart orb + full header from `DashboardShell`.
+ * reply analysis on `/replies`. Full header from `DashboardShell`.
  */
 export default async function DashboardPage() {
   const supabase = await createServerSupabaseClient();

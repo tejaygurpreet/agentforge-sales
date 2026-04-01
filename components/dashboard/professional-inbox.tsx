@@ -93,7 +93,7 @@ export type ProfessionalInboxProps = {
   initialDrafts?: InboxDraftRow[];
   /** Prompt 119 — sync tab badge when threads refresh on the Inbox tab. */
   onUnreadCountChange?: (count: number) => void;
-  /** Prompt 136 — open compose from `/inbox?compose=1` (orb + quick access). */
+  /** Prompt 136 — open compose from `/inbox?compose=1`. */
   initialComposeOpen?: boolean;
 };
 

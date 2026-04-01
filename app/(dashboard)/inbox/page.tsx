@@ -11,7 +11,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * Prompt 138 — Onyx Copper inbox; `?compose=1` via Suspense; smart orb from layout; compose FAB softened in `ProfessionalInbox`.
+ * Prompt 138 — Onyx Copper inbox; `?compose=1` via Suspense; compose FAB softened in `ProfessionalInbox`.
  */
 export default async function InboxPage() {
   const [initialThreads, initialDrafts] = await Promise.all([

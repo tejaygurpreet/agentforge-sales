@@ -3,7 +3,6 @@ import { getInboxDraftCountAction, getInboxUnreadCountAction } from "@/app/(dash
 import { DashboardMotionShell } from "@/components/dashboard/dashboard-motion-shell";
 import type { DashboardNavLink } from "@/components/dashboard/dashboard-shell";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { FloatingQuickAccessOrb } from "@/components/navigation/floating-quick-access-orb";
 import { DEFAULT_BRAND_DISPLAY_NAME } from "@/lib/brand-prompt";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import { fetchWhiteLabelSettings } from "@/lib/white-label";
@@ -12,7 +11,7 @@ import { redirect } from "next/navigation";
 /** Auth + Supabase use cookies — must not be statically generated (Vercel / Next.js). */
 export const dynamic = "force-dynamic";
 
-/** Prompt 112 — Browser tab / PWA title follows white-label `app_name`; Prompt 139 — radial orb + hover labels in shell. */
+/** Prompt 112 — Browser tab / PWA title follows white-label `app_name` when set. */
 export async function generateMetadata(): Promise<Metadata> {
   const supabase = await createServerSupabaseClient();
   const {
@@ -96,7 +95,6 @@ export default async function DashboardLayout({
       initialDraftCount={initialDraftCount}
     >
       <DashboardMotionShell>{children}</DashboardMotionShell>
-      <FloatingQuickAccessOrb />
     </DashboardShell>
   );
 }

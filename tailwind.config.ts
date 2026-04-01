@@ -143,24 +143,6 @@ const config: Config = {
             transform: "scale(1.02)",
           },
         },
-        /** Prompt 138 — Onyx orb: soft lift + subtle copper outer glow (breathing). */
-        "orb-idle": {
-          "0%, 100%": {
-            boxShadow:
-              "0 12px 40px -10px rgba(17, 24, 39, 0.42), 0 0 32px -12px rgba(180, 83, 9, 0.2)",
-            transform: "scale(1)",
-          },
-          "50%": {
-            boxShadow:
-              "0 14px 48px -10px rgba(17, 24, 39, 0.46), 0 0 44px -10px rgba(180, 83, 9, 0.32)",
-            transform: "scale(1.01)",
-          },
-        },
-        /** Gold lightning / menu icons: gentle opacity breathe (no harsh blink). */
-        "orb-spark-soft": {
-          "0%, 100%": { opacity: "0.88" },
-          "50%": { opacity: "1" },
-        },
       },
       animation: {
         "fade-up": "fade-up 0.5s ease-out both",
@@ -175,8 +157,6 @@ const config: Config = {
         "hero-fly-b": "hero-fly-b 6.2s ease-in-out infinite",
         "hero-fly-c": "hero-fly-c 4.4s ease-in-out infinite",
         "badge-energetic-pulse": "badge-energetic-pulse 2.2s ease-in-out infinite",
-        "orb-idle": "orb-idle 4.2s ease-in-out infinite",
-        "orb-spark-soft": "orb-spark-soft 3.4s ease-in-out infinite",
       },
     },
   },

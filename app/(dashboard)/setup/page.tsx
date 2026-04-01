@@ -9,7 +9,7 @@ import type { WhiteLabelClientSettingsDTO } from "@/types";
 export const dynamic = "force-dynamic";
 
 /**
- * Prompt 137 — Onyx Copper setup: guided wizard + integrations (`SetupPageClient`); smart orb via dashboard layout.
+ * Prompt 137 — Onyx Copper setup: guided wizard + integrations (`SetupPageClient`).
  */
 export default async function SetupPage() {
   const supabase = await createServerSupabaseClient();
