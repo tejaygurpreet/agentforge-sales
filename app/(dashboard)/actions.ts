@@ -134,6 +134,7 @@ import {
   markInboundMessagesReadForThread,
   normalizeComposeRecipientEmail,
   normalizeEmail,
+  resolveInboxThreadForReply,
   plainTextToEmailHtml,
   recordNewComposeMessageInInbox,
   snippetFromBodyText,
@@ -4254,13 +4255,29 @@ export async function markInboxThreadReadAction(threadId: string): Promise<{ ok:
   await ensureInboxSchemaReady();
   await markInboundMessagesReadForThread(supabase, user.id, tid);
   const now = new Date().toISOString();
-  const { error } = await supabase
+  const patch = { user_last_read_at: now, updated_at: now };
+  let { error } = await supabase
     .from("inbox_threads")
-    .update({ user_last_read_at: now, updated_at: now })
+    .update(patch)
     .eq("id", tid)
     .eq("user_id", user.id);
+  if (error && isOptionalInboxThreadColumnMissingError(error.message)) {
+    return { ok: true };
+  }
   if (error) {
-    if (isOptionalInboxThreadColumnMissingError(error.message)) return { ok: true };
+    const sr = getServiceRoleSupabaseOrNull();
+    if (sr) {
+      const srRes = await sr.from("inbox_threads").update(patch).eq("id", tid).eq("user_id", user.id);
+      if (!srRes.error) {
+        error = null;
+      } else if (isOptionalInboxThreadColumnMissingError(srRes.error.message)) {
+        return { ok: true };
+      } else {
+        error = srRes.error;
+      }
+    }
+  }
+  if (error) {
     console.error("[AgentForge] markInboxThreadReadAction", error.message);
     return { ok: false };
   }
@@ -4287,14 +4304,8 @@ export async function upsertInboxReplyDraftAction(
   if (authError || !user) return { ok: false, error: "Unauthorized" };
   await ensureInboxSchemaReady();
 
-  const { data: th, error: thErr } = await supabase
-    .from("inbox_threads")
-    .select("id, prospect_email, subject")
-    .eq("id", parsed.data.thread_id.trim())
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (thErr || !th) return { ok: false, error: "Thread not found." };
-  const row = th as { id: string; prospect_email: string; subject: string };
+  const row = await resolveInboxThreadForReply(supabase, user.id, parsed.data.thread_id.trim());
+  if (!row) return { ok: false, error: "Thread not found." };
   const prospectEmail = normalizeEmail(row.prospect_email);
   if (!prospectEmail.includes("@")) return { ok: false, error: "Invalid prospect address." };
 
@@ -4394,16 +4405,10 @@ export async function sendInboxReplyAction(
   }
   await ensureInboxSchemaReady();
 
-  const { data: th, error: thErr } = await supabase
-    .from("inbox_threads")
-    .select("id, prospect_email, subject, user_id")
-    .eq("id", parsed.data.thread_id.trim())
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (thErr || !th) {
+  const row = await resolveInboxThreadForReply(supabase, user.id, parsed.data.thread_id.trim());
+  if (!row) {
     return { ok: false, error: "Thread not found." };
   }
-  const row = th as { id: string; prospect_email: string; subject: string };
   const prospectEmail = normalizeEmail(row.prospect_email);
   if (!prospectEmail.includes("@")) {
     return { ok: false, error: "Invalid prospect address." };

@@ -234,6 +234,49 @@ export async function findCampaignThreadIdForProspect(
   return null;
 }
 
+/** Prompt 153 — Row needed to send/save a reply; same `id` as `inbox_messages.thread_id`. */
+export type InboxThreadReplyContext = {
+  id: string;
+  prospect_email: string;
+  subject: string;
+};
+
+/**
+ * Prompt 153 — Sidebar may list threads synthesized from `inbox_messages` while `inbox_threads` SELECT is hidden
+ * by RLS. Load the canonical row with the user client first, then service role (same pattern as post-send updates).
+ */
+export async function resolveInboxThreadForReply(
+  userScoped: SupabaseClient,
+  userId: string,
+  threadId: string,
+): Promise<InboxThreadReplyContext | null> {
+  const tid = threadId.trim();
+  if (!tid) return null;
+
+  const trySelect = async (client: SupabaseClient) => {
+    const { data, error } = await client
+      .from("inbox_threads")
+      .select("id, prospect_email, subject")
+      .eq("id", tid)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error || !data) return null;
+    const row = data as { id: string; prospect_email: string; subject?: string };
+    return {
+      id: row.id,
+      prospect_email: row.prospect_email,
+      subject: typeof row.subject === "string" ? row.subject : "",
+    };
+  };
+
+  const fromUser = await trySelect(userScoped);
+  if (fromUser) return fromUser;
+
+  const sr = getServiceRoleSupabaseOrNull();
+  if (!sr) return null;
+  return trySelect(sr);
+}
+
 /**
  * Prompt 122 — When an inbox thread exists without `campaign_thread_id` (e.g. first touch was inbound or
  * composer-only), resolve the latest matching `campaigns.thread_id` by lead email and attach it.

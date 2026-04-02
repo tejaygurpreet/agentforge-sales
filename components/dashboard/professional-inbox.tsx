@@ -609,6 +609,9 @@ export function ProfessionalInbox({
       setReplyDraft("");
       if (selectedId) void loadMessages(selectedId);
       void loadThreads(debouncedSearch || undefined);
+      void getInboxUnreadCountAction().then((n) => {
+        onUnreadCountChange?.(n);
+      });
       void getInboxDraftCountAction().then((n) => setDraftCount(n));
       router.refresh();
     });
