@@ -30,6 +30,7 @@ import {
   threadIsSnoozed,
 } from "@/lib/inbox-filters";
 import { extractBareEmailFromFromHeader, slugifyLocalPartFromName } from "@/lib/resend";
+import { getServerEnv } from "@/lib/env";
 import { getServiceRoleSupabaseOrNull } from "@/lib/supabase-server";
 
 import type { ProspectReplyAnalysisPayload } from "@/types";
@@ -57,7 +58,7 @@ export type InboxThreadRow = {
   labels?: string[] | null;
 };
 
-/** Prompt 129 — Saved compose drafts (`inbox_drafts`). */
+/** Prompt 129 — Saved compose drafts (`inbox_drafts` and/or `inbox_messages` with `direction = 'draft'`). */
 export type InboxDraftRow = {
   id: string;
   user_id: string;
@@ -66,13 +67,15 @@ export type InboxDraftRow = {
   body_text: string;
   updated_at: string;
   created_at: string;
+  /** Prompt 152 — set when the draft is a reply row in `inbox_messages`. */
+  thread_id?: string | null;
 };
 
 export type InboxMessageRow = {
   id: string;
   thread_id: string;
   user_id: string;
-  direction: "inbound" | "outbound";
+  direction: "inbound" | "outbound" | "draft";
   from_email: string;
   to_email: string;
   subject: string;
@@ -82,6 +85,8 @@ export type InboxMessageRow = {
   reply_analysis_id: string | null;
   analyzed_at: string | null;
   created_at: string;
+  /** Prompt 152 — inbound read state; defaults true when column absent (legacy schemas). */
+  is_read?: boolean;
   /** Prompt 116 — populated when `reply_analysis_id` points at a saved row (for inline UI). */
   analysis?: ProspectReplyAnalysisPayload | null;
 };
@@ -319,7 +324,15 @@ export function isOptionalInboxThreadColumnMissingError(message: string): boolea
 export function isOptionalInboxMessageColumnMissingError(message: string): boolean {
   const m = (message || "").toLowerCase();
   if (!m.includes("does not exist") && !m.includes("could not find")) return false;
-  const cols = ["body_html", "raw", "provider_message_id", "reply_analysis_id", "analyzed_at", "created_at"];
+  const cols = [
+    "body_html",
+    "raw",
+    "provider_message_id",
+    "reply_analysis_id",
+    "analyzed_at",
+    "created_at",
+    "is_read",
+  ];
   return cols.some((c) => m.includes(c));
 }
 
@@ -837,9 +850,10 @@ function normalizeInboxMessageRowsFromSelect(
     const { inbox_threads: _join, ...rflat } = r;
     void _join;
     const dirRaw = rflat.direction;
-    const direction: "inbound" | "outbound" =
-      dirRaw === "outbound" ? "outbound" : "inbound";
+    const direction: "inbound" | "outbound" | "draft" =
+      dirRaw === "outbound" ? "outbound" : dirRaw === "draft" ? "draft" : "inbound";
     const receivedAt = String(rflat.received_at ?? "");
+    const isRead = !has("is_read") ? true : Boolean(rflat.is_read);
     return {
       id: String(rflat.id ?? ""),
       thread_id: String(rflat.thread_id ?? ""),
@@ -862,8 +876,188 @@ function normalizeInboxMessageRowsFromSelect(
         has("analyzed_at") && rflat.analyzed_at != null ? String(rflat.analyzed_at) : null,
       created_at:
         has("created_at") && rflat.created_at != null ? String(rflat.created_at) : receivedAt,
+      is_read: isRead,
     };
   });
+}
+
+/** Prompt 152 — Map a `inbox_messages` draft row to `InboxDraftRow` for the Drafts tab. */
+export function inboxMessageDraftToDraftRow(r: Record<string, unknown>): InboxDraftRow {
+  const receivedAt = String(r.received_at ?? "");
+  const createdAt = String(r.created_at ?? receivedAt);
+  return {
+    id: String(r.id ?? ""),
+    user_id: String(r.user_id ?? ""),
+    to_email: String(r.to_email ?? ""),
+    subject: String(r.subject ?? ""),
+    body_text: String(r.body_text ?? ""),
+    updated_at: receivedAt || createdAt,
+    created_at: createdAt || receivedAt,
+    thread_id: r.thread_id != null && String(r.thread_id).length > 0 ? String(r.thread_id) : null,
+  };
+}
+
+/**
+ * Prompt 152 — Header badge: count inbound messages the user has not marked read (`is_read = false`).
+ */
+export async function countUnreadInboundRepliesForUser(
+  userScoped: SupabaseClient,
+  userId: string,
+): Promise<number> {
+  const join = "inbox_threads!inner(user_id)";
+  const { count, error } = await userScoped
+    .from("inbox_messages")
+    .select(`id, ${join}`, { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("direction", "inbound")
+    .eq("is_read", false)
+    .eq("inbox_threads.user_id", userId);
+  if (error) {
+    if (!isInboxOptionalColumnOrSchemaError(error.message)) {
+      console.warn("[AgentForge] countUnreadInboundRepliesForUser", error.message);
+    }
+    return 0;
+  }
+  return count ?? 0;
+}
+
+/**
+ * Prompt 152 — Sidebar dots: threads with at least one unread inbound message.
+ * Returns `null` when `is_read` / schema is unavailable (caller falls back to `user_last_read_at` heuristics).
+ */
+export async function fetchUnreadInboundThreadIdsForUser(
+  userScoped: SupabaseClient,
+  userId: string,
+): Promise<Set<string> | null> {
+  const { data, error } = await userScoped
+    .from("inbox_messages")
+    .select("thread_id")
+    .eq("user_id", userId)
+    .eq("direction", "inbound")
+    .eq("is_read", false);
+  if (error) {
+    if (isInboxOptionalColumnOrSchemaError(error.message)) return null;
+    console.warn("[AgentForge] fetchUnreadInboundThreadIdsForUser", error.message);
+    return null;
+  }
+  const s = new Set<string>();
+  for (const r of data ?? []) {
+    const tid = (r as { thread_id?: string }).thread_id;
+    if (typeof tid === "string" && tid.length > 0) s.add(tid);
+  }
+  return s;
+}
+
+/** Prompt 152 — Mark all inbound messages in the thread read for `user_id` (decrements unread-reply badge). */
+export async function markInboundMessagesReadForThread(
+  userScoped: SupabaseClient,
+  userId: string,
+  threadId: string,
+): Promise<void> {
+  const tid = threadId.trim();
+  if (!tid) return;
+  const { error } = await userScoped
+    .from("inbox_messages")
+    .update({ is_read: true })
+    .eq("thread_id", tid)
+    .eq("user_id", userId)
+    .eq("direction", "inbound");
+  if (error && !isInboxOptionalColumnOrSchemaError(error.message)) {
+    console.warn("[AgentForge] markInboundMessagesReadForThread", error.message);
+  }
+}
+
+/** Prompt 152 — Remove saved reply drafts after a successful send. */
+export async function deleteInboxReplyDraftsForThread(
+  userScoped: SupabaseClient,
+  userId: string,
+  threadId: string,
+): Promise<void> {
+  const tid = threadId.trim();
+  if (!tid) return;
+  const { error } = await userScoped
+    .from("inbox_messages")
+    .delete()
+    .eq("thread_id", tid)
+    .eq("user_id", userId)
+    .eq("direction", "draft");
+  if (error && !isInboxOptionalColumnOrSchemaError(error.message)) {
+    console.warn("[AgentForge] deleteInboxReplyDraftsForThread", error.message);
+  }
+}
+
+/**
+ * Prompt 152 — Auto-save reply composer: one draft row per (user, thread) in `inbox_messages`.
+ */
+export async function upsertInboxReplyDraftMessage(
+  userScoped: SupabaseClient,
+  userId: string,
+  params: {
+    threadId: string;
+    bodyText: string;
+    fromEmail: string;
+    toEmail: string;
+    subject: string;
+  },
+): Promise<{ ok: true; draftId: string } | { ok: false; error: string }> {
+  const tid = params.threadId.trim();
+  if (!tid) return { ok: false, error: "Missing thread." };
+  const now = new Date().toISOString();
+  const subj = params.subject.trim().slice(0, 500);
+  const body = params.bodyText.slice(0, 50_000);
+  const fromE = normalizeMailboxForInboxStorage(params.fromEmail);
+  const toE = normalizeMailboxForInboxStorage(params.toEmail);
+
+  const { data: existing, error: selErr } = await userScoped
+    .from("inbox_messages")
+    .select("id")
+    .eq("thread_id", tid)
+    .eq("user_id", userId)
+    .eq("direction", "draft")
+    .maybeSingle();
+  if (selErr && !isInboxOptionalColumnOrSchemaError(selErr.message)) {
+    return { ok: false, error: selErr.message };
+  }
+  const exId = (existing as { id?: string } | null)?.id;
+
+  if (typeof exId === "string" && exId.length > 0) {
+    const { error: upErr } = await userScoped
+      .from("inbox_messages")
+      .update({
+        body_text: body,
+        subject: subj,
+        from_email: fromE,
+        to_email: toE,
+        received_at: now,
+        is_read: false,
+      })
+      .eq("id", exId)
+      .eq("user_id", userId);
+    if (upErr) return { ok: false, error: upErr.message };
+    return { ok: true, draftId: exId };
+  }
+
+  const { data: ins, error: insErr } = await userScoped
+    .from("inbox_messages")
+    .insert({
+      thread_id: tid,
+      user_id: userId,
+      direction: "draft",
+      from_email: fromE,
+      to_email: toE,
+      subject: subj,
+      body_text: body,
+      body_html: null,
+      received_at: now,
+      is_read: false,
+      raw: { source: "inbox_reply_autosave" },
+    })
+    .select("id")
+    .single();
+  if (insErr) return { ok: false, error: insErr.message };
+  const id = String((ins as { id?: string }).id ?? "");
+  if (!id) return { ok: false, error: "Draft insert returned no id." };
+  return { ok: true, draftId: id };
 }
 
 /**
@@ -880,10 +1074,14 @@ export async function fetchInboxMessagesForThreadDisplay(
 
   const innerThread = "inbox_threads!inner ( id, user_id )";
   const selectVariants = [
-    "id, thread_id, user_id, direction, from_email, to_email, subject, body_text, body_html, received_at, reply_analysis_id, analyzed_at, created_at",
+    "id, thread_id, user_id, direction, from_email, to_email, subject, body_text, body_html, received_at, reply_analysis_id, analyzed_at, created_at, is_read",
+    "id, thread_id, user_id, direction, from_email, to_email, subject, body_text, body_html, received_at, is_read",
     "id, thread_id, user_id, direction, from_email, to_email, subject, body_text, body_html, received_at",
     "id, thread_id, user_id, direction, from_email, to_email, subject, body_text, received_at",
   ] as const;
+
+  const sortNewestFirst = (rows: InboxMessageRow[]) =>
+    [...rows].sort((a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime());
 
   const tryUserJoin = async (sel: string) =>
     userScoped
@@ -891,13 +1089,14 @@ export async function fetchInboxMessagesForThreadDisplay(
       .select(`${sel}, ${innerThread}`)
       .eq("thread_id", tid)
       .eq("inbox_threads.user_id", userId)
-      .order("received_at", { ascending: true })
+      .in("direction", ["inbound", "outbound"])
+      .order("received_at", { ascending: false })
       .limit(200);
 
   for (const sel of selectVariants) {
     const { data, error } = await tryUserJoin(sel);
     if (!error) {
-      return normalizeInboxMessageRowsFromSelect(data ?? [], sel);
+      return sortNewestFirst(normalizeInboxMessageRowsFromSelect(data ?? [], sel));
     }
     if (!isInboxRelationMissingError(error.message) && !isInboxOptionalColumnOrSchemaError(error.message)) {
       break;
@@ -910,10 +1109,11 @@ export async function fetchInboxMessagesForThreadDisplay(
       .select(sel)
       .eq("thread_id", tid)
       .eq("user_id", userId)
-      .order("received_at", { ascending: true })
+      .in("direction", ["inbound", "outbound"])
+      .order("received_at", { ascending: false })
       .limit(200);
     if (!error) {
-      return normalizeInboxMessageRowsFromSelect(data ?? [], sel);
+      return sortNewestFirst(normalizeInboxMessageRowsFromSelect(data ?? [], sel));
     }
     if (!isInboxRelationMissingError(error.message) && !isInboxOptionalColumnOrSchemaError(error.message)) {
       console.error("[AgentForge] fetchInboxMessagesForThreadDisplay", error.message);
@@ -948,10 +1148,11 @@ export async function fetchInboxMessagesForThreadDisplay(
       .from("inbox_messages")
       .select(sel)
       .eq("thread_id", tid)
-      .order("received_at", { ascending: true })
+      .in("direction", ["inbound", "outbound"])
+      .order("received_at", { ascending: false })
       .limit(200);
     if (!error) {
-      return normalizeInboxMessageRowsFromSelect(data ?? [], sel);
+      return sortNewestFirst(normalizeInboxMessageRowsFromSelect(data ?? [], sel));
     }
     if (!isInboxRelationMissingError(error.message) && !isInboxOptionalColumnOrSchemaError(error.message)) {
       console.error("[AgentForge] fetchInboxMessagesForThreadDisplay (sr)", error.message);
@@ -1282,6 +1483,8 @@ export async function fetchInboxThreadsForUserDisplay(
     return [];
   }
 
+  const unreadInboundThreads = await fetchUnreadInboundThreadIdsForUser(userScoped, userId);
+
   const { data: pendingRows, error: pendErr } = await userScoped
     .from("inbox_messages")
     .select("thread_id")
@@ -1294,7 +1497,12 @@ export async function fetchInboxThreadsForUserDisplay(
     }
     threads = threads.map((t) => ({
       ...t,
-      has_unread: hasReadColumn ? computeThreadUnread(t.last_message_at, t.user_last_read_at ?? null) : false,
+      has_unread:
+        unreadInboundThreads != null
+          ? unreadInboundThreads.has(t.id)
+          : hasReadColumn
+            ? computeThreadUnread(t.last_message_at, t.user_last_read_at ?? null)
+            : false,
       needs_review: false,
     }));
   } else {
@@ -1305,7 +1513,12 @@ export async function fetchInboxThreadsForUserDisplay(
     );
     threads = threads.map((t) => ({
       ...t,
-      has_unread: hasReadColumn ? computeThreadUnread(t.last_message_at, t.user_last_read_at ?? null) : false,
+      has_unread:
+        unreadInboundThreads != null
+          ? unreadInboundThreads.has(t.id)
+          : hasReadColumn
+            ? computeThreadUnread(t.last_message_at, t.user_last_read_at ?? null)
+            : false,
       needs_review: needsReview.has(t.id),
     }));
   }
@@ -1390,7 +1603,8 @@ export async function countInboxMessagesVisibleToUser(
   const joined = await userScoped
     .from("inbox_messages")
     .select(`id, ${countJoin}`, { count: "exact", head: true })
-    .eq("inbox_threads.user_id", userId);
+    .eq("inbox_threads.user_id", userId)
+    .in("direction", ["inbound", "outbound"]);
 
   if (!joined.error) {
     const n = joined.count ?? 0;
@@ -1400,7 +1614,8 @@ export async function countInboxMessagesVisibleToUser(
   const direct = await userScoped
     .from("inbox_messages")
     .select("id", { count: "exact", head: true })
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .in("direction", ["inbound", "outbound"]);
   if (direct.error && !isInboxRelationMissingError(direct.error.message)) {
     return 0;
   }
@@ -1425,7 +1640,8 @@ export async function countInboxMessagesVisibleToUser(
   const c = await sr
     .from("inbox_messages")
     .select("id", { count: "exact", head: true })
-    .in("thread_id", ids);
+    .in("thread_id", ids)
+    .in("direction", ["inbound", "outbound"]);
   return c.count ?? 0;
 }
 
@@ -1440,6 +1656,238 @@ export function unwrapResendEmailReceivedPayload(body: unknown): Record<string, 
   }
   if (o.record && typeof o.record === "object") return o.record as Record<string, unknown>;
   return o;
+}
+
+/** Resend `email.received` — id used with Receiving API (webhook body does not include HTML/text). */
+export function extractResendInboundEmailIdFromWebhook(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const pick = (v: unknown): string | null =>
+    typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
+  const o = body as Record<string, unknown>;
+  if (o.data && typeof o.data === "object") {
+    const d = o.data as Record<string, unknown>;
+    const id = pick(d.email_id) ?? pick(d.id);
+    if (id) return id;
+  }
+  if (o.record && typeof o.record === "object") {
+    const r = o.record as Record<string, unknown>;
+    const id = pick(r.email_id) ?? pick(r.id);
+    if (id) return id;
+  }
+  return pick(o.email_id) ?? pick(o.id);
+}
+
+export type ResendReceivedEmailApiPayload = {
+  id?: string;
+  from?: string;
+  to?: string[];
+  subject?: string;
+  html?: string | null;
+  text?: string | null;
+  message_id?: string;
+};
+
+/**
+ * Prompt 153 — Fetch full inbound message (body + headers) from Resend Receiving API.
+ * @see https://resend.com/docs/api-reference/emails/retrieve-received-email
+ */
+export async function fetchResendReceivedEmailById(
+  emailId: string,
+): Promise<ResendReceivedEmailApiPayload | null> {
+  const id = emailId.trim();
+  if (!id) return null;
+  const key = getServerEnv().RESEND_API_KEY?.trim();
+  if (!key) {
+    console.warn("[AgentForge][inbound] RESEND_API_KEY missing — cannot fetch received email body");
+    return null;
+  }
+  try {
+    const res = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(id)}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.error("[AgentForge][inbound] Resend receiving GET", res.status, errText.slice(0, 500));
+      return null;
+    }
+    return (await res.json()) as ResendReceivedEmailApiPayload;
+  } catch (e) {
+    console.error("[AgentForge][inbound] Resend receiving fetch failed", e);
+    return null;
+  }
+}
+
+/**
+ * Prompt 153 — Match recipient to `profiles.inbox_local_part` (any domain — inbound may not match `RESEND_FROM_EMAIL`).
+ */
+export async function resolveInboxUserIdAndMatchedRecipient(
+  toAddresses: string[],
+): Promise<{ userId: string; matchedTo: string } | null> {
+  const seen = new Set<string>();
+  for (const raw of toAddresses) {
+    const lower = (raw || "").trim().toLowerCase();
+    if (!lower.includes("@")) continue;
+    const local = extractLocalPartFromEmail(lower);
+    if (!local || seen.has(local)) continue;
+    seen.add(local);
+    const userId = await findUserIdByInboxLocalPart(local);
+    if (userId) return { userId, matchedTo: lower };
+  }
+  return null;
+}
+
+function inboundRawEnvelopeForStorage(webhookBody: unknown, apiPayload: ResendReceivedEmailApiPayload | null): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    source: "resend_inbound",
+    fetched_via_receiving_api: apiPayload != null,
+  };
+  try {
+    const compact =
+      webhookBody && typeof webhookBody === "object"
+        ? JSON.parse(JSON.stringify(webhookBody))
+        : null;
+    if (compact && typeof compact === "object") base.webhook = compact;
+    if (apiPayload) base.received_email = apiPayload;
+    return base;
+  } catch {
+    return base;
+  }
+}
+
+/**
+ * Prompt 153 — Persist Resend inbound reply: thread by `user_id` + prospect `from_email`, message `direction=inbound`,
+ * `is_read=false`. Reuses thread from prior outbound to same prospect when `inbox_threads` row missing.
+ */
+export async function persistInboundResendReplyToInbox(
+  sr: SupabaseClient,
+  params: {
+    userId: string;
+    prospectEmail: string;
+    toEmail: string;
+    subject: string;
+    text: string;
+    html: string | null;
+    providerMessageId: string | null;
+    webhookBody: unknown;
+    receivedEmail: ResendReceivedEmailApiPayload | null;
+  },
+): Promise<{ ok: true; thread_id: string } | { ok: false; error: string }> {
+  const prospectEmail = normalizeEmail(params.prospectEmail);
+  if (!prospectEmail.includes("@")) {
+    return { ok: false, error: "Invalid prospect email" };
+  }
+
+  if (params.providerMessageId) {
+    const { data: dup } = await sr
+      .from("inbox_messages")
+      .select("thread_id")
+      .eq("provider_message_id", params.providerMessageId)
+      .maybeSingle();
+    const dupTid = (dup as { thread_id?: string } | null)?.thread_id;
+    if (dupTid) {
+      console.log("[inbound/resend] duplicate provider_message_id, skipping insert", params.providerMessageId);
+      return { ok: true, thread_id: dupTid };
+    }
+  }
+
+  const textBody =
+    params.text.trim().length > 0
+      ? params.text
+      : params.html
+        ? approximatePlainTextFromHtml(params.html)
+        : "";
+  const snippet = snippetFromBodyText(textBody || "(empty message)", 220) || "(empty message)";
+  const campaignThreadId = await findCampaignThreadIdForProspect(sr, params.userId, prospectEmail);
+
+  let threadId: string | null = null;
+  const { data: existingThread, error: threadLookupErr } = await sr
+    .from("inbox_threads")
+    .select("id")
+    .eq("user_id", params.userId)
+    .eq("prospect_email", prospectEmail)
+    .maybeSingle();
+
+  if (threadLookupErr) {
+    console.error("[inbound/resend] thread lookup", threadLookupErr.message);
+    return { ok: false, error: threadLookupErr.message };
+  }
+
+  const ex = existingThread as { id?: string } | null;
+  if (ex?.id) {
+    threadId = ex.id;
+    await sr
+      .from("inbox_threads")
+      .update({
+        subject: params.subject || "(no subject)",
+        snippet,
+        last_message_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        ...(campaignThreadId ? { campaign_thread_id: campaignThreadId } : {}),
+      })
+      .eq("id", threadId);
+  } else {
+    const { data: outRows } = await sr
+      .from("inbox_messages")
+      .select("thread_id, to_email")
+      .eq("user_id", params.userId)
+      .eq("direction", "outbound")
+      .order("received_at", { ascending: false })
+      .limit(80);
+    for (const row of outRows ?? []) {
+      const r = row as { thread_id?: string; to_email?: string };
+      const toStored = normalizeMailboxForInboxStorage(r.to_email ?? "");
+      if (toStored === prospectEmail && r.thread_id) {
+        threadId = r.thread_id;
+        break;
+      }
+    }
+  }
+
+  if (!threadId) {
+    const { data: ins, error: insErr } = await sr
+      .from("inbox_threads")
+      .insert({
+        user_id: params.userId,
+        prospect_email: prospectEmail,
+        subject: params.subject || "(no subject)",
+        snippet,
+        last_message_at: new Date().toISOString(),
+        campaign_thread_id: campaignThreadId ?? null,
+      })
+      .select("id")
+      .single();
+    if (insErr || !ins) {
+      console.error("[inbound/resend] thread insert", insErr?.message);
+      return { ok: false, error: insErr?.message ?? "thread insert failed" };
+    }
+    threadId = String((ins as { id: string }).id);
+  }
+
+  const rawEnvelope = inboundRawEnvelopeForStorage(params.webhookBody, params.receivedEmail);
+
+  const { error: msgErr } = await sr.from("inbox_messages").insert({
+    thread_id: threadId,
+    user_id: params.userId,
+    direction: "inbound",
+    from_email: prospectEmail,
+    to_email: params.toEmail.trim(),
+    subject: params.subject || "(no subject)",
+    body_text: textBody.slice(0, 50_000),
+    body_html: params.html ? params.html.slice(0, 200_000) : null,
+    provider_message_id: params.providerMessageId,
+    raw: rawEnvelope,
+    received_at: new Date().toISOString(),
+    is_read: false,
+  });
+
+  if (msgErr) {
+    console.error("[inbound/resend] message insert", msgErr.message);
+    return { ok: false, error: msgErr.message };
+  }
+
+  return { ok: true, thread_id: threadId };
 }
 
 /**

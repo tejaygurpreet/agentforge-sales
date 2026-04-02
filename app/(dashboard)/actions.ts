@@ -89,7 +89,6 @@ import type {
   SdrManagerPayloadDTO,
 } from "@/types";
 import { computeCampaignStrength } from "@/lib/campaign-strength";
-import { threadIsSnoozed } from "@/lib/inbox-filters";
 import { mergeTemplatePayloadIntoLeadForm } from "@/lib/campaign-templates-merge";
 import { computeForecastFromSnapshot } from "@/lib/forecast";
 import { buildDashboardOptimizerFeedFromRows } from "@/lib/optimizer";
@@ -121,19 +120,25 @@ import {
   sendTransactionalEmail,
 } from "@/lib/resend";
 import {
+  countUnreadInboundRepliesForUser,
+  deleteInboxReplyDraftsForThread,
   ensureInboxSchemaReady,
   fetchInboxMessagesForThreadDisplay,
   fetchInboxThreadsForUserDisplay,
   getOrSyncInboxLocalPart,
+  inboxMessageDraftToDraftRow,
   insertInboxMessageReliable,
   isInboxRelationMissingError,
+  isInboxOptionalColumnOrSchemaError,
   isOptionalInboxThreadColumnMissingError,
+  markInboundMessagesReadForThread,
   normalizeComposeRecipientEmail,
   normalizeEmail,
   plainTextToEmailHtml,
   recordNewComposeMessageInInbox,
   snippetFromBodyText,
   linkInboxThreadToCampaignIfKnown,
+  upsertInboxReplyDraftMessage,
   upsertInboxThreadAfterOutreachSend,
   type InboxDraftRow,
   type InboxMessageRow,
@@ -3862,7 +3867,7 @@ export async function upsertInboxDraftAction(
 }
 
 /**
- * Prompt 129 — List compose drafts (newest first).
+ * Prompt 129 / 152 — List compose drafts (newest first): `inbox_messages` drafts + legacy `inbox_drafts`.
  */
 export async function listInboxDraftsAction(): Promise<InboxDraftRow[]> {
   const supabase = await createServerSupabaseClient();
@@ -3872,17 +3877,36 @@ export async function listInboxDraftsAction(): Promise<InboxDraftRow[]> {
   } = await supabase.auth.getUser();
   if (authError || !user) return [];
   await ensureInboxSchemaReady();
-  const { data, error } = await supabase
-    .from("inbox_drafts")
-    .select("id, user_id, to_email, subject, body_text, updated_at, created_at")
-    .eq("user_id", user.id)
-    .order("updated_at", { ascending: false });
-  if (error) {
-    if (isInboxRelationMissingError(error.message)) return [];
-    console.error("[AgentForge] listInboxDraftsAction", error.message);
-    return [];
+  const [msgRes, tableRes] = await Promise.all([
+    supabase
+      .from("inbox_messages")
+      .select("id, user_id, to_email, subject, body_text, received_at, created_at, thread_id")
+      .eq("user_id", user.id)
+      .eq("direction", "draft")
+      .order("received_at", { ascending: false })
+      .limit(200),
+    supabase
+      .from("inbox_drafts")
+      .select("id, user_id, to_email, subject, body_text, updated_at, created_at")
+      .eq("user_id", user.id)
+      .order("updated_at", { ascending: false })
+      .limit(200),
+  ]);
+
+  const fromMessages = (msgRes.data ?? []).map((r) =>
+    inboxMessageDraftToDraftRow(r as Record<string, unknown>),
+  );
+  const fromTable = (tableRes.data ?? []) as InboxDraftRow[];
+  if (msgRes.error && !isInboxOptionalColumnOrSchemaError(msgRes.error.message)) {
+    console.warn("[AgentForge] listInboxDraftsAction inbox_messages", msgRes.error.message);
   }
-  return (data ?? []) as InboxDraftRow[];
+  if (tableRes.error && !isInboxRelationMissingError(tableRes.error.message)) {
+    console.warn("[AgentForge] listInboxDraftsAction inbox_drafts", tableRes.error.message);
+  }
+
+  return [...fromMessages, ...fromTable].sort(
+    (x, y) => new Date(y.updated_at).getTime() - new Date(x.updated_at).getTime(),
+  );
 }
 
 const inboxDraftIdSchema = z.object({ id: z.string().uuid() });
@@ -3902,6 +3926,16 @@ export async function getInboxDraftByIdAction(
   } = await supabase.auth.getUser();
   if (authError || !user) return { ok: false, error: "Unauthorized" };
   await ensureInboxSchemaReady();
+  const { data: msgRow, error: msgErr } = await supabase
+    .from("inbox_messages")
+    .select("id, user_id, to_email, subject, body_text, received_at, created_at, thread_id")
+    .eq("id", parsed.data.id)
+    .eq("user_id", user.id)
+    .eq("direction", "draft")
+    .maybeSingle();
+  if (!msgErr && msgRow) {
+    return { ok: true, draft: inboxMessageDraftToDraftRow(msgRow as Record<string, unknown>) };
+  }
   const { data, error } = await supabase
     .from("inbox_drafts")
     .select("id, user_id, to_email, subject, body_text, updated_at, created_at")
@@ -3928,17 +3962,25 @@ export async function deleteInboxDraftAction(
   } = await supabase.auth.getUser();
   if (authError || !user) return { ok: false, error: "Unauthorized" };
   await ensureInboxSchemaReady();
+  await supabase
+    .from("inbox_messages")
+    .delete()
+    .eq("id", parsed.data.id)
+    .eq("user_id", user.id)
+    .eq("direction", "draft");
   const { error } = await supabase
     .from("inbox_drafts")
     .delete()
     .eq("id", parsed.data.id)
     .eq("user_id", user.id);
-  if (error) return { ok: false, error: error.message };
+  if (error && !isInboxRelationMissingError(error.message)) {
+    return { ok: false, error: error.message };
+  }
   return { ok: true };
 }
 
 /**
- * Prompt 129 — Badge count for header + compose button.
+ * Prompt 129 / 152 — Badge count: `inbox_drafts` + `inbox_messages` with `direction = 'draft'`.
  */
 export async function getInboxDraftCountAction(): Promise<number> {
   const supabase = await createServerSupabaseClient();
@@ -3948,23 +3990,37 @@ export async function getInboxDraftCountAction(): Promise<number> {
   } = await supabase.auth.getUser();
   if (authError || !user) return 0;
   await ensureInboxSchemaReady();
-  const { count, error } = await supabase
-    .from("inbox_drafts")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", user.id);
-  if (error) {
-    if (isInboxRelationMissingError(error.message)) return 0;
-    return 0;
-  }
-  return count ?? 0;
+  const [msgDrafts, tableDrafts] = await Promise.all([
+    supabase
+      .from("inbox_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("direction", "draft"),
+    supabase
+      .from("inbox_drafts")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id),
+  ]);
+  const a = msgDrafts.error ? 0 : (msgDrafts.count ?? 0);
+  const b =
+    tableDrafts.error && !isInboxRelationMissingError(tableDrafts.error.message)
+      ? 0
+      : (tableDrafts.count ?? 0);
+  return a + b;
 }
 
 /**
- * Prompt 119 — Unread count for tab badge + notifications (excludes snoozed threads).
+ * Prompt 119 / 152 — Unread count for header badge: inbound messages with `is_read = false` (not thread totals).
  */
 export async function getInboxUnreadCountAction(): Promise<number> {
-  const threads = await listInboxThreadsAction();
-  return threads.filter((t) => t.has_unread === true && !threadIsSnoozed(t)).length;
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return 0;
+  await ensureInboxSchemaReady();
+  return countUnreadInboundRepliesForUser(supabase, user.id);
 }
 
 const archiveInboxThreadSchema = z.object({
@@ -4196,6 +4252,7 @@ export async function markInboxThreadReadAction(threadId: string): Promise<{ ok:
   const tid = threadId.trim();
   if (!tid) return { ok: false };
   await ensureInboxSchemaReady();
+  await markInboundMessagesReadForThread(supabase, user.id, tid);
   const now = new Date().toISOString();
   const { error } = await supabase
     .from("inbox_threads")
@@ -4209,6 +4266,105 @@ export async function markInboxThreadReadAction(threadId: string): Promise<{ ok:
   }
   revalidatePath("/");
   return { ok: true };
+}
+
+const upsertInboxReplyDraftSchema = z.object({
+  thread_id: z.string().uuid(),
+  body: z.string().max(50_000),
+});
+
+/** Prompt 152 — Debounced client autosave for reply composer (`inbox_messages.direction = 'draft'`). */
+export async function upsertInboxReplyDraftAction(
+  raw: z.input<typeof upsertInboxReplyDraftSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = upsertInboxReplyDraftSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid draft." };
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return { ok: false, error: "Unauthorized" };
+  await ensureInboxSchemaReady();
+
+  const { data: th, error: thErr } = await supabase
+    .from("inbox_threads")
+    .select("id, prospect_email, subject")
+    .eq("id", parsed.data.thread_id.trim())
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (thErr || !th) return { ok: false, error: "Thread not found." };
+  const row = th as { id: string; prospect_email: string; subject: string };
+  const prospectEmail = normalizeEmail(row.prospect_email);
+  if (!prospectEmail.includes("@")) return { ok: false, error: "Invalid prospect address." };
+
+  const baseSubject = row.subject?.trim() || "(no subject)";
+  const subject = /^\s*re:/i.test(baseSubject) ? baseSubject : `Re: ${baseSubject}`;
+
+  let senderName = "";
+  if (typeof user.user_metadata?.full_name === "string") {
+    senderName = user.user_metadata.full_name.trim();
+  }
+  const { data: profileForSignoff } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (profileForSignoff?.full_name?.trim()) {
+    senderName = profileForSignoff.full_name.trim();
+  }
+
+  await getOrSyncInboxLocalPart(supabase, user.id, senderName || "User");
+  const { data: profInbox } = await supabase
+    .from("profiles")
+    .select("inbox_local_part")
+    .eq("id", user.id)
+    .maybeSingle();
+  const inboxPart =
+    profInbox &&
+    typeof (profInbox as { inbox_local_part?: string }).inbox_local_part === "string" &&
+    (profInbox as { inbox_local_part: string }).inbox_local_part.trim()
+      ? (profInbox as { inbox_local_part: string }).inbox_local_part.trim()
+      : null;
+
+  const fromHeader = buildDynamicFromEmail(senderName || null, inboxPart);
+  const replyBare = extractBareEmailFromFromHeader(fromHeader);
+  const userSignupEmail =
+    typeof user.email === "string" && user.email.trim().length > 0 ? user.email.trim() : null;
+  const fromAddr = replyBare ?? userSignupEmail ?? "";
+
+  const res = await upsertInboxReplyDraftMessage(supabase, user.id, {
+    threadId: row.id,
+    bodyText: parsed.data.body,
+    fromEmail: fromAddr,
+    toEmail: prospectEmail,
+    subject,
+  });
+  if (!res.ok) return { ok: false, error: res.error };
+  return { ok: true };
+}
+
+/** Prompt 152 — Hydrate reply composer from autosaved `inbox_messages` draft row. */
+export async function getInboxReplyDraftBodyAction(threadId: string): Promise<string | null> {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) return null;
+  const tid = threadId.trim();
+  if (!tid) return null;
+  await ensureInboxSchemaReady();
+  const { data, error } = await supabase
+    .from("inbox_messages")
+    .select("body_text")
+    .eq("thread_id", tid)
+    .eq("user_id", user.id)
+    .eq("direction", "draft")
+    .maybeSingle();
+  if (error || !data) return null;
+  const b = (data as { body_text?: string }).body_text;
+  return typeof b === "string" ? b : null;
 }
 
 const sendInboxReplySchema = z.object({
@@ -4393,6 +4549,8 @@ export async function sendInboxReplyAction(
     inboxThreadId: row.id,
     prospectEmail,
   });
+
+  await deleteInboxReplyDraftsForThread(supabase, user.id, row.id);
 
   revalidatePath("/");
   revalidatePath("/replies");

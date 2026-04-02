@@ -1,20 +1,21 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse, type NextRequest } from "next/server";
 import {
-  ensureInboxSchemaReady,
-  extractLocalPartFromEmail,
-  findCampaignThreadIdForProspect,
-  findUserIdByInboxLocalPart,
+  approximatePlainTextFromHtml,
+  extractResendInboundEmailIdFromWebhook,
+  fetchResendReceivedEmailById,
+  persistInboundResendReplyToInbox,
   normalizeEmail,
+  normalizeMailboxForInboxStorage,
   parseFromAddress,
   parseInboundSubjectBody,
   parseToAddresses,
-  snippetFromBodyText,
+  resolveInboxUserIdAndMatchedRecipient,
+  ensureInboxSchemaReady,
   unwrapResendEmailReceivedPayload,
   verifyWebhookSharedSecret,
 } from "@/lib/inbox";
 import { getServerEnv } from "@/lib/env";
-import { domainFromResendFromHeader } from "@/lib/resend";
 import { getServiceRoleSupabaseOrNull } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
@@ -25,10 +26,10 @@ function verifySecret(request: NextRequest): boolean {
 }
 
 /**
- * Prompt 115 — Resend inbound webhook: store prospect replies in `inbox_threads` / `inbox_messages`.
- * Prompt 120 — Verification via `verifyWebhookSharedSecret` (`lib/inbox.ts`); GET for health checks.
+ * Prompt 115 / 153 — Resend inbound: `email.received` webhook → Receiving API (full body) → `inbox_threads` +
+ * `inbox_messages` (`direction=inbound`, `is_read=false`). Thread = `user_id` + prospect `from_email`.
  *
- * Configure in Resend → Inbound → Webhook URL + shared secret (`WEBHOOK_SECRET`).
+ * Configure: Resend Inbound → Webhook URL + `WEBHOOK_SECRET`. Requires `RESEND_API_KEY` to fetch body (webhook is metadata-only).
  */
 export async function GET() {
   return NextResponse.json({
@@ -57,31 +58,53 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const flat = unwrapResendEmailReceivedPayload(body);
-  const merged = { ...flat, ...(typeof flat.payload === "object" && flat.payload !== null ? flat.payload : {}) };
-  const toList = parseToAddresses(merged).length ? parseToAddresses(merged) : parseToAddresses(body);
-  const fromRaw = parseFromAddress(merged) || parseFromAddress(body);
-  const { subject, text, html } = parseInboundSubjectBody(
-    Object.keys(merged).length ? merged : body,
-  );
-
-  const env = getServerEnv();
-  const domain =
-    domainFromResendFromHeader(env.RESEND_FROM_EMAIL).toLowerCase() || "agentforgesales.com";
-
-  let userId: string | null = null;
-  for (const rawTo of toList) {
-    const lower = rawTo.trim().toLowerCase();
-    if (!lower.endsWith(`@${domain}`)) continue;
-    const local = extractLocalPartFromEmail(lower);
-    if (!local) continue;
-    userId = await findUserIdByInboxLocalPart(local);
-    if (userId) break;
+  const emailId = extractResendInboundEmailIdFromWebhook(body);
+  const received = emailId ? await fetchResendReceivedEmailById(emailId) : null;
+  if (emailId && received) {
+    console.log("[inbound/resend] loaded received email via API", emailId);
+  } else if (emailId && !received) {
+    console.warn("[inbound/resend] Receiving API returned no payload for", emailId);
   }
 
-  if (!userId) {
+  const flat = unwrapResendEmailReceivedPayload(body);
+  const merged = {
+    ...flat,
+    ...(typeof flat.payload === "object" && flat.payload !== null ? flat.payload : {}),
+  };
+
+  const toListFromWebhook = parseToAddresses(merged).length ? parseToAddresses(merged) : parseToAddresses(body);
+  const toList =
+    received?.to && Array.isArray(received.to) && received.to.length > 0 ? received.to : toListFromWebhook;
+
+  const fromRaw =
+    (received?.from && String(received.from).trim()) ||
+    parseFromAddress(merged) ||
+    parseFromAddress(body);
+
+  let subject = "";
+  let text = "";
+  let html: string | null = null;
+  if (received) {
+    subject = received.subject != null ? String(received.subject).trim() : "";
+    html =
+      received.html != null && String(received.html).trim().length > 0 ? String(received.html) : null;
+    text = received.text != null && String(received.text).trim().length > 0 ? String(received.text) : "";
+    if (!text && html) text = approximatePlainTextFromHtml(html);
+  }
+  if (!subject || (text === "" && !html)) {
+    const parsed = parseInboundSubjectBody(Object.keys(merged).length ? merged : body);
+    if (!subject) subject = parsed.subject;
+    if (text === "" && !html) {
+      text = parsed.text;
+      html = parsed.html;
+    }
+  }
+
+  const resolved = await resolveInboxUserIdAndMatchedRecipient(toList);
+  if (!resolved) {
     return NextResponse.json({ ok: true, skipped: true, hint: "No matching inbox_local_part" });
   }
+  const { userId, matchedTo } = resolved;
 
   const prospectEmail = normalizeEmail(
     fromRaw.includes("<")
@@ -92,83 +115,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, skipped: true, hint: "Invalid from" });
   }
 
-  const snippet = snippetFromBodyText(text, 220) || "(empty message)";
   const providerId =
-    typeof merged.id === "string"
-      ? merged.id
-      : typeof (merged as { email_id?: string }).email_id === "string"
-        ? (merged as { email_id: string }).email_id
-        : null;
+    (received?.id && String(received.id).trim()) ||
+    (typeof merged.id === "string" ? merged.id : null) ||
+    (typeof (merged as { email_id?: string }).email_id === "string"
+      ? (merged as { email_id: string }).email_id
+      : null) ||
+    emailId;
 
-  const campaignThreadId = await findCampaignThreadIdForProspect(sr, userId, prospectEmail);
-
-  const { data: existingThread, error: threadLookupErr } = await sr
-    .from("inbox_threads")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("prospect_email", prospectEmail)
-    .maybeSingle();
-
-  if (threadLookupErr) {
-    console.error("[inbound/resend] thread lookup", threadLookupErr.message);
-    return NextResponse.json({ ok: false, error: threadLookupErr.message }, { status: 500 });
-  }
-
-  let threadId: string;
-  const ex = existingThread as { id?: string } | null;
-  if (ex?.id) {
-    threadId = ex.id;
-    await sr
-      .from("inbox_threads")
-      .update({
-        subject: subject || "(no subject)",
-        snippet,
-        last_message_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        ...(campaignThreadId ? { campaign_thread_id: campaignThreadId } : {}),
-      })
-      .eq("id", threadId);
-  } else {
-    const { data: ins, error: insErr } = await sr
-      .from("inbox_threads")
-      .insert({
-        user_id: userId,
-        prospect_email: prospectEmail,
-        subject: subject || "(no subject)",
-        snippet,
-        last_message_at: new Date().toISOString(),
-        campaign_thread_id: campaignThreadId,
-      })
-      .select("id")
-      .single();
-    if (insErr || !ins) {
-      console.error("[inbound/resend] thread insert", insErr?.message);
-      return NextResponse.json({ ok: false, error: insErr?.message ?? "insert failed" }, { status: 500 });
-    }
-    threadId = String((ins as { id: string }).id);
-  }
-
-  const { error: msgErr } = await sr.from("inbox_messages").insert({
-    thread_id: threadId,
-    user_id: userId,
-    direction: "inbound",
-    from_email: prospectEmail,
-    to_email: toList[0]?.trim() ?? "",
+  const result = await persistInboundResendReplyToInbox(sr, {
+    userId,
+    prospectEmail,
+    toEmail: normalizeMailboxForInboxStorage(matchedTo) || matchedTo,
     subject: subject || "(no subject)",
-    body_text: text.slice(0, 50_000),
-    body_html: html ? html.slice(0, 200_000) : null,
-    provider_message_id: providerId,
-    raw: body as object,
-    received_at: new Date().toISOString(),
+    text,
+    html,
+    providerMessageId: providerId,
+    webhookBody: body,
+    receivedEmail: received,
   });
 
-  if (msgErr) {
-    console.error("[inbound/resend] message insert", msgErr.message);
-    return NextResponse.json({ ok: false, error: msgErr.message }, { status: 500 });
+  if (!result.ok) {
+    return NextResponse.json({ ok: false, error: result.error }, { status: 500 });
   }
 
   revalidatePath("/");
   revalidatePath("/replies");
 
-  return NextResponse.json({ ok: true, thread_id: threadId });
+  return NextResponse.json({ ok: true, thread_id: result.thread_id });
 }

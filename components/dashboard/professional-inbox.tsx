@@ -5,6 +5,8 @@ import {
   archiveInboxThreadAction,
   deleteInboxDraftAction,
   getInboxDraftCountAction,
+  getInboxReplyDraftBodyAction,
+  getInboxUnreadCountAction,
   listInboxDraftsAction,
   listInboxMessagesAction,
   listInboxThreadsAction,
@@ -12,6 +14,7 @@ import {
   sendInboxReplyAction,
   setInboxThreadLabelsAction,
   snoozeInboxThreadAction,
+  upsertInboxReplyDraftAction,
 } from "@/app/(dashboard)/actions";
 import { ComposeNewEmailDialog } from "@/components/dashboard/compose-new-email-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +42,6 @@ import type { InboxDraftRow, InboxMessageRow, InboxThreadRow } from "@/lib/inbox
 import {
   applyInboxThreadFilter,
   threadIsArchived,
-  threadIsSnoozed,
   type InboxThreadFilter,
 } from "@/lib/inbox-filters";
 import { createClient } from "@/lib/supabase";
@@ -308,7 +310,9 @@ export function ProfessionalInbox({
   const [localPersistErr, setLocalPersistErr] = useState<Record<string, string>>({});
   const [userId, setUserId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const conversationScrollRef = useRef<HTMLDivElement>(null);
+  const replyDraftRef = useRef("");
+  replyDraftRef.current = replyDraft;
 
   useEffect(() => {
     void createClient()
@@ -330,10 +334,6 @@ export function ProfessionalInbox({
     return () => window.clearTimeout(id);
   }, [search]);
 
-  useEffect(() => {
-    setReplyDraft("");
-  }, [selectedId]);
-
   const loadThreads = useCallback(async (q?: string) => {
     setLoadingList(threadsRef.current.length === 0);
     try {
@@ -343,9 +343,8 @@ export function ProfessionalInbox({
       });
       setThreads(rows);
       if (mailFolder !== "archived") {
-        onUnreadCountChange?.(
-          rows.filter((t) => t.has_unread === true && !threadIsSnoozed(t)).length,
-        );
+        const n = await getInboxUnreadCountAction();
+        onUnreadCountChange?.(n);
       }
     } finally {
       setLoadingList(false);
@@ -367,6 +366,8 @@ export function ProfessionalInbox({
     try {
       const rows = await listInboxMessagesAction(threadId);
       setMessages(rows);
+      const draftBody = await getInboxReplyDraftBodyAction(threadId);
+      setReplyDraft(typeof draftBody === "string" ? draftBody : "");
     } finally {
       setLoadingMsgs(false);
     }
@@ -608,6 +609,7 @@ export function ProfessionalInbox({
       setReplyDraft("");
       if (selectedId) void loadMessages(selectedId);
       void loadThreads(debouncedSearch || undefined);
+      void getInboxDraftCountAction().then((n) => setDraftCount(n));
       router.refresh();
     });
   }
@@ -618,10 +620,21 @@ export function ProfessionalInbox({
   );
 
   useEffect(() => {
-    if (!loadingMsgs && messages.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    }
+    if (loadingMsgs) return;
+    const el = conversationScrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: 0, behavior: selectedId ? "smooth" : "auto" });
   }, [loadingMsgs, messages, selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const tick = window.setInterval(() => {
+      const body = replyDraftRef.current.trim();
+      if (!body) return;
+      void upsertInboxReplyDraftAction({ thread_id: selectedId, body: replyDraftRef.current });
+    }, 3000);
+    return () => window.clearInterval(tick);
+  }, [selectedId]);
 
   useEffect(() => {
     function isTypingTarget(t: EventTarget | null): boolean {
@@ -885,6 +898,11 @@ export function ProfessionalInbox({
                       <button
                         type="button"
                         onClick={() => {
+                          if (d.thread_id) {
+                            setMailFolder("inbox");
+                            setSelectedId(d.thread_id);
+                            return;
+                          }
                           setComposeIntent("edit");
                           setComposeDraftIdToLoad(d.id);
                           setComposeOpen(true);
@@ -1117,7 +1135,10 @@ export function ProfessionalInbox({
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-sage/[0.05] via-transparent to-transparent px-3 py-5 touch-pan-y sm:px-5">
+              <div
+                ref={conversationScrollRef}
+                className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain scroll-smooth bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-sage/[0.05] via-transparent to-transparent px-3 py-5 touch-pan-y sm:px-5"
+              >
                 {loadingMsgs ? (
                   <div className="flex justify-center py-12">
                     <Loader2 className="h-8 w-8 animate-spin text-sage/70" aria-hidden />
@@ -1128,6 +1149,7 @@ export function ProfessionalInbox({
                       const analysisPayload = localAnalysis[m.id] ?? m.analysis ?? null;
                       const persistErr = localPersistErr[m.id];
                       const inbound = m.direction === "inbound";
+                      const newReplyHighlight = inbound && m.is_read === false;
 
                       return (
                         <div
@@ -1154,6 +1176,8 @@ export function ProfessionalInbox({
                               inbound
                                 ? "border border-border/40 bg-gradient-to-br from-card to-muted/25 ring-black/[0.05]"
                                 : "border border-sage/25 bg-gradient-to-br from-sage/[0.18] via-sage/[0.1] to-card ring-sage/15",
+                              newReplyHighlight &&
+                                "border-sage/50 bg-gradient-to-br from-sage/15 via-card to-terracotta/10 ring-2 ring-sage/40 shadow-md",
                             )}
                           >
                             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1167,6 +1191,11 @@ export function ProfessionalInbox({
                                 {new Date(m.received_at).toLocaleString()}
                               </time>
                             </div>
+                            {newReplyHighlight ? (
+                              <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-sage">
+                                New reply
+                              </p>
+                            ) : null}
                             {inbound ? (
                               <div className="mt-3 flex flex-wrap items-center gap-2">
                                 <Button
@@ -1210,7 +1239,6 @@ export function ProfessionalInbox({
                         </div>
                       );
                     })}
-                    <div ref={messagesEndRef} className="h-2 w-full shrink-0" aria-hidden />
                   </div>
                 )}
               </div>

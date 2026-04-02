@@ -18,7 +18,7 @@ export function HeaderInboxButton() {
   const { count, setCount, draftCount, setDraftCount } = useInboxUnread();
   const inboxActive = pathname === "/inbox";
   const labelParts: string[] = [];
-  if (count > 0) labelParts.push(`${count} unread`);
+  if (count > 0) labelParts.push(`${count} unread replies`);
   if (draftCount > 0) labelParts.push(`${draftCount} drafts`);
   const aria =
     labelParts.length > 0 ? `Inbox, ${labelParts.join(", ")}` : "Inbox";

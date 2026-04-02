@@ -70,6 +70,19 @@ begin
     references public.reply_analyses (id) on delete set null;
   alter table public.inbox_messages add column if not exists analyzed_at timestamptz;
 
+  -- Prompt 152 — per-message read state + compose/reply drafts stored as rows (`direction = 'draft'`).
+  alter table public.inbox_messages add column if not exists is_read boolean not null default false;
+
+  alter table public.inbox_messages drop constraint if exists inbox_messages_direction_check;
+  alter table public.inbox_messages add constraint inbox_messages_direction_check
+    check (direction in ('inbound', 'outbound', 'draft'));
+
+  alter table public.inbox_messages alter column thread_id drop not null;
+
+  alter table public.inbox_messages drop constraint if exists inbox_messages_thread_required_check;
+  alter table public.inbox_messages add constraint inbox_messages_thread_required_check
+    check (thread_id is not null or direction = 'draft');
+
   alter table public.inbox_threads enable row level security;
   alter table public.inbox_messages enable row level security;
 

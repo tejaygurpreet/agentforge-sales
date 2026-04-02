@@ -21,6 +21,8 @@ export async function generateMetadata(): Promise<Metadata> {
  * when `inbox_threads.user_id` / RLS yields zero rows so the sidebar populates from the same messages in DB.
  * Prompt 151 — Same helper also tries `inbox_messages → inbox_threads!inner` for `user_id = auth user`, then
  * message-derived thread synthesis when thread rows still cannot be read so sidebar count matches message count.
+ * Prompt 152 — Unread badge = inbound `is_read = false`; reply autosave drafts in `inbox_messages`; conversation
+ * pane scroll + newest-first + highlighted unread replies (see `lib/inbox.ts`, header mail button, `ProfessionalInbox`).
  * This route is `/inbox` (repo path `app/(dashboard)/inbox/page.tsx`; same as a logical `app/inbox/page.tsx`).
  */
 export default async function InboxPage() {
