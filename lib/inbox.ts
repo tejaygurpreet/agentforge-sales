@@ -1,9 +1,11 @@
 import "server-only";
 
+import { revalidatePath } from "next/cache";
+
 /**
  * Prompt 119–120 — Real-time, webhooks & notifications (architecture):
  *
- * - **Inbound (Resend):** `app/api/inbound/resend/route.ts` POST receives `email.received` webhooks;
+ * - **Inbound (Resend):** `app/api/webhooks/resend/route.ts` POST (same as `/api/inbound/resend`) receives `email.received`;
  *   verify with `verifyWebhookSharedSecret` + `WEBHOOK_SECRET`. Payload shape: `unwrapResendEmailReceivedPayload`.
  * - **Supabase Realtime:** `hooks/use-inbox-realtime.ts` subscribes to `public.inbox_messages` and
  *   `public.inbox_threads` with `filter: user_id=eq.{userId}`. Inbound replies are stored under the
@@ -241,9 +243,101 @@ export type InboxThreadReplyContext = {
   subject: string;
 };
 
+type InboxMessageThreadSynthRow = {
+  thread_id?: string;
+  direction?: string;
+  from_email?: string;
+  to_email?: string;
+  subject?: string;
+  body_text?: string;
+  received_at?: string;
+};
+
+/**
+ * Prompt 154 — When `inbox_threads` is not SELECT-visible (RLS) but `inbox_messages` are, derive the same
+ * reply context the sidebar uses so `sendInboxReplyAction` receives a valid prospect + subject for `thread_id`.
+ */
+async function resolveInboxThreadReplyContextFromMessages(
+  userScoped: SupabaseClient,
+  userId: string,
+  threadId: string,
+): Promise<InboxThreadReplyContext | null> {
+  const tid = threadId.trim();
+  if (!tid) return null;
+
+  const sr = getServiceRoleSupabaseOrNull();
+  const tryClient = async (client: SupabaseClient): Promise<InboxThreadReplyContext | null> => {
+    const { data: rows, error } = await client
+      .from("inbox_messages")
+      .select("direction, from_email, to_email, subject, received_at")
+      .eq("thread_id", tid)
+      .eq("user_id", userId)
+      .in("direction", ["inbound", "outbound"])
+      .order("received_at", { ascending: false })
+      .limit(120);
+    if (error || !rows?.length) return null;
+
+    const chronological = [...(rows as InboxMessageThreadSynthRow[])].sort(
+      (a, b) =>
+        new Date(a.received_at ?? 0).getTime() - new Date(b.received_at ?? 0).getTime(),
+    );
+    let prospect = "";
+    for (let i = chronological.length - 1; i >= 0; i--) {
+      const m = chronological[i]!;
+      if (m.direction === "outbound") {
+        const e = normalizeMailboxForInboxStorage(m.to_email ?? "");
+        if (e.includes("@")) {
+          prospect = e;
+          break;
+        }
+      } else {
+        const e = normalizeMailboxForInboxStorage(m.from_email ?? "");
+        if (e.includes("@")) {
+          prospect = e;
+          break;
+        }
+      }
+    }
+    const latest = chronological[chronological.length - 1] ?? chronological[0];
+    if (!prospect.includes("@") && latest) {
+      prospect = normalizeMailboxForInboxStorage(
+        latest.to_email && String(latest.to_email).length > 0 ? latest.to_email : (latest.from_email ?? ""),
+      );
+    }
+    if (!prospect.includes("@")) return null;
+
+    let baseSubj = "";
+    for (let i = chronological.length - 1; i >= 0; i--) {
+      const s = String(chronological[i]?.subject ?? "").trim();
+      if (s.length > 0) {
+        baseSubj = s;
+        break;
+      }
+    }
+    if (!baseSubj) baseSubj = "(no subject)";
+
+    if (sr) {
+      const { data: thRow } = await sr
+        .from("inbox_threads")
+        .select("user_id")
+        .eq("id", tid)
+        .maybeSingle();
+      const owner = (thRow as { user_id?: string } | null)?.user_id;
+      if (owner && owner !== userId) return null;
+    }
+
+    return { id: tid, prospect_email: prospect, subject: baseSubj };
+  };
+
+  const fromSr = sr ? await tryClient(sr) : null;
+  if (fromSr) return fromSr;
+  return tryClient(userScoped);
+}
+
 /**
  * Prompt 153 — Sidebar may list threads synthesized from `inbox_messages` while `inbox_threads` SELECT is hidden
  * by RLS. Load the canonical row with the user client first, then service role (same pattern as post-send updates).
+ * Prompt 154 — Fall back to message-derived context so reply send always gets the correct `thread_id` + prospect.
  */
 export async function resolveInboxThreadForReply(
   userScoped: SupabaseClient,
@@ -273,8 +367,12 @@ export async function resolveInboxThreadForReply(
   if (fromUser) return fromUser;
 
   const sr = getServiceRoleSupabaseOrNull();
-  if (!sr) return null;
-  return trySelect(sr);
+  if (sr) {
+    const fromSrThread = await trySelect(sr);
+    if (fromSrThread) return fromSrThread;
+  }
+
+  return resolveInboxThreadReplyContextFromMessages(userScoped, userId, tid);
 }
 
 /**
@@ -948,13 +1046,22 @@ export async function countUnreadInboundRepliesForUser(
   userId: string,
 ): Promise<number> {
   const join = "inbox_threads!inner(user_id)";
-  const { count, error } = await userScoped
-    .from("inbox_messages")
-    .select(`id, ${join}`, { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("direction", "inbound")
-    .eq("is_read", false)
-    .eq("inbox_threads.user_id", userId);
+  const run = (useNullAsUnread: boolean) => {
+    let q = userScoped
+      .from("inbox_messages")
+      .select(`id, ${join}`, { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("direction", "inbound")
+      .eq("inbox_threads.user_id", userId);
+    q = useNullAsUnread ? q.or("is_read.eq.false,is_read.is.null") : q.eq("is_read", false);
+    return q;
+  };
+  let { count, error } = await run(true);
+  if (error && isInboxOptionalColumnOrSchemaError(error.message)) {
+    const second = await run(false);
+    count = second.count;
+    error = second.error;
+  }
   if (error) {
     if (!isInboxOptionalColumnOrSchemaError(error.message)) {
       console.warn("[AgentForge] countUnreadInboundRepliesForUser", error.message);
@@ -972,12 +1079,22 @@ export async function fetchUnreadInboundThreadIdsForUser(
   userScoped: SupabaseClient,
   userId: string,
 ): Promise<Set<string> | null> {
-  const { data, error } = await userScoped
+  let { data, error } = await userScoped
     .from("inbox_messages")
     .select("thread_id")
     .eq("user_id", userId)
     .eq("direction", "inbound")
-    .eq("is_read", false);
+    .or("is_read.eq.false,is_read.is.null");
+  if (error && isInboxOptionalColumnOrSchemaError(error.message)) {
+    const second = await userScoped
+      .from("inbox_messages")
+      .select("thread_id")
+      .eq("user_id", userId)
+      .eq("direction", "inbound")
+      .eq("is_read", false);
+    data = second.data;
+    error = second.error;
+  }
   if (error) {
     if (isInboxOptionalColumnOrSchemaError(error.message)) return null;
     console.warn("[AgentForge] fetchUnreadInboundThreadIdsForUser", error.message);
@@ -1204,16 +1321,6 @@ export async function fetchInboxMessagesForThreadDisplay(
   }
   return [];
 }
-
-type InboxMessageThreadSynthRow = {
-  thread_id?: string;
-  direction?: string;
-  from_email?: string;
-  to_email?: string;
-  subject?: string;
-  body_text?: string;
-  received_at?: string;
-};
 
 /**
  * Prompt 151 — Last resort when `inbox_threads` rows are not visible to the user client (RLS / `user_id` skew) but
@@ -1566,6 +1673,13 @@ export async function fetchInboxThreadsForUserDisplay(
     }));
   }
 
+  threads.sort((a, b) => {
+    const ua = a.has_unread ? 1 : 0;
+    const ub = b.has_unread ? 1 : 0;
+    if (ua !== ub) return ub - ua;
+    return new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime();
+  });
+
   if (hasArchiveCols) {
     const wantArchived = opts?.includeArchived === true;
     threads = threads.filter((t) => (wantArchived ? threadIsArchived(t) : !threadIsArchived(t)));
@@ -1701,25 +1815,6 @@ export function unwrapResendEmailReceivedPayload(body: unknown): Record<string, 
   return o;
 }
 
-/** Resend `email.received` — id used with Receiving API (webhook body does not include HTML/text). */
-export function extractResendInboundEmailIdFromWebhook(body: unknown): string | null {
-  if (!body || typeof body !== "object") return null;
-  const pick = (v: unknown): string | null =>
-    typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
-  const o = body as Record<string, unknown>;
-  if (o.data && typeof o.data === "object") {
-    const d = o.data as Record<string, unknown>;
-    const id = pick(d.email_id) ?? pick(d.id);
-    if (id) return id;
-  }
-  if (o.record && typeof o.record === "object") {
-    const r = o.record as Record<string, unknown>;
-    const id = pick(r.email_id) ?? pick(r.id);
-    if (id) return id;
-  }
-  return pick(o.email_id) ?? pick(o.id);
-}
-
 export type ResendReceivedEmailApiPayload = {
   id?: string;
   from?: string;
@@ -1729,6 +1824,124 @@ export type ResendReceivedEmailApiPayload = {
   text?: string | null;
   message_id?: string;
 };
+
+/**
+ * Prompt 155 — Flatten Resend `email.received` so `to` / `cc` / `bcc` / `from` / `subject` resolve reliably
+ * whether metadata lives on `data`, nested `payload`, or top-level.
+ */
+export function buildMergedResendWebhookPayload(body: unknown): Record<string, unknown> {
+  const flat = unwrapResendEmailReceivedPayload(body);
+  const merged: Record<string, unknown> = { ...flat };
+  if (typeof flat.payload === "object" && flat.payload !== null) {
+    Object.assign(merged, flat.payload as Record<string, unknown>);
+  }
+  if (body && typeof body === "object") {
+    const o = body as Record<string, unknown>;
+    if (o.data && typeof o.data === "object") {
+      Object.assign(merged, o.data as Record<string, unknown>);
+    }
+  }
+  return merged;
+}
+
+function pushRecipientsFromField(raw: unknown, into: string[]): void {
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    into.push(raw.trim());
+    return;
+  }
+  if (!Array.isArray(raw)) return;
+  for (const x of raw) {
+    if (typeof x === "string") into.push(x);
+    else if (x && typeof x === "object" && "email" in x && typeof (x as { email?: string }).email === "string") {
+      into.push((x as { email: string }).email);
+    }
+  }
+}
+
+/**
+ * Prompt 155 — All mailbox addresses that might route to a user inbox (`to`, `cc`, `bcc`, Receiving API `to`).
+ */
+export function collectResendInboundRecipientAddresses(
+  body: unknown,
+  merged: Record<string, unknown>,
+  received: ResendReceivedEmailApiPayload | null,
+): string[] {
+  const acc: string[] = [];
+  if (received?.to && Array.isArray(received.to)) pushRecipientsFromField(received.to, acc);
+  pushRecipientsFromField(merged.to, acc);
+  pushRecipientsFromField(merged.cc, acc);
+  pushRecipientsFromField(merged.bcc, acc);
+  pushRecipientsFromField(merged.recipients, acc);
+  if (body && typeof body === "object") {
+    const o = body as Record<string, unknown>;
+    if (o.data && typeof o.data === "object") {
+      const d = o.data as Record<string, unknown>;
+      pushRecipientsFromField(d.to, acc);
+      pushRecipientsFromField(d.cc, acc);
+      pushRecipientsFromField(d.bcc, acc);
+    }
+    pushRecipientsFromField(o.to, acc);
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const a of acc) {
+    const t = (a || "").trim();
+    if (!t.toLowerCase().includes("@")) continue;
+    const low = t.toLowerCase();
+    if (seen.has(low)) continue;
+    seen.add(low);
+    out.push(t);
+  }
+  return out;
+}
+
+/** Resend `email.received` — id used with Receiving API (webhook body does not include HTML/text). */
+export function extractResendInboundEmailIdFromWebhook(body: unknown): string | null {
+  const pick = (v: unknown): string | null => {
+    if (typeof v === "string" && v.trim().length > 0) return v.trim();
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+    return null;
+  };
+  const uuidLike = (s: string): boolean => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+
+  const tryRecord = (o: Record<string, unknown> | null | undefined, depth: number): string | null => {
+    if (!o || depth > 6) return null;
+    const id =
+      pick(o.email_id) ??
+      pick(o.receiving_id) ??
+      pick(o.emailId) ??
+      (typeof o.id === "string" && uuidLike(o.id.trim()) ? o.id.trim() : null);
+    if (id) return id;
+    if (o.data && typeof o.data === "object") {
+      const inner = tryRecord(o.data as Record<string, unknown>, depth + 1);
+      if (inner) return inner;
+    }
+    if (o.record && typeof o.record === "object") {
+      const inner = tryRecord(o.record as Record<string, unknown>, depth + 1);
+      if (inner) return inner;
+    }
+    if (o.payload && typeof o.payload === "object") {
+      const inner = tryRecord(o.payload as Record<string, unknown>, depth + 1);
+      if (inner) return inner;
+    }
+    return null;
+  };
+
+  if (!body || typeof body !== "object") return null;
+  return tryRecord(body as Record<string, unknown>, 0);
+}
+
+/** Prompt 155 — Prefer Receiving API `from`, then merged webhook metadata, then root. */
+export function extractResendInboundFromField(
+  received: ResendReceivedEmailApiPayload | null,
+  merged: Record<string, unknown>,
+  body: unknown,
+): string {
+  if (received?.from && String(received.from).trim().length > 0) return String(received.from).trim();
+  const m = parseFromAddress(merged);
+  if (m) return m;
+  return parseFromAddress(body);
+}
 
 /**
  * Prompt 153 — Fetch full inbound message (body + headers) from Resend Receiving API.
@@ -1770,13 +1983,13 @@ export async function resolveInboxUserIdAndMatchedRecipient(
 ): Promise<{ userId: string; matchedTo: string } | null> {
   const seen = new Set<string>();
   for (const raw of toAddresses) {
-    const lower = (raw || "").trim().toLowerCase();
-    if (!lower.includes("@")) continue;
-    const local = extractLocalPartFromEmail(lower);
+    const bare = normalizeMailboxForInboxStorage(raw || "");
+    if (!bare.includes("@")) continue;
+    const local = extractLocalPartFromEmail(bare);
     if (!local || seen.has(local)) continue;
     seen.add(local);
     const userId = await findUserIdByInboxLocalPart(local);
-    if (userId) return { userId, matchedTo: lower };
+    if (userId) return { userId, matchedTo: bare };
   }
   return null;
 }
@@ -1845,44 +2058,51 @@ export async function persistInboundResendReplyToInbox(
   const campaignThreadId = await findCampaignThreadIdForProspect(sr, params.userId, prospectEmail);
 
   let threadId: string | null = null;
-  const { data: existingThread, error: threadLookupErr } = await sr
+  const nowIso = new Date().toISOString();
+
+  const { data: threadCandidates, error: threadLookupErr } = await sr
     .from("inbox_threads")
     .select("id")
     .eq("user_id", params.userId)
     .eq("prospect_email", prospectEmail)
-    .maybeSingle();
+    .order("last_message_at", { ascending: false })
+    .limit(1);
 
   if (threadLookupErr) {
     console.error("[inbound/resend] thread lookup", threadLookupErr.message);
     return { ok: false, error: threadLookupErr.message };
   }
 
-  const ex = existingThread as { id?: string } | null;
-  if (ex?.id) {
-    threadId = ex.id;
-    await sr
-      .from("inbox_threads")
-      .update({
-        subject: params.subject || "(no subject)",
-        snippet,
-        last_message_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        ...(campaignThreadId ? { campaign_thread_id: campaignThreadId } : {}),
-      })
-      .eq("id", threadId);
+  const picked = threadCandidates?.[0] as { id?: string } | undefined;
+  if (picked?.id) {
+    threadId = picked.id;
   } else {
-    const { data: outRows } = await sr
+    const { data: msgRows } = await sr
       .from("inbox_messages")
-      .select("thread_id, to_email")
+      .select("thread_id, direction, from_email, to_email, received_at")
       .eq("user_id", params.userId)
-      .eq("direction", "outbound")
+      .in("direction", ["inbound", "outbound"])
       .order("received_at", { ascending: false })
-      .limit(80);
-    for (const row of outRows ?? []) {
-      const r = row as { thread_id?: string; to_email?: string };
-      const toStored = normalizeMailboxForInboxStorage(r.to_email ?? "");
-      if (toStored === prospectEmail && r.thread_id) {
+      .limit(320);
+    for (const row of msgRows ?? []) {
+      const r = row as {
+        thread_id?: string;
+        direction?: string;
+        from_email?: string;
+        to_email?: string;
+      };
+      if (!r.thread_id) continue;
+      const toSt = normalizeMailboxForInboxStorage(r.to_email ?? "");
+      const fromSt = normalizeMailboxForInboxStorage(r.from_email ?? "");
+      const matches =
+        (r.direction === "outbound" && toSt === prospectEmail) ||
+        (r.direction === "inbound" && fromSt === prospectEmail);
+      if (matches) {
         threadId = r.thread_id;
+        console.log("[inbound/resend] matched thread by prospect activity", {
+          thread_id: threadId,
+          prospectEmail,
+        });
         break;
       }
     }
@@ -1896,7 +2116,7 @@ export async function persistInboundResendReplyToInbox(
         prospect_email: prospectEmail,
         subject: params.subject || "(no subject)",
         snippet,
-        last_message_at: new Date().toISOString(),
+        last_message_at: nowIso,
         campaign_thread_id: campaignThreadId ?? null,
       })
       .select("id")
@@ -1908,29 +2128,206 @@ export async function persistInboundResendReplyToInbox(
     threadId = String((ins as { id: string }).id);
   }
 
-  const rawEnvelope = inboundRawEnvelopeForStorage(params.webhookBody, params.receivedEmail);
-
-  const { error: msgErr } = await sr.from("inbox_messages").insert({
-    thread_id: threadId,
-    user_id: params.userId,
-    direction: "inbound",
-    from_email: prospectEmail,
-    to_email: params.toEmail.trim(),
+  const threadPatch: Record<string, unknown> = {
     subject: params.subject || "(no subject)",
-    body_text: textBody.slice(0, 50_000),
-    body_html: params.html ? params.html.slice(0, 200_000) : null,
-    provider_message_id: params.providerMessageId,
-    raw: rawEnvelope,
-    received_at: new Date().toISOString(),
-    is_read: false,
-  });
+    snippet,
+    last_message_at: nowIso,
+    updated_at: nowIso,
+  };
+  if (campaignThreadId) threadPatch.campaign_thread_id = campaignThreadId;
+  let threadBump = await sr.from("inbox_threads").update(threadPatch as never).eq("id", threadId);
+  if (threadBump.error && isOptionalInboxThreadColumnMissingError(threadBump.error.message)) {
+    threadBump = await sr
+      .from("inbox_threads")
+      .update({
+        subject: params.subject || "(no subject)",
+        snippet,
+        last_message_at: nowIso,
+        ...(campaignThreadId ? { campaign_thread_id: campaignThreadId } : {}),
+      } as never)
+      .eq("id", threadId);
+  }
+  if (threadBump.error && !isOptionalInboxThreadColumnMissingError(threadBump.error.message)) {
+    console.error("[inbound/resend] thread bump before inbound insert", threadBump.error.message);
+  }
 
-  if (msgErr) {
-    console.error("[inbound/resend] message insert", msgErr.message);
-    return { ok: false, error: msgErr.message };
+  const rawEnvelope = inboundRawEnvelopeForStorage(params.webhookBody, params.receivedEmail);
+  const receivedAt = new Date().toISOString();
+
+  const insertAttempts: Record<string, unknown>[] = [
+    {
+      thread_id: threadId,
+      user_id: params.userId,
+      direction: "inbound",
+      from_email: prospectEmail,
+      to_email: params.toEmail.trim(),
+      subject: params.subject || "(no subject)",
+      body_text: textBody.slice(0, 50_000),
+      body_html: params.html ? params.html.slice(0, 200_000) : null,
+      provider_message_id: params.providerMessageId,
+      raw: rawEnvelope,
+      received_at: receivedAt,
+      is_read: false,
+    },
+    {
+      thread_id: threadId,
+      user_id: params.userId,
+      direction: "inbound",
+      from_email: prospectEmail,
+      to_email: params.toEmail.trim(),
+      subject: params.subject || "(no subject)",
+      body_text: textBody.slice(0, 50_000),
+      body_html: params.html ? params.html.slice(0, 200_000) : null,
+      received_at: receivedAt,
+      is_read: false,
+    },
+    {
+      thread_id: threadId,
+      user_id: params.userId,
+      direction: "inbound",
+      from_email: prospectEmail,
+      to_email: params.toEmail.trim(),
+      subject: params.subject || "(no subject)",
+      body_text: textBody.slice(0, 50_000),
+      received_at: receivedAt,
+    },
+  ];
+
+  let lastMsgErr: { message?: string; code?: string } | null = null;
+  for (let i = 0; i < insertAttempts.length; i++) {
+    const { error: msgErr } = await sr.from("inbox_messages").insert(insertAttempts[i] as never);
+    if (!msgErr) {
+      lastMsgErr = null;
+      if (i > 0) {
+        console.log("[inbound/resend] message insert succeeded on retry variant", i);
+      }
+      break;
+    }
+    lastMsgErr = msgErr;
+    const msg = msgErr.message || "";
+    const retryable =
+      isOptionalInboxMessageColumnMissingError(msg) ||
+      isInboxOptionalColumnOrSchemaError(msg) ||
+      /42804|invalid input syntax|22P02/i.test(msg);
+    if (!retryable) {
+      console.error("[inbound/resend] message insert", msgErr.message, msgErr.code);
+      return { ok: false, error: msgErr.message };
+    }
+    console.warn("[inbound/resend] message insert retry", { variant: i, message: msgErr.message });
+  }
+  if (lastMsgErr) {
+    console.error("[inbound/resend] message insert exhausted retries", lastMsgErr.message);
+    return { ok: false, error: lastMsgErr.message ?? "inbox_messages insert failed" };
+  }
+
+  try {
+    revalidatePath("/inbox");
+    revalidatePath("/");
+  } catch (revalErr) {
+    console.warn("[inbound/resend] revalidatePath after inbound", revalErr);
   }
 
   return { ok: true, thread_id: threadId };
+}
+
+export type ResendInboundIngestResult =
+  | { status: "saved"; thread_id: string }
+  | { status: "skipped"; hint: string }
+  | { status: "error"; error: string };
+
+/**
+ * Prompt 155 — Full `email.received` ingest: parse id, pull body from Receiving API, match any of to/cc/bcc to
+ * `profiles.inbox_local_part`, persist inbound row on the thread for `prospect_email`.
+ */
+export async function ingestResendEmailReceivedWebhook(
+  body: unknown,
+  sr: SupabaseClient,
+): Promise<ResendInboundIngestResult> {
+  await ensureInboxSchemaReady();
+
+  const emailId = extractResendInboundEmailIdFromWebhook(body);
+  const received = emailId ? await fetchResendReceivedEmailById(emailId) : null;
+  if (emailId && received) {
+    console.log("[inbound/resend] loaded received email via API", emailId);
+  } else if (emailId && !received) {
+    console.warn("[inbound/resend] Receiving API returned no payload for", emailId);
+  } else {
+    console.warn(
+      "[inbound/resend] no email_id in webhook; top-level keys",
+      body && typeof body === "object" ? Object.keys(body as object).join(",") : "(none)",
+    );
+  }
+
+  const merged = buildMergedResendWebhookPayload(body);
+  const toList = collectResendInboundRecipientAddresses(body, merged, received);
+
+  const fromRaw = extractResendInboundFromField(received, merged, body);
+
+  let subject = "";
+  let text = "";
+  let html: string | null = null;
+  if (received) {
+    subject = received.subject != null ? String(received.subject).trim() : "";
+    html =
+      received.html != null && String(received.html).trim().length > 0 ? String(received.html) : null;
+    text = received.text != null && String(received.text).trim().length > 0 ? String(received.text) : "";
+    if (!text && html) text = approximatePlainTextFromHtml(html);
+  }
+  if (!subject || (text === "" && !html)) {
+    const parsed = parseInboundSubjectBody(Object.keys(merged).length ? merged : body);
+    if (!subject) subject = parsed.subject;
+    if (text === "" && !html) {
+      text = parsed.text;
+      html = parsed.html;
+    }
+  }
+
+  const resolved = await resolveInboxUserIdAndMatchedRecipient(toList);
+  if (!resolved) {
+    console.log(
+      "[inbound/resend] skipped: no inbox_local_part match",
+      JSON.stringify({ recipients_preview: toList.slice(0, 8) }),
+    );
+    return { status: "skipped", hint: "No matching inbox_local_part" };
+  }
+  const { userId, matchedTo } = resolved;
+
+  const prospectEmail = normalizeEmail(
+    fromRaw.includes("<")
+      ? (fromRaw.match(/<([^>]+)>/)?.[1] ?? fromRaw).trim()
+      : fromRaw.split(/\s+/).pop() ?? fromRaw,
+  );
+  if (!prospectEmail.includes("@")) {
+    console.log("[inbound/resend] skipped: invalid from", JSON.stringify({ from_preview: fromRaw.slice(0, 160) }));
+    return { status: "skipped", hint: "Invalid from" };
+  }
+
+  const providerId =
+    (received?.id && String(received.id).trim()) ||
+    (typeof merged.id === "string" && uuidLikeString(merged.id) ? merged.id : null) ||
+    (typeof merged.email_id === "string" ? merged.email_id : null) ||
+    emailId;
+
+  const persisted = await persistInboundResendReplyToInbox(sr, {
+    userId,
+    prospectEmail,
+    toEmail: normalizeMailboxForInboxStorage(matchedTo) || matchedTo,
+    subject: subject || "(no subject)",
+    text,
+    html,
+    providerMessageId: providerId ? String(providerId).trim() : null,
+    webhookBody: body,
+    receivedEmail: received,
+  });
+
+  if (!persisted.ok) {
+    return { status: "error", error: persisted.error };
+  }
+  return { status: "saved", thread_id: persisted.thread_id };
+}
+
+function uuidLikeString(s: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s.trim());
 }
 
 /**

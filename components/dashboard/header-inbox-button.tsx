@@ -12,16 +12,13 @@ import { usePathname } from "next/navigation";
 /**
  * Prompt 123 — Mail icon in dashboard header with unread badge; links to `/inbox`.
  * Prompt 136 — Pulsing / glowing mail affordance + coral-sage ring energy.
+ * Prompt 154 — Mail button shows only unread *inbound* replies (`getInboxUnreadCountAction`); draft count stays in context for `/inbox` but is not shown on this icon.
  */
 export function HeaderInboxButton() {
   const pathname = usePathname();
-  const { count, setCount, draftCount, setDraftCount } = useInboxUnread();
+  const { count, setCount, setDraftCount } = useInboxUnread();
   const inboxActive = pathname === "/inbox";
-  const labelParts: string[] = [];
-  if (count > 0) labelParts.push(`${count} unread replies`);
-  if (draftCount > 0) labelParts.push(`${draftCount} drafts`);
-  const aria =
-    labelParts.length > 0 ? `Inbox, ${labelParts.join(", ")}` : "Inbox";
+  const aria = count > 0 ? `Inbox, ${count} unread replies` : "Inbox";
 
   return (
     <>
@@ -60,17 +57,6 @@ export function HeaderInboxButton() {
               aria-hidden
             >
               {count > 99 ? "99+" : count}
-            </span>
-          ) : null}
-          {draftCount > 0 ? (
-            <span
-              className={cn(
-                "absolute -bottom-1 -right-1 flex min-h-[1.125rem] min-w-[1.125rem] animate-in zoom-in-95 items-center justify-center rounded-full bg-terracotta px-0.5 text-[9px] font-semibold tabular-nums text-[#3a322c] shadow-md ring-2 ring-[#F8F5F0] duration-300",
-                count > 0 && "-translate-x-0.5",
-              )}
-              aria-hidden
-            >
-              {draftCount > 99 ? "99+" : draftCount}
             </span>
           ) : null}
         </Link>

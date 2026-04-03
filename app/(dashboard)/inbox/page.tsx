@@ -23,6 +23,10 @@ export async function generateMetadata(): Promise<Metadata> {
  * message-derived thread synthesis when thread rows still cannot be read so sidebar count matches message count.
  * Prompt 152 — Unread badge = inbound `is_read = false`; reply autosave drafts in `inbox_messages`; conversation
  * pane scroll + newest-first + highlighted unread replies (see `lib/inbox.ts`, header mail button, `ProfessionalInbox`).
+ * Prompt 154 — Gmail-like threading: `resolveInboxThreadForReply` + inbound webhook thread match by prospect,
+ * unread-first list sort, header badge = inbound unread only (see `lib/inbox.ts`, `header-inbox-button.tsx`).
+ * Prompt 155 — Inbound `email.received` is handled by `app/api/webhooks/resend/route.ts` → `ingestResendEmailReceivedWebhook`
+ * (parse id, to/cc/bcc → `inbox_local_part`, Receiving API body, `persistInboundResendReplyToInbox`).
  * This route is `/inbox` (repo path `app/(dashboard)/inbox/page.tsx`; same as a logical `app/inbox/page.tsx`).
  */
 export default async function InboxPage() {
