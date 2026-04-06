@@ -9,8 +9,9 @@ import { dashboardOutlineActionClass } from "@/lib/dashboard-action-classes";
 import { cn } from "@/lib/utils";
 import type { CalendarConnectionStatusDTO } from "@/types";
 import { CalendarClock, Phone, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { motion } from "framer-motion";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 /**
  * Prompt 136 — Integrations shell + split art cards (calendar, voice) matching HubSpot energy.
@@ -142,11 +143,36 @@ export function CalendarIntegrationCard({ calendarStatus, onGoToWorkspace }: Cal
   );
 }
 
-type TwilioCardProps = {
-  onViewObjectionLibrary: () => void;
+type TwilioConnectionJson = {
+  ok?: boolean;
+  configured?: boolean;
+  phoneNumber?: string | null;
+  inboundPipelineReady?: boolean;
 };
 
-export function TwilioVoiceIntegrationCard({ onViewObjectionLibrary }: TwilioCardProps) {
+/**
+ * Prompt 162 — Env-backed Twilio status + link to `/twilio/objections`.
+ */
+export function TwilioVoiceIntegrationCard() {
+  const [conn, setConn] = useState<TwilioConnectionJson | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/twilio/connection")
+      .then((r) => r.json())
+      .then((j: TwilioConnectionJson) => {
+        if (!cancelled && j?.ok) setConn(j);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const configured = conn?.configured === true;
+  const pipeline = conn?.inboundPipelineReady === true;
+  const phone = typeof conn?.phoneNumber === "string" ? conn.phoneNumber : null;
+
   return (
     <Card
       className={cn(
@@ -182,18 +208,57 @@ export function TwilioVoiceIntegrationCard({ onViewObjectionLibrary }: TwilioCar
             </div>
           </div>
           <div className="flex flex-1 flex-col gap-4 px-5 py-5 sm:px-6 sm:py-6">
+            <div className="flex flex-wrap gap-2">
+              <Badge
+                variant="outline"
+                className={cn(
+                  "font-medium",
+                  configured
+                    ? "border-sage/40 bg-sage/10 text-foreground shadow-sm"
+                    : "border-border/60 text-muted-foreground",
+                )}
+              >
+                API {configured ? "· configured" : "· not configured"}
+              </Badge>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "font-medium",
+                  phone
+                    ? "border-terracotta/35 bg-terracotta/8 text-foreground shadow-sm"
+                    : "border-border/60 text-muted-foreground",
+                )}
+              >
+                {phone ? `Number ${phone}` : "Number · not set"}
+              </Badge>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "font-medium",
+                  pipeline
+                    ? "border-sage/40 bg-sage/10 text-foreground shadow-sm"
+                    : "border-border/60 text-muted-foreground",
+                )}
+              >
+                Inbound {pipeline ? "· ready" : "· needs owner UUID"}
+              </Badge>
+            </div>
             <div className="rounded-[var(--card-radius)] border border-border/45 bg-muted/20 p-4 text-sm leading-relaxed text-muted-foreground shadow-inner">
-              Configure credentials and webhooks in deployment (see{" "}
-              <span className="font-mono text-[13px] text-foreground">/api/twilio/</span>
-              ).
+              Set <span className="font-mono text-[13px] text-foreground">TWILIO_ACCOUNT_SID</span>,{" "}
+              <span className="font-mono text-[13px] text-foreground">TWILIO_AUTH_TOKEN</span>,{" "}
+              <span className="font-mono text-[13px] text-foreground">TWILIO_PHONE_NUMBER</span>, and point Voice
+              webhook to{" "}
+              <span className="font-mono text-[13px] text-foreground">/api/webhooks/twilio</span>. Add{" "}
+              <span className="font-mono text-[13px] text-foreground">TWILIO_INBOUND_OWNER_USER_ID</span> for
+              inbound voicemail → inbox.
             </div>
             <Button
               type="button"
               variant="outline"
               className={cn("h-11 w-full gap-2 rounded-[var(--card-radius)] sm:w-auto", dashboardOutlineActionClass)}
-              onClick={onViewObjectionLibrary}
+              asChild
             >
-              Open objection library
+              <Link href="/twilio/objections">Open objection library</Link>
             </Button>
           </div>
         </div>

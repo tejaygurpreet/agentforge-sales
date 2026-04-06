@@ -191,13 +191,6 @@ export function DashboardHomeClient({
     }, 80);
   }, []);
 
-  const scrollToObjectionLibrary = useCallback(() => {
-    document.getElementById("objection-library-section")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }, []);
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }}
@@ -237,7 +230,7 @@ export function DashboardHomeClient({
               calendarStatus={calendarStatus}
               onGoToWorkspace={goToWorkspaceForIntegrations}
             />
-            <TwilioVoiceIntegrationCard onViewObjectionLibrary={scrollToObjectionLibrary} />
+            <TwilioVoiceIntegrationCard />
           </div>
         </div>
       </SettingsIntegrationsSection>

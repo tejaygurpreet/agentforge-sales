@@ -313,6 +313,17 @@ export function GuidedSetupWizard({ scrollRefs }: GuidedSetupWizardProps) {
                   <Link href={linkCta.href}>{linkCta.label}</Link>
                 </Button>
               ) : null}
+              {current.key === "twilio" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-[var(--card-radius)] border border-sage/30 bg-white/70"
+                  asChild
+                >
+                  <Link href="/twilio/objections">Open objection library</Link>
+                </Button>
+              ) : null}
             </div>
           </div>
           <motion.div

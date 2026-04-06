@@ -32,7 +32,7 @@ export type TwilioCallCompletedPayload = {
   workspaceIdHint?: string | null;
 };
 
-async function downloadRecordingBuffer(
+export async function downloadRecordingBuffer(
   creds: TwilioCreds,
   recordingUrl: string,
 ): Promise<Buffer | null> {
@@ -57,7 +57,7 @@ async function downloadRecordingBuffer(
   return Buffer.from(ab);
 }
 
-async function transcribeAudioWithGroq(audio: Buffer, filename: string): Promise<string> {
+export async function transcribeAudioWithGroq(audio: Buffer, filename: string): Promise<string> {
   const env = getServerEnv();
   const key = env.GROQ_API_KEY?.trim();
   if (!key) {
@@ -85,7 +85,9 @@ async function transcribeAudioWithGroq(audio: Buffer, filename: string): Promise
   return typeof json.text === "string" ? json.text : "";
 }
 
-async function extractInsightsFromTranscript(transcript: string): Promise<z.infer<typeof extractionSchema>> {
+export async function extractInsightsFromTranscript(
+  transcript: string,
+): Promise<z.infer<typeof extractionSchema>> {
   const env = getServerEnv();
   if (!env.GROQ_API_KEY?.trim() && !env.ANTHROPIC_API_KEY?.trim()) {
     return extractionSchema.parse({

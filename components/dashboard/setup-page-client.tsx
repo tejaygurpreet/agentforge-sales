@@ -40,10 +40,6 @@ export function SetupPageClient({
     window.location.href = "/#campaign-workspace";
   }, []);
 
-  const scrollObjection = useCallback(() => {
-    window.location.href = "/#objection-library-section";
-  }, []);
-
   const brandCardRef = useRef<HTMLDivElement>(null);
   const hubSpotCardRef = useRef<HTMLDivElement>(null);
   const calendarCardRef = useRef<HTMLDivElement>(null);
@@ -147,7 +143,7 @@ export function SetupPageClient({
               <CalendarIntegrationCard calendarStatus={calendarStatus} onGoToWorkspace={goToWorkspace} />
             </div>
             <div ref={twilioCardRef} className="scroll-mt-24">
-              <TwilioVoiceIntegrationCard onViewObjectionLibrary={scrollObjection} />
+              <TwilioVoiceIntegrationCard />
             </div>
           </div>
         </div>

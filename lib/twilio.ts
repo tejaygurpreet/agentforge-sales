@@ -40,6 +40,50 @@ export function getTwilioRestClient(creds: TwilioCredentials): ReturnType<typeof
 /**
  * Public HTTPS base for Twilio webhooks (GET TwiML). Prefer NEXT_PUBLIC_APP_URL in production.
  */
+
+/** Prompt 162 — Twilio env credentials for inbound Voice + connection UI (server-only). */
+export type EnvTwilioVoiceConfig = {
+  accountSid: string;
+  authToken: string;
+  phoneNumberE164: string;
+  inboundOwnerUserId: string;
+};
+
+/**
+ * Full config for inbound recording pipeline (requires `TWILIO_INBOUND_OWNER_USER_ID` = auth user UUID).
+ */
+export function getEnvTwilioVoiceConfig(): EnvTwilioVoiceConfig | null {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+  const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+  const phoneNumberE164 = process.env.TWILIO_PHONE_NUMBER?.trim();
+  const inboundOwnerUserId = process.env.TWILIO_INBOUND_OWNER_USER_ID?.trim();
+  if (!accountSid || !authToken || !phoneNumberE164 || !inboundOwnerUserId) {
+    return null;
+  }
+  return { accountSid, authToken, phoneNumberE164, inboundOwnerUserId };
+}
+
+/** Minimum env vars present for Twilio REST + Voice webhooks (UI status). */
+export function isEnvTwilioConfigured(): boolean {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+  const authToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+  const phone = process.env.TWILIO_PHONE_NUMBER?.trim();
+  return Boolean(accountSid && authToken && phone);
+}
+
+export function twilioInboundVoiceWebhookUrl(): string {
+  return `${getTwilioWebhookBaseUrl().replace(/\/$/, "")}/api/webhooks/twilio`;
+}
+
+export function validateTwilioSignature(
+  authToken: string,
+  signature: string,
+  url: string,
+  params: Record<string, string>,
+): boolean {
+  return twilioSdk.validateRequest(authToken, signature, url, params);
+}
+
 export function getTwilioWebhookBaseUrl(): string {
   const env = getClientEnv();
   const u = env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
