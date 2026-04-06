@@ -1,10 +1,8 @@
 "use client";
 
-import { InboxHeroArt } from "@/components/illustrations/inbox-hero-art";
 import { ProfessionalInbox } from "@/components/dashboard/professional-inbox";
 import { useInboxUnread } from "@/components/dashboard/inbox-unread-context";
 import type { InboxDraftRow, InboxThreadRow } from "@/lib/inbox";
-import { motion } from "framer-motion";
 import { useSearchParams } from "next/navigation";
 
 type Props = {
@@ -13,9 +11,9 @@ type Props = {
 };
 
 /**
- * Prompt 137 — Onyx Copper inbox masthead; `?compose=1` opens compose.
- * Prompt 141 — `useInboxUnread` is satisfied by `InboxUnreadProvider` in `(dashboard)/layout.tsx`
- * (wraps `DashboardShell`, header + main), not a nested provider on this route alone.
+ * Prompt 137 — `?compose=1` opens compose.
+ * Prompt 141 — `useInboxUnread` is satisfied by `InboxUnreadProvider` in `(dashboard)/layout.tsx`.
+ * Prompt 156 — Masthead / hero banner removed; floating envelopes live on the server `page.tsx` layer.
  */
 export function InboxPageClient({ initialThreads, initialDrafts }: Props) {
   const { setCount } = useInboxUnread();
@@ -23,15 +21,7 @@ export function InboxPageClient({ initialThreads, initialDrafts }: Props) {
   const initialComposeOpen = searchParams.get("compose") === "1";
 
   return (
-    <div className="w-full space-y-6">
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }}
-        className="warm-card-veil overflow-hidden rounded-[var(--card-radius)] border border-[#111827]/10 shadow-[var(--card-shadow-spec)] ring-1 ring-[#B45309]/12"
-      >
-        <InboxHeroArt className="h-auto w-full" />
-      </motion.div>
+    <div className="relative z-10 w-full">
       <ProfessionalInbox
         initialThreads={initialThreads}
         initialDrafts={initialDrafts}

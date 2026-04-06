@@ -27,8 +27,47 @@ export async function generateMetadata(): Promise<Metadata> {
  * unread-first list sort, header badge = inbound unread only (see `lib/inbox.ts`, `header-inbox-button.tsx`).
  * Prompt 155 — Inbound `email.received` is handled by `app/api/webhooks/resend/route.ts` → `ingestResendEmailReceivedWebhook`
  * (parse id, to/cc/bcc → `inbox_local_part`, Receiving API body, `persistInboundResendReplyToInbox`).
+ * Prompt 156 — Hero banner removed; subtle floating envelope field (`InboxFloatingEnvelopeField` + `globals.css`).
  * This route is `/inbox` (repo path `app/(dashboard)/inbox/page.tsx`; same as a logical `app/inbox/page.tsx`).
  */
+
+/** Lucide-style mail outline — used only as decorative background (Prompt 156). */
+function InboxFloatingEnvelopeField() {
+  const icon = (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-full w-full"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" strokeWidth="1.25" />
+      <path
+        d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+  return (
+    <div
+      className="inbox-float-field pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-[var(--card-radius)]"
+      aria-hidden
+    >
+      <div className="inbox-float-env inbox-float-env--1">{icon}</div>
+      <div className="inbox-float-env inbox-float-env--2">{icon}</div>
+      <div className="inbox-float-env inbox-float-env--3">{icon}</div>
+      <div className="inbox-float-env inbox-float-env--4">{icon}</div>
+      <div className="inbox-float-env inbox-float-env--5">{icon}</div>
+      <div className="inbox-float-env inbox-float-env--6">{icon}</div>
+      <div className="inbox-float-env inbox-float-env--7">{icon}</div>
+      <div className="inbox-float-env inbox-float-env--8">{icon}</div>
+    </div>
+  );
+}
+
 export default async function InboxPage() {
   const supabase = await createServerSupabaseClient();
   const {
@@ -57,12 +96,15 @@ export default async function InboxPage() {
   );
 
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-[50vh] animate-pulse rounded-[var(--card-radius)] border border-[#111827]/08 bg-[#F9F6F0]/95 shadow-inner" />
-      }
-    >
-      <InboxPageClient initialThreads={initialThreads} initialDrafts={initialDrafts} />
-    </Suspense>
+    <div className="relative isolate w-full min-w-0">
+      <InboxFloatingEnvelopeField />
+      <Suspense
+        fallback={
+          <div className="relative z-10 min-h-[50vh] animate-pulse rounded-[var(--card-radius)] border border-[#111827]/08 bg-[#F9F6F0]/95 shadow-inner" />
+        }
+      >
+        <InboxPageClient initialThreads={initialThreads} initialDrafts={initialDrafts} />
+      </Suspense>
+    </div>
   );
 }

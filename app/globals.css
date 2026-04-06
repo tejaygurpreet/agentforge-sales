@@ -227,4 +227,113 @@
   .ux-loading-panel {
     @apply flex max-w-md flex-col items-center gap-4 rounded-[var(--card-radius)] border border-border/55 bg-gradient-to-b from-card via-card to-muted/25 px-8 py-7 text-center shadow-[var(--card-shadow-spec)] backdrop-blur-sm motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-300;
   }
+
+  /**
+   * Prompt 156 — Inbox-only decorative field: soft cream/gray envelopes, slow drift, low opacity.
+   */
+  .inbox-float-field {
+    background:
+      radial-gradient(ellipse 85% 70% at 50% 45%, hsl(40 36% 97% / 0.65) 0%, transparent 62%),
+      radial-gradient(ellipse 55% 45% at 80% 20%, hsl(28 38% 92% / 0.35) 0%, transparent 55%);
+  }
+
+  .inbox-float-env {
+    position: absolute;
+    color: hsl(221 12% 38% / 0.11);
+    width: clamp(2.35rem, 4.2vw, 3.65rem);
+    height: clamp(2.35rem, 4.2vw, 3.65rem);
+    will-change: transform;
+  }
+
+  .inbox-float-env--1 {
+    top: 7%;
+    left: 5%;
+    animation: inbox-env-drift-a 34s ease-in-out infinite;
+  }
+  .inbox-float-env--2 {
+    top: 18%;
+    right: 10%;
+    animation: inbox-env-drift-b 41s ease-in-out infinite;
+    animation-delay: -6s;
+  }
+  .inbox-float-env--3 {
+    top: 42%;
+    left: 3%;
+    animation: inbox-env-drift-c 37s ease-in-out infinite;
+    animation-delay: -12s;
+  }
+  .inbox-float-env--4 {
+    top: 52%;
+    right: 6%;
+    animation: inbox-env-drift-a 44s ease-in-out infinite;
+    animation-delay: -3s;
+  }
+  .inbox-float-env--5 {
+    bottom: 22%;
+    left: 14%;
+    animation: inbox-env-drift-b 39s ease-in-out infinite;
+    animation-delay: -18s;
+  }
+  .inbox-float-env--6 {
+    bottom: 12%;
+    right: 18%;
+    animation: inbox-env-drift-c 46s ease-in-out infinite;
+    animation-delay: -9s;
+  }
+  .inbox-float-env--7 {
+    top: 30%;
+    left: 48%;
+    animation: inbox-env-drift-a 36s ease-in-out infinite;
+    animation-delay: -22s;
+  }
+  .inbox-float-env--8 {
+    bottom: 38%;
+    right: 38%;
+    animation: inbox-env-drift-b 43s ease-in-out infinite;
+    animation-delay: -14s;
+  }
+
+  @keyframes inbox-env-drift-a {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0) rotate(-6deg) scale(1);
+    }
+    33% {
+      transform: translate3d(10px, -14px, 0) rotate(3deg) scale(1.03);
+    }
+    66% {
+      transform: translate3d(-8px, 8px, 0) rotate(-2deg) scale(0.98);
+    }
+  }
+
+  @keyframes inbox-env-drift-b {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0) rotate(5deg) scale(1);
+    }
+    40% {
+      transform: translate3d(-12px, 10px, 0) rotate(-4deg) scale(1.04);
+    }
+    75% {
+      transform: translate3d(14px, -6px, 0) rotate(2deg) scale(0.97);
+    }
+  }
+
+  @keyframes inbox-env-drift-c {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0) rotate(-3deg) scale(1);
+    }
+    50% {
+      transform: translate3d(-6px, -16px, 0) rotate(5deg) scale(1.02);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .inbox-float-env {
+      animation: none !important;
+      opacity: 0.07;
+      color: hsl(221 12% 38% / 0.14);
+    }
+  }
 }
