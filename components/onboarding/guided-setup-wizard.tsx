@@ -116,7 +116,10 @@ const STEPS = [
     body: "This guided path walks you through brand, CRM, calendar, voice, and telephony — skip anything you don’t need.",
     icon: Sparkles,
     art: IllustrationLaunch,
-    cta: null as { label: string; href: string } | null,
+    cta: null as
+      | null
+      | { label: string; href: string }
+      | { label: string; scrollToId: string },
   },
   {
     key: "brand",
@@ -125,7 +128,7 @@ const STEPS = [
     body: "Upload your logo and set primary colors so PDFs and the header feel like your company.",
     icon: Palette,
     art: IllustrationBrand,
-    cta: { label: "Scroll to brand card", href: "#workspace-brand-integrations" },
+    cta: { label: "Scroll to brand card", scrollToId: "workspace-brand-integrations" },
   },
   {
     key: "hubspot",
@@ -193,6 +196,8 @@ export function GuidedSetupWizard() {
   const Icon = current.icon;
   const Art = current.art;
   const pct = Math.round(((step + 1) / total) * 100);
+  const scrollCta = current.cta && "scrollToId" in current.cta ? current.cta : null;
+  const linkCta = current.cta && "href" in current.cta ? current.cta : null;
 
   return (
     <div className="space-y-8">
@@ -274,7 +279,21 @@ export function GuidedSetupWizard() {
                 {step >= total - 1 ? "Done" : "Next"}
                 <ChevronRight className="ml-1 h-4 w-4" aria-hidden />
               </Button>
-              {current.cta ? (
+              {scrollCta ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="rounded-[var(--card-radius)] border border-terracotta/25 bg-white/80"
+                  onClick={() => {
+                    document
+                      .getElementById(scrollCta.scrollToId)
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }}
+                >
+                  {scrollCta.label}
+                </Button>
+              ) : linkCta ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -282,7 +301,7 @@ export function GuidedSetupWizard() {
                   className="rounded-[var(--card-radius)] border border-terracotta/25 bg-white/80"
                   asChild
                 >
-                  <Link href={current.cta.href}>{current.cta.label}</Link>
+                  <Link href={linkCta.href}>{linkCta.label}</Link>
                 </Button>
               ) : null}
             </div>
