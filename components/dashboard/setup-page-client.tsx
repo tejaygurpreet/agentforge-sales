@@ -16,7 +16,7 @@ import type { WorkspaceMemberDTO, WorkspaceMemberRole } from "@/types";
 import { motion } from "framer-motion";
 import { Cable, Sparkles } from "lucide-react";
 import Link from "next/link";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 
 type Props = {
   hubspotConnected: boolean;
@@ -43,6 +43,8 @@ export function SetupPageClient({
   const scrollObjection = useCallback(() => {
     window.location.href = "/#objection-library-section";
   }, []);
+
+  const brandCardRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="space-y-12 sm:space-y-14">
@@ -112,7 +114,7 @@ export function SetupPageClient({
         transition={{ duration: 0.45, delay: 0.08 }}
         className="warm-card-veil rounded-[var(--card-radius)] border border-border/40 px-4 py-6 shadow-[var(--card-shadow-spec)] ring-1 ring-sage/10 sm:px-8 sm:py-8"
       >
-        <GuidedSetupWizard />
+        <GuidedSetupWizard brandCardRef={brandCardRef} />
       </motion.section>
 
       <SettingsIntegrationsSection>
@@ -126,7 +128,7 @@ export function SetupPageClient({
           </div>
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="lg:col-span-2">
-              <WhiteLabelSettingsCard initial={whiteLabel} />
+              <WhiteLabelSettingsCard ref={brandCardRef} initial={whiteLabel} />
             </div>
             <div className="lg:col-span-2">
               <HubSpotConnectSection connected={hubspotConnected} />

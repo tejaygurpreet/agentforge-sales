@@ -17,7 +17,11 @@ import {
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type RefObject } from "react";
+
+type GuidedSetupWizardProps = {
+  brandCardRef: RefObject<HTMLDivElement | null>;
+};
 
 function IllustrationBrand() {
   return (
@@ -119,7 +123,7 @@ const STEPS = [
     cta: null as
       | null
       | { label: string; href: string }
-      | { label: string; scrollToId: string },
+      | { label: string; scrollBrandCard: true },
   },
   {
     key: "brand",
@@ -128,7 +132,7 @@ const STEPS = [
     body: "Upload your logo and set primary colors so PDFs and the header feel like your company.",
     icon: Palette,
     art: IllustrationBrand,
-    cta: { label: "Scroll to brand card", scrollToId: "workspace-brand-integrations" },
+    cta: { label: "Scroll to brand card", scrollBrandCard: true },
   },
   {
     key: "hubspot",
@@ -189,14 +193,14 @@ const STEPS = [
 /**
  * Prompt 137 — Guided setup wizard: premium progress rail (teal → amber → gold).
  */
-export function GuidedSetupWizard() {
+export function GuidedSetupWizard({ brandCardRef }: GuidedSetupWizardProps) {
   const [step, setStep] = useState(0);
   const total = STEPS.length;
   const current = STEPS[step];
   const Icon = current.icon;
   const Art = current.art;
   const pct = Math.round(((step + 1) / total) * 100);
-  const scrollCta = current.cta && "scrollToId" in current.cta ? current.cta : null;
+  const brandScrollCta = current.cta && "scrollBrandCard" in current.cta ? current.cta : null;
   const linkCta = current.cta && "href" in current.cta ? current.cta : null;
 
   return (
@@ -279,19 +283,17 @@ export function GuidedSetupWizard() {
                 {step >= total - 1 ? "Done" : "Next"}
                 <ChevronRight className="ml-1 h-4 w-4" aria-hidden />
               </Button>
-              {scrollCta ? (
+              {brandScrollCta ? (
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
                   className="rounded-[var(--card-radius)] border border-terracotta/25 bg-white/80"
                   onClick={() => {
-                    document
-                      .getElementById(scrollCta.scrollToId)
-                      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    brandCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
                   }}
                 >
-                  {scrollCta.label}
+                  {brandScrollCta.label}
                 </Button>
               ) : linkCta ? (
                 <Button

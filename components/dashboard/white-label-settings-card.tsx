@@ -18,14 +18,17 @@ import type { WhiteLabelClientSettingsDTO } from "@/types";
 import { ImagePlus, Loader2, Palette } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useState, useTransition } from "react";
+import { forwardRef, useCallback, useState, useTransition } from "react";
 import { toast } from "@/hooks/use-toast";
 
 type Props = {
   initial: WhiteLabelClientSettingsDTO;
 };
 
-export function WhiteLabelSettingsCard({ initial }: Props) {
+export const WhiteLabelSettingsCard = forwardRef<HTMLDivElement, Props>(function WhiteLabelSettingsCard(
+  { initial },
+  ref,
+) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [appName, setAppName] = useState(initial.appName);
@@ -94,8 +97,9 @@ export function WhiteLabelSettingsCard({ initial }: Props) {
 
   return (
     <Card
+      ref={ref}
       className={cn(
-        "h-full overflow-hidden rounded-2xl border-border/55 bg-card shadow-lift ring-1 ring-border/25",
+        "h-full scroll-mt-24 overflow-hidden rounded-2xl border-border/55 bg-card shadow-lift ring-1 ring-border/25",
         "transition-all duration-300 hover:-translate-y-0.5 hover:shadow-soft",
       )}
     >
@@ -264,4 +268,4 @@ export function WhiteLabelSettingsCard({ initial }: Props) {
       </CardContent>
     </Card>
   );
-}
+});
