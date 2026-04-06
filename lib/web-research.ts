@@ -22,6 +22,43 @@ function emailDomain(email: string): string | null {
   return m ? m[1].toLowerCase() : null;
 }
 
+const PERSONAL_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "yahoo.co.uk",
+  "hotmail.com",
+  "outlook.com",
+  "live.com",
+  "msn.com",
+  "icloud.com",
+  "me.com",
+  "proton.me",
+  "protonmail.com",
+  "aol.com",
+  "pm.me",
+]);
+
+/**
+ * Prompt 157 — Prefer corporate email domain; otherwise guess a domain from company name so Browserless
+ * and direct fetch can still run when the lead uses Gmail etc.
+ */
+export function resolveResearchDomain(lead: Lead): string | null {
+  const fromEmail = emailDomain(lead.email);
+  if (fromEmail && !PERSONAL_EMAIL_DOMAINS.has(fromEmail)) {
+    return fromEmail;
+  }
+  const company = lead.company.trim();
+  if (company.length < 2) return null;
+  const slug = company
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "")
+    .replace(/^(the|inc|llc|ltd|corp|corporation|company|co)$/g, "");
+  if (slug.length < 2) return null;
+  return `${slug}.com`;
+}
+
 function stripHtmlToText(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -243,7 +280,7 @@ export async function gatherWebResearchDigest(lead: Lead): Promise<WebResearchDi
   const env = getServerEnv();
   const company = lead.company.trim();
   const first = lead.name.split(/\s+/)[0] ?? "";
-  const domain = emailDomain(lead.email);
+  const domain = resolveResearchDomain(lead);
 
   const sources: string[] = [];
   const sections: { title: string; body: string }[] = [];
@@ -251,7 +288,8 @@ export async function gatherWebResearchDigest(lead: Lead): Promise<WebResearchDi
 
   const pushSection = (title: string, body: string, src: string[]) => {
     const t = body.trim();
-    if (t.length < 40) return;
+    /** Prompt 157 — allow shorter Tavily snippets so preview still populates when answers are brief. */
+    if (t.length < 20) return;
     sections.push({ title, body: t });
     sources.push(...src);
   };

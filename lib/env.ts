@@ -28,6 +28,8 @@ const serverSchema = z.object({
   BROWSERLESS_BASE_URL: optionalNonEmpty,
   /** Browserless token (query param). */
   BROWSERLESS_TOKEN: optionalNonEmpty,
+  /** Prompt 157 — alias used by some dashboards; merged into BROWSERLESS_TOKEN at parse time. */
+  BROWSERLESS_API_KEY: optionalNonEmpty,
   /** Prompt 84 — Web Push (server); pair with NEXT_PUBLIC_VAPID_PUBLIC_KEY. */
   VAPID_PUBLIC_KEY: optionalNonEmpty,
   VAPID_PRIVATE_KEY: optionalNonEmpty,
@@ -46,7 +48,18 @@ const clientSchema = z.object({
 export type ServerEnv = z.infer<typeof serverSchema>;
 export type ClientEnv = z.infer<typeof clientSchema>;
 
+const DEFAULT_BROWSERLESS_BASE = "https://production-sfo.browserless.io";
+
 function parseServerEnv(): ServerEnv {
+  const browserlessToken =
+    process.env.BROWSERLESS_TOKEN?.trim() ||
+    process.env.BROWSERLESS_API_KEY?.trim() ||
+    undefined;
+  const browserlessBaseRaw = process.env.BROWSERLESS_BASE_URL?.trim();
+  const browserlessBase =
+    browserlessBaseRaw ||
+    (browserlessToken ? DEFAULT_BROWSERLESS_BASE : undefined);
+
   return serverSchema.parse({
     GROQ_API_KEY: process.env.GROQ_API_KEY,
     GROQ_MODEL: process.env.GROQ_MODEL,
@@ -57,8 +70,9 @@ function parseServerEnv(): ServerEnv {
     WEBHOOK_SECRET: process.env.WEBHOOK_SECRET,
     TAVILY_API_KEY: process.env.TAVILY_API_KEY,
     SERPER_API_KEY: process.env.SERPER_API_KEY,
-    BROWSERLESS_BASE_URL: process.env.BROWSERLESS_BASE_URL,
-    BROWSERLESS_TOKEN: process.env.BROWSERLESS_TOKEN,
+    BROWSERLESS_BASE_URL: browserlessBase,
+    BROWSERLESS_TOKEN: browserlessToken,
+    BROWSERLESS_API_KEY: process.env.BROWSERLESS_API_KEY,
     VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
     VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
     VAPID_SUBJECT: process.env.VAPID_SUBJECT,
@@ -131,7 +145,7 @@ export function getDashboardEnvWarnings(): string[] {
     !e.BROWSERLESS_TOKEN?.trim()
   ) {
     out.push(
-      "Optional: TAVILY_API_KEY, SERPER_API_KEY, or Browserless (BROWSERLESS_BASE_URL + BROWSERLESS_TOKEN) for live web research — see .env.example.",
+      "Optional: TAVILY_API_KEY, SERPER_API_KEY, or Browserless (BROWSERLESS_API_KEY or BROWSERLESS_TOKEN; optional BROWSERLESS_BASE_URL) for live web research — see .env.example.",
     );
   }
   const pubClient = getClientEnv().NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim();

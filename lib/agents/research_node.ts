@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { Lead, LeadEnrichmentPayload } from "@/agents/types";
+import { getServerEnv } from "@/lib/env";
 import type { WebResearchDigest } from "@/lib/web-research";
 import { gatherWebResearchDigest } from "@/lib/web-research";
 
@@ -56,17 +57,31 @@ function takeSection(
 /**
  * Maps live web digest sections into a stable JSON shape for UI + `enriched_data` storage.
  */
+function intelKeysConfigured(): boolean {
+  const e = getServerEnv();
+  return Boolean(
+    e.TAVILY_API_KEY?.trim() ||
+      e.SERPER_API_KEY?.trim() ||
+      (e.BROWSERLESS_TOKEN?.trim() && e.BROWSERLESS_BASE_URL?.trim()),
+  );
+}
+
 export function structureEnrichmentFromWebDigest(
   web: WebResearchDigest,
   lead: Lead,
 ): LeadEnrichmentPayload {
   const enriched_at = new Date().toISOString();
   if (!web.digest.trim()) {
+    const hasKeys = intelKeysConfigured();
+    const company = lead.company.trim() || "this company";
+    const company_snapshot = hasKeys
+      ? `No structured intel could be assembled for ${company} from live sources yet. Use a work email (company domain) when possible, confirm the company name, and retry — Tavily/Browserless returned no usable text for this lead. The campaign can still run with the research agent.`
+      : `No third-party intel returned for ${company}. Add TAVILY_API_KEY and/or Browserless (BROWSERLESS_API_KEY or BROWSERLESS_TOKEN; optional BROWSERLESS_BASE_URL) for live company, funding, and hiring signals — the campaign will still run using the research agent.`;
     return {
       enriched_at,
       provider: web.provider,
       source_urls: web.sources.slice(0, 24),
-      company_snapshot: `No third-party intel returned for ${lead.company.trim()}. Add TAVILY_API_KEY (and optionally Browserless) for live company, funding, and hiring signals — the campaign will still run using the research agent.`,
+      company_snapshot,
       funding_news: "",
       hiring_signals: "",
       tech_stack: "",

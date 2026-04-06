@@ -677,6 +677,24 @@ function outreachEmailHtml(o: Record<string, unknown>): string {
   return "";
 }
 
+function formatEnrichmentProviderLabel(provider: string): string {
+  switch (provider) {
+    case "tavily":
+      return "Tavily";
+    case "serper":
+      return "Serper";
+    case "browserless_fetch":
+      return "Browserless";
+    case "direct_fetch":
+      return "Direct fetch";
+    case "none":
+      return "—";
+    default:
+      return provider;
+  }
+}
+
+/** Prompt 157 — Lead intel preview: structured fields from `previewLeadEnrichmentAction` / Tavily + Browserless. */
 function EnrichmentPreviewBody({ data }: { data: LeadEnrichmentPayload }) {
   const block = (label: string, text: string) =>
     text.trim() ? (
@@ -690,11 +708,18 @@ function EnrichmentPreviewBody({ data }: { data: LeadEnrichmentPayload }) {
         </p>
       </details>
     ) : null;
+  const providerLabel = formatEnrichmentProviderLabel(data.provider);
   return (
     <div className="space-y-2">
       <p className="text-[11px] text-muted-foreground">
-        Source: <span className="font-medium text-foreground">{data.provider}</span> ·{" "}
-        {data.source_urls.length} reference URLs
+        Live research:{" "}
+        <span className="font-medium text-foreground">{providerLabel}</span>
+        {data.source_urls.length > 0 ? (
+          <>
+            {" "}
+            · {data.source_urls.length} reference URL{data.source_urls.length === 1 ? "" : "s"}
+          </>
+        ) : null}
       </p>
       {block("Company snapshot", data.company_snapshot)}
       {block("Funding & news", data.funding_news)}
@@ -1320,46 +1345,9 @@ export function CampaignWorkspace({
           isPending && "pointer-events-none opacity-55",
         )}
       >
-        <CardHeader className="space-y-3 border-b border-border/40 bg-gradient-to-r from-muted/35 via-transparent to-transparent pb-5 dark:from-muted/15">
-          <div>
-            <CardTitle className="text-xl tracking-tight">New campaign</CardTitle>
-            <CardDescription className="mt-1.5 text-sm leading-relaxed">
-              Add a lead, pick a voice, then start — one run walks research → outreach → qualification →
-              nurture. Each thread id looks like{" "}
-              <code className="rounded-md bg-muted/80 px-1.5 py-0.5 text-xs">
-                {"`${userId}_${Date.now()}`"}
-              </code>
-              .
-            </CardDescription>
-          </div>
-          <div
-            className="rounded-xl border-2 border-accent/35 bg-gradient-to-br from-accent/[0.12] via-accent/[0.06] to-transparent px-4 py-4 shadow-md ring-2 ring-accent/10 dark:border-accent/35 dark:from-accent/[0.14] dark:via-accent/[0.08] dark:ring-accent/50/15"
-            role="region"
-            aria-label="Selected SDR voice for this campaign"
-          >
-            <div className="flex gap-3">
-              <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-accent/30 bg-background/90 shadow-sm dark:border-accent/25">
-                <Mic className="h-5 w-5 text-accent-foreground dark:text-accent-foreground/80" aria-hidden />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent-foreground/90 dark:text-accent-foreground/90">
-                  Active campaign voice — all agents
-                </p>
-                <p className="mt-1.5 text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-                  {activeVoiceLabel}
-                </p>
-                <p className="mt-1 text-base font-medium leading-relaxed text-muted-foreground">
-                  {activeVoiceShort}
-                </p>
-                <p className="mt-2.5 text-xs leading-relaxed text-foreground/90">
-                  Injected ahead of <strong>research, outreach, qualification,</strong> and{" "}
-                  <strong>nurture</strong> system prompts. <span className="font-medium">Presets</span> are
-                  tuned contrasts (warm vs challenger vs data); <span className="font-medium">custom voices</span>{" "}
-                  use your saved tone instructions and examples everywhere instead.
-                </p>
-              </div>
-            </div>
-          </div>
+        <CardHeader className="border-b border-border/40 bg-gradient-to-r from-muted/35 via-transparent to-transparent pb-4 dark:from-muted/15">
+          {/* Prompt 158 — top intro + voice banner removed; lead form unchanged below. */}
+          <CardTitle className="text-xl tracking-tight">New campaign</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6 pt-2">
           <Form {...form}>
@@ -1684,8 +1672,9 @@ export function CampaignWorkspace({
                   </Button>
                 </div>
                 <p className="text-xs leading-relaxed text-muted-foreground">
-                  Preview company context, funding, hiring, tech, and intent signals (Tavily / Browserless)
-                  before you start. The same enrichment runs automatically when you click Start campaign.
+                  Fetches live company context, funding, hiring, tech, and intent signals via Tavily and/or
+                  Browserless (when configured on the server). The same enrichment runs when you start the
+                  campaign.
                 </p>
                 {enrichmentError ? (
                   <p className="ux-inline-error" role="alert">
