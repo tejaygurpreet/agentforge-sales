@@ -19,8 +19,12 @@ import {
 import Link from "next/link";
 import { useState, type RefObject } from "react";
 
+export type GuidedSetupScrollTarget = "brand" | "hubspot" | "calendar" | "twilio";
+
+export type GuidedSetupScrollRefs = Record<GuidedSetupScrollTarget, RefObject<HTMLDivElement | null>>;
+
 type GuidedSetupWizardProps = {
-  brandCardRef: RefObject<HTMLDivElement | null>;
+  scrollRefs: GuidedSetupScrollRefs;
 };
 
 function IllustrationBrand() {
@@ -123,7 +127,7 @@ const STEPS = [
     cta: null as
       | null
       | { label: string; href: string }
-      | { label: string; scrollBrandCard: true },
+      | { label: string; scrollTo: GuidedSetupScrollTarget },
   },
   {
     key: "brand",
@@ -132,7 +136,7 @@ const STEPS = [
     body: "Upload your logo and set primary colors so PDFs and the header feel like your company.",
     icon: Palette,
     art: IllustrationBrand,
-    cta: { label: "Scroll to brand card", scrollBrandCard: true },
+    cta: { label: "Scroll to brand card", scrollTo: "brand" },
   },
   {
     key: "hubspot",
@@ -141,7 +145,7 @@ const STEPS = [
     body: "Private App token — nothing leaves your workspace until you export or sync intentionally.",
     icon: Link2,
     art: IllustrationHubSpot,
-    cta: { label: "HubSpot section", href: "#workspace-brand-integrations" },
+    cta: { label: "HubSpot section", scrollTo: "hubspot" },
   },
   {
     key: "calendar",
@@ -150,7 +154,7 @@ const STEPS = [
     body: "OAuth for meeting proposals and smart scheduling — one click per provider.",
     icon: Calendar,
     art: IllustrationCalendar,
-    cta: { label: "Calendar card", href: "#workspace-brand-integrations" },
+    cta: { label: "Calendar card", scrollTo: "calendar" },
   },
   {
     key: "twilio",
@@ -159,7 +163,7 @@ const STEPS = [
     body: "Connect Twilio for dialer flows and call logging — optional for email-first teams.",
     icon: Phone,
     art: IllustrationTwilio,
-    cta: { label: "Twilio card", href: "#workspace-brand-integrations" },
+    cta: { label: "Twilio card", scrollTo: "twilio" },
   },
   {
     key: "voices",
@@ -193,14 +197,14 @@ const STEPS = [
 /**
  * Prompt 137 — Guided setup wizard: premium progress rail (teal → amber → gold).
  */
-export function GuidedSetupWizard({ brandCardRef }: GuidedSetupWizardProps) {
+export function GuidedSetupWizard({ scrollRefs }: GuidedSetupWizardProps) {
   const [step, setStep] = useState(0);
   const total = STEPS.length;
   const current = STEPS[step];
   const Icon = current.icon;
   const Art = current.art;
   const pct = Math.round(((step + 1) / total) * 100);
-  const brandScrollCta = current.cta && "scrollBrandCard" in current.cta ? current.cta : null;
+  const scrollCta = current.cta && "scrollTo" in current.cta ? current.cta : null;
   const linkCta = current.cta && "href" in current.cta ? current.cta : null;
 
   return (
@@ -283,17 +287,20 @@ export function GuidedSetupWizard({ brandCardRef }: GuidedSetupWizardProps) {
                 {step >= total - 1 ? "Done" : "Next"}
                 <ChevronRight className="ml-1 h-4 w-4" aria-hidden />
               </Button>
-              {brandScrollCta ? (
+              {scrollCta ? (
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
                   className="rounded-[var(--card-radius)] border border-terracotta/25 bg-white/80"
                   onClick={() => {
-                    brandCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    scrollRefs[scrollCta.scrollTo].current?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    });
                   }}
                 >
-                  {brandScrollCta.label}
+                  {scrollCta.label}
                 </Button>
               ) : linkCta ? (
                 <Button

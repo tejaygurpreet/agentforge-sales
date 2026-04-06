@@ -45,6 +45,9 @@ export function SetupPageClient({
   }, []);
 
   const brandCardRef = useRef<HTMLDivElement>(null);
+  const hubSpotCardRef = useRef<HTMLDivElement>(null);
+  const calendarCardRef = useRef<HTMLDivElement>(null);
+  const twilioCardRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="space-y-12 sm:space-y-14">
@@ -114,7 +117,14 @@ export function SetupPageClient({
         transition={{ duration: 0.45, delay: 0.08 }}
         className="warm-card-veil rounded-[var(--card-radius)] border border-border/40 px-4 py-6 shadow-[var(--card-shadow-spec)] ring-1 ring-sage/10 sm:px-8 sm:py-8"
       >
-        <GuidedSetupWizard brandCardRef={brandCardRef} />
+        <GuidedSetupWizard
+          scrollRefs={{
+            brand: brandCardRef,
+            hubspot: hubSpotCardRef,
+            calendar: calendarCardRef,
+            twilio: twilioCardRef,
+          }}
+        />
       </motion.section>
 
       <SettingsIntegrationsSection>
@@ -130,11 +140,15 @@ export function SetupPageClient({
             <div className="lg:col-span-2">
               <WhiteLabelSettingsCard ref={brandCardRef} initial={whiteLabel} />
             </div>
-            <div className="lg:col-span-2">
+            <div ref={hubSpotCardRef} className="scroll-mt-24 lg:col-span-2">
               <HubSpotConnectSection connected={hubspotConnected} />
             </div>
-            <CalendarIntegrationCard calendarStatus={calendarStatus} onGoToWorkspace={goToWorkspace} />
-            <TwilioVoiceIntegrationCard onViewObjectionLibrary={scrollObjection} />
+            <div ref={calendarCardRef} className="scroll-mt-24">
+              <CalendarIntegrationCard calendarStatus={calendarStatus} onGoToWorkspace={goToWorkspace} />
+            </div>
+            <div ref={twilioCardRef} className="scroll-mt-24">
+              <TwilioVoiceIntegrationCard onViewObjectionLibrary={scrollObjection} />
+            </div>
           </div>
         </div>
       </SettingsIntegrationsSection>
