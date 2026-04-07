@@ -154,7 +154,7 @@ const STEPS = [
     body: "OAuth for meeting proposals and smart scheduling — one click per provider.",
     icon: Calendar,
     art: IllustrationCalendar,
-    cta: { label: "Calendar card", scrollTo: "calendar" },
+    cta: { label: "Go to workspace", href: "/coming-soon" },
   },
   {
     key: "twilio",
@@ -163,7 +163,7 @@ const STEPS = [
     body: "Connect Twilio for dialer flows and call logging — optional for email-first teams.",
     icon: Phone,
     art: IllustrationTwilio,
-    cta: { label: "Twilio card", scrollTo: "twilio" },
+    cta: { label: "Open objection library", href: "/coming-soon" },
   },
   {
     key: "voices",
@@ -311,17 +311,6 @@ export function GuidedSetupWizard({ scrollRefs }: GuidedSetupWizardProps) {
                   asChild
                 >
                   <Link href={linkCta.href}>{linkCta.label}</Link>
-                </Button>
-              ) : null}
-              {current.key === "twilio" ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="rounded-[var(--card-radius)] border border-sage/30 bg-white/70"
-                  asChild
-                >
-                  <Link href="/twilio/objections">Open objection library</Link>
                 </Button>
               ) : null}
             </div>
