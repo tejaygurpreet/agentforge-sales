@@ -181,7 +181,7 @@ const STEPS = [
     body: "Experiment with agent prompts and tools in a safe sandbox before production runs.",
     icon: Bot,
     art: IllustrationLaunch,
-    cta: { label: "Go to Agents", href: "/agents" },
+    cta: { label: "Go to Agents", href: "/#agents-section" },
   },
   {
     key: "done",

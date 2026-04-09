@@ -16,7 +16,7 @@ import type { CampaignSequenceRow, CustomVoiceRow, WhiteLabelClientSettingsDTO }
 export const dynamic = "force-dynamic";
 
 /**
- * Prompt 166 — Former home dashboard (beta command center, metrics, workspace) lives at `/campaigns`.
+ * Prompt 168 — Operational dashboard (metrics, campaigns workspace, deliverability, etc.) at `/campaigns`.
  */
 export default async function CampaignsPage() {
   const supabase = await createServerSupabaseClient();

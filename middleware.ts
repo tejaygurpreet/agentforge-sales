@@ -1,10 +1,18 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+function nextWithPathname(request: NextRequest) {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", request.nextUrl.pathname);
+  return NextResponse.next({
+    request: { headers: requestHeaders },
+  });
+}
+
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
-  let response = NextResponse.next({ request: { headers: request.headers } });
+  let response = nextWithPathname(request);
   type CookieSetOptions = Parameters<typeof response.cookies.set>[2];
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -28,7 +36,11 @@ export async function middleware(request: NextRequest) {
         cookiesToSet.forEach(({ name, value }) =>
           request.cookies.set(name, value),
         );
-        response = NextResponse.next({ request: { headers: request.headers } });
+        const requestHeaders = new Headers(request.headers);
+        requestHeaders.set("x-pathname", request.nextUrl.pathname);
+        response = NextResponse.next({
+          request: { headers: requestHeaders },
+        });
         cookiesToSet.forEach(({ name, value, options }) =>
           response.cookies.set(name, value, options),
         );
@@ -40,24 +52,22 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  if (path === "/agents" || path.startsWith("/agents/")) {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
+
   const isLogin = path === "/login";
   const isSignup = path === "/signup";
-  const isProtected =
-    path === "/" ||
-    path.startsWith("/agents") ||
-    path === "/replies" ||
-    path.startsWith("/replies/") ||
-    path === "/analytics" ||
-    path.startsWith("/analytics/");
+  const isPublic = path === "/";
 
-  if (!user && isProtected) {
-    const redirect = new URL("/login", request.url);
-    redirect.searchParams.set("next", path);
-    return NextResponse.redirect(redirect);
+  if (!user && !isPublic && !isLogin && !isSignup) {
+    const redirectUrl = new URL("/login", request.url);
+    redirectUrl.searchParams.set("next", path);
+    return NextResponse.redirect(redirectUrl);
   }
 
   if (user && (isLogin || isSignup)) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/campaigns", request.url));
   }
 
   return response;
@@ -66,13 +76,25 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     "/",
+    "/login",
+    "/signup",
+    "/campaigns",
+    "/campaigns/:path*",
+    "/setup",
+    "/setup/:path*",
     "/agents",
     "/agents/:path*",
     "/replies",
     "/replies/:path*",
     "/analytics",
     "/analytics/:path*",
-    "/login",
-    "/signup",
+    "/inbox",
+    "/inbox/:path*",
+    "/onboarding",
+    "/onboarding/:path*",
+    "/coming-soon",
+    "/coming-soon/:path*",
+    "/twilio",
+    "/twilio/:path*",
   ],
 };

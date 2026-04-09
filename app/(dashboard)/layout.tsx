@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { getInboxDraftCountAction, getInboxUnreadCountAction } from "@/app/(dashboard)/actions";
 import { DashboardMotionShell } from "@/components/dashboard/dashboard-motion-shell";
 import type { DashboardNavLink } from "@/components/dashboard/dashboard-shell";
@@ -36,11 +37,11 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-/** Prompt 126 — Nav labels unchanged; chrome + spacing live in `DashboardShell`. */
+/** Prompt 168 — Logged-out: guest shell on `/` only. Logged-in: nav; Dashboard → `/campaigns`. */
+/** Prompt 171 — No separate "Campaigns" nav item (workspace reachable from Dashboard). */
 const DASHBOARD_NAV: DashboardNavLink[] = [
-  { href: "/", label: "Dashboard" },
+  { href: "/campaigns", label: "Dashboard" },
   { href: "/setup", label: "Setup" },
-  { href: "/agents", label: "Agents" },
   { href: "/replies", label: "Replies" },
   { href: "/analytics", label: "Analytics" },
 ];
@@ -50,6 +51,9 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const headersList = await headers();
+  const pathname = headersList.get("x-pathname") ?? "";
+
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -57,7 +61,24 @@ export default async function DashboardLayout({
   } = await supabase.auth.getUser();
 
   if (error || !user) {
-    redirect("/login");
+    const isMarketingHome = pathname === "/" || pathname === "";
+    if (!isMarketingHome) {
+      redirect(`/login?next=${encodeURIComponent(pathname || "/campaigns")}`);
+    }
+
+    return (
+      <InboxUnreadProvider initialCount={0} initialDraftCount={0}>
+        <DashboardShell
+          guestMode
+          hideShellFooter
+          email=""
+          displayName="Guest"
+          navLinks={[]}
+        >
+          <DashboardMotionShell>{children}</DashboardMotionShell>
+        </DashboardShell>
+      </InboxUnreadProvider>
+    );
   }
 
   let displayName =
@@ -81,6 +102,8 @@ export default async function DashboardLayout({
     getInboxDraftCountAction(),
   ]);
 
+  const hideShellFooter = pathname === "/" || pathname === "";
+
   return (
     <InboxUnreadProvider
       initialCount={initialInboxUnreadCount}
@@ -96,6 +119,7 @@ export default async function DashboardLayout({
           secondaryColor: wl.secondaryColor,
         }}
         navLinks={DASHBOARD_NAV}
+        hideShellFooter={hideShellFooter}
       >
         <DashboardMotionShell>{children}</DashboardMotionShell>
       </DashboardShell>

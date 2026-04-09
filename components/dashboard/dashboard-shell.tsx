@@ -2,7 +2,6 @@
 
 import {
   BarChart3,
-  Bot,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -33,10 +32,9 @@ import type { CSSProperties } from "react";
 export type DashboardNavLink = { href: string; label: string };
 
 const NAV_ICONS: Record<string, LucideIcon> = {
-  "/": LayoutDashboard,
+  "/campaigns": LayoutDashboard,
   "/setup": Sparkles,
   "/onboarding": Sparkles,
-  "/agents": Bot,
   "/replies": MessageSquareReply,
   "/analytics": BarChart3,
 };
@@ -44,6 +42,8 @@ const NAV_ICONS: Record<string, LucideIcon> = {
 interface DashboardShellProps {
   email: string;
   displayName?: string;
+  guestMode?: boolean;
+  hideShellFooter?: boolean;
   whiteLabel?: {
     appName: string;
     logoUrl: string;
@@ -55,8 +55,9 @@ interface DashboardShellProps {
 }
 
 function navLinkActive(pathname: string, href: string): boolean {
-  if (href === "/") return pathname === "/";
-  return pathname === href || pathname.startsWith(`${href}/`);
+  const base = href.split("#")[0] || href;
+  if (base === "/") return pathname === "/";
+  return pathname === base || pathname.startsWith(`${base}/`);
 }
 
 /** Prompt 138 — Full desktop nav: Dashboard · Setup · Agents · Replies · Analytics with copper underline. */
@@ -157,6 +158,8 @@ function HeaderBrandTitle({
 export function DashboardShell({
   email,
   displayName,
+  guestMode = false,
+  hideShellFooter = false,
   whiteLabel,
   navLinks,
   children,
@@ -202,7 +205,7 @@ export function DashboardShell({
                 "group flex min-w-0 shrink-0 items-center gap-2.5 transition-opacity duration-200 hover:opacity-92",
                 !logoUsesWhiteLabelColor && "text-[#111827]",
               )}
-              style={logoUsesWhiteLabelColor ? { color: whiteLabel!.primaryColor } : undefined}
+              style={logoUsesWhiteLabelColor && whiteLabel ? { color: whiteLabel.primaryColor } : undefined}
             >
               {whiteLabel?.logoUrl?.trim() ? (
                 <span className="relative h-9 w-9 shrink-0 overflow-hidden rounded-[var(--card-radius)] border border-[#111827]/12 bg-card shadow-soft ring-1 ring-black/[0.04] transition-transform duration-200 ease-out group-hover:scale-[1.02]">
@@ -221,79 +224,104 @@ export function DashboardShell({
               <HeaderBrandTitle whiteLabel={whiteLabel} />
             </Link>
 
-            <DesktopMainNav links={navLinks} />
+            {!guestMode && <DesktopMainNav links={navLinks} />}
 
-            <div className="flex shrink-0 items-center gap-2 sm:gap-3 md:ml-auto">
-              <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
-                <DialogTrigger asChild>
+            <div
+              className={cn(
+                "flex shrink-0 items-center gap-2 sm:gap-3",
+                !guestMode && "md:ml-auto",
+                guestMode && "ml-auto",
+              )}
+            >
+              {guestMode ? (
+                <>
+                  <span className="max-w-[120px] truncate text-sm font-semibold tracking-tight text-[#111827]">
+                    Guest
+                  </span>
                   <Button
-                    type="button"
+                    asChild
+                    size="sm"
+                    className="h-9 shrink-0 rounded-xl bg-[#111827] px-4 text-[13px] font-semibold text-white shadow-sm hover:bg-[#1e293b]"
+                  >
+                    <Link href="/login?next=/campaigns">Login / Signup</Link>
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+                    <DialogTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-9 w-9 shrink-0 rounded-xl border-[#111827]/14 bg-white/85 shadow-sm hover:bg-white md:hidden"
+                        aria-label="Open navigation"
+                      >
+                        <Menu className="h-[18px] w-[18px] text-[#111827]" />
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-sm border-border/50 p-0 sm:max-w-md">
+                      <DialogHeader className="border-b border-border/40 bg-[#F9F6F0]/80 px-4 py-4">
+                        <DialogTitle className="text-left text-[15px] font-semibold tracking-tight text-[#111827]">
+                          Navigation
+                        </DialogTitle>
+                      </DialogHeader>
+                      <nav className="px-3 py-4" aria-label="Mobile main">
+                        <NavLinkListMobile links={navLinks} onNavigate={() => setMobileOpen(false)} />
+                      </nav>
+                    </DialogContent>
+                  </Dialog>
+
+                  <HeaderInboxButton />
+                  <span
+                    className="hidden max-w-[160px] truncate text-right text-sm font-semibold tracking-tight text-[#111827] lg:block"
+                    title={userName}
+                  >
+                    {userName}
+                  </span>
+                  <Button
                     variant="outline"
                     size="icon"
-                    className="h-9 w-9 shrink-0 rounded-xl border-[#111827]/14 bg-white/85 shadow-sm hover:bg-white md:hidden"
-                    aria-label="Open navigation"
+                    className="h-9 w-9 shrink-0 rounded-xl border-[#111827]/14 bg-white/85 shadow-sm hover:bg-white lg:hidden"
+                    onClick={handleSignOut}
+                    disabled={pending}
+                    aria-label={email ? `Sign out (${email})` : "Sign out"}
                   >
-                    <Menu className="h-[18px] w-[18px] text-[#111827]" />
+                    <LogOut className="h-[18px] w-[18px] text-[#111827]" />
                   </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-sm border-border/50 p-0 sm:max-w-md">
-                  <DialogHeader className="border-b border-border/40 bg-[#F9F6F0]/80 px-4 py-4">
-                    <DialogTitle className="text-left text-[15px] font-semibold tracking-tight text-[#111827]">
-                      Navigation
-                    </DialogTitle>
-                  </DialogHeader>
-                  <nav className="px-3 py-4" aria-label="Mobile main">
-                    <NavLinkListMobile links={navLinks} onNavigate={() => setMobileOpen(false)} />
-                  </nav>
-                </DialogContent>
-              </Dialog>
-
-              <HeaderInboxButton />
-              <span
-                className="hidden max-w-[160px] truncate text-right text-sm font-semibold tracking-tight text-[#111827] lg:block"
-                title={userName}
-              >
-                {userName}
-              </span>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-9 w-9 shrink-0 rounded-xl border-[#111827]/14 bg-white/85 shadow-sm hover:bg-white lg:hidden"
-                onClick={handleSignOut}
-                disabled={pending}
-                aria-label={email ? `Sign out (${email})` : "Sign out"}
-              >
-                <LogOut className="h-[18px] w-[18px] text-[#111827]" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="hidden h-9 shrink-0 rounded-xl border-[#111827]/14 bg-white/85 px-3 text-[13px] font-semibold shadow-sm hover:bg-white lg:inline-flex"
-                onClick={handleSignOut}
-                disabled={pending}
-                aria-label={email ? `Sign out (${email})` : "Sign out"}
-              >
-                <LogOut className="mr-1.5 h-3.5 w-3.5" />
-                Sign out
-              </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="hidden h-9 shrink-0 rounded-xl border-[#111827]/14 bg-white/85 px-3 text-[13px] font-semibold shadow-sm hover:bg-white lg:inline-flex"
+                    onClick={handleSignOut}
+                    disabled={pending}
+                    aria-label={email ? `Sign out (${email})` : "Sign out"}
+                  >
+                    <LogOut className="mr-1.5 h-3.5 w-3.5" />
+                    Sign out
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </header>
         <main className="mx-auto w-full max-w-7xl flex-1 bg-transparent px-5 py-9 sm:px-8 sm:py-10">
           <ReplyIntelProvider>{children}</ReplyIntelProvider>
         </main>
-        <footer
-          className="mt-auto border-t border-border/35 bg-gradient-to-t from-muted/25 via-transparent to-transparent [border-top-color:color-mix(in_srgb,var(--brand-primary,transparent)_5%,hsl(var(--border)))]"
-          role="contentinfo"
-        >
-          <div className="mx-auto max-w-7xl px-5 py-6 sm:px-8">
-            <p className="text-center text-[11px] leading-relaxed tracking-wide text-muted-foreground/90">
-              <span className="font-medium text-foreground/85">{brandLabel}</span>
-              <span className="mx-2 inline-block h-0.5 w-0.5 rounded-full bg-border align-middle opacity-70" aria-hidden />
-              <span className="text-muted-foreground/80">Campaign intelligence workspace</span>
-            </p>
-          </div>
-        </footer>
+        {!hideShellFooter && (
+          <footer
+            className="mt-auto border-t border-border/35 bg-gradient-to-t from-muted/25 via-transparent to-transparent [border-top-color:color-mix(in_srgb,var(--brand-primary,transparent)_5%,hsl(var(--border)))]"
+            role="contentinfo"
+          >
+            <div className="mx-auto max-w-7xl px-5 py-6 sm:px-8">
+              <p className="text-center text-[11px] leading-relaxed tracking-wide text-muted-foreground/90">
+                <span className="font-medium text-foreground/85">{brandLabel}</span>
+                <span className="mx-2 inline-block h-0.5 w-0.5 rounded-full bg-border align-middle opacity-70" aria-hidden />
+                <span className="text-muted-foreground/80">Campaign intelligence workspace</span>
+              </p>
+            </div>
+          </footer>
+        )}
     </div>
   );
 }
