@@ -37,10 +37,10 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-/** Prompt 177 — `(dashboard)` routes require auth; marketing lives at `/homepage` with its own layout. */
-/** Prompt 171 — No separate "Campaigns" nav item (workspace reachable from Dashboard). */
+/** Prompt 180 — **Campaigns** → `/campaigns`; post-login default destination. */
 const DASHBOARD_NAV: DashboardNavLink[] = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/campaigns", label: "Campaigns" },
   { href: "/setup", label: "Setup" },
   { href: "/replies", label: "Replies" },
   { href: "/analytics", label: "Analytics" },
@@ -61,7 +61,7 @@ export default async function DashboardLayout({
   } = await supabase.auth.getUser();
 
   if (error || !user) {
-    redirect(`/login?next=${encodeURIComponent(pathname || "/dashboard")}`);
+    redirect(`/login?next=${encodeURIComponent(pathname || "/campaigns")}`);
   }
 
   let displayName =

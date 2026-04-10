@@ -4,6 +4,7 @@ import {
   BarChart3,
   LayoutDashboard,
   LogOut,
+  Megaphone,
   Menu,
   MessageSquareReply,
   Sparkles,
@@ -33,6 +34,7 @@ export type DashboardNavLink = { href: string; label: string };
 
 const NAV_ICONS: Record<string, LucideIcon> = {
   "/dashboard": LayoutDashboard,
+  "/campaigns": Megaphone,
   "/setup": Sparkles,
   "/onboarding": Sparkles,
   "/replies": MessageSquareReply,
@@ -243,7 +245,7 @@ export function DashboardShell({
                     size="sm"
                     className="h-9 shrink-0 rounded-xl bg-[#111827] px-4 text-[13px] font-semibold text-white shadow-sm hover:bg-[#1e293b]"
                   >
-                    <Link href="/login?next=/dashboard">Login / Signup</Link>
+                    <Link href="/login?next=/campaigns">Login / Signup</Link>
                   </Button>
                 </>
               ) : (

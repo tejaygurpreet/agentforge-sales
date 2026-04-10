@@ -67,7 +67,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && (isLogin || isSignup)) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL("/campaigns", request.url));
   }
 
   return response;
@@ -82,6 +82,8 @@ export const config = {
     "/signup",
     "/dashboard",
     "/dashboard/:path*",
+    "/campaigns",
+    "/campaigns/:path*",
     "/setup",
     "/setup/:path*",
     "/agents",
