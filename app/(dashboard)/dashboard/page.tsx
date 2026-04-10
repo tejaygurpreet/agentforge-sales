@@ -16,9 +16,9 @@ import type { CampaignSequenceRow, CustomVoiceRow, WhiteLabelClientSettingsDTO }
 export const dynamic = "force-dynamic";
 
 /**
- * Prompt 168 — Operational dashboard (metrics, campaigns workspace, deliverability, etc.) at `/campaigns`.
+ * Prompt 177 — Operational dashboard at `/dashboard` (metrics, workspace, deliverability, etc.).
  */
-export default async function CampaignsPage() {
+export default async function DashboardOperationalPage() {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -82,15 +82,20 @@ export default async function CampaignsPage() {
     : { google: false, microsoft: false };
 
   return (
-    <BetaDashboardClient
-      analytics={analytics}
-      recentCampaigns={recentCampaigns}
-      deliverabilitySuite={deliverabilitySuite}
-      hubspotConnected={hubspotConnected}
-      customVoices={customVoices}
-      whiteLabel={whiteLabel}
-      campaignSequences={campaignSequences}
-      calendarStatus={calendarStatus}
-    />
+    <div className="mx-auto w-full max-w-6xl space-y-8 px-1 sm:px-0">
+      <header className="pt-1 sm:pt-2">
+        <h1 className="text-3xl font-semibold tracking-[-0.03em] text-foreground sm:text-4xl">My Campaigns</h1>
+      </header>
+      <BetaDashboardClient
+        analytics={analytics}
+        recentCampaigns={recentCampaigns}
+        deliverabilitySuite={deliverabilitySuite}
+        hubspotConnected={hubspotConnected}
+        customVoices={customVoices}
+        whiteLabel={whiteLabel}
+        campaignSequences={campaignSequences}
+        calendarStatus={calendarStatus}
+      />
+    </div>
   );
 }

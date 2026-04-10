@@ -58,7 +58,7 @@ export async function middleware(request: NextRequest) {
 
   const isLogin = path === "/login";
   const isSignup = path === "/signup";
-  const isPublic = path === "/";
+  const isPublic = path === "/" || path === "/homepage" || path.startsWith("/homepage/");
 
   if (!user && !isPublic && !isLogin && !isSignup) {
     const redirectUrl = new URL("/login", request.url);
@@ -67,7 +67,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && (isLogin || isSignup)) {
-    return NextResponse.redirect(new URL("/campaigns", request.url));
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   return response;
@@ -76,10 +76,12 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     "/",
+    "/homepage",
+    "/homepage/:path*",
     "/login",
     "/signup",
-    "/campaigns",
-    "/campaigns/:path*",
+    "/dashboard",
+    "/dashboard/:path*",
     "/setup",
     "/setup/:path*",
     "/agents",

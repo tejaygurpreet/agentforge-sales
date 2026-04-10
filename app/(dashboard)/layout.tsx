@@ -37,10 +37,10 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-/** Prompt 168 — Logged-out: guest shell on `/` only. Logged-in: nav; Dashboard → `/campaigns`. */
+/** Prompt 177 — `(dashboard)` routes require auth; marketing lives at `/homepage` with its own layout. */
 /** Prompt 171 — No separate "Campaigns" nav item (workspace reachable from Dashboard). */
 const DASHBOARD_NAV: DashboardNavLink[] = [
-  { href: "/campaigns", label: "Dashboard" },
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/setup", label: "Setup" },
   { href: "/replies", label: "Replies" },
   { href: "/analytics", label: "Analytics" },
@@ -61,24 +61,7 @@ export default async function DashboardLayout({
   } = await supabase.auth.getUser();
 
   if (error || !user) {
-    const isMarketingHome = pathname === "/" || pathname === "";
-    if (!isMarketingHome) {
-      redirect(`/login?next=${encodeURIComponent(pathname || "/campaigns")}`);
-    }
-
-    return (
-      <InboxUnreadProvider initialCount={0} initialDraftCount={0}>
-        <DashboardShell
-          guestMode
-          hideShellFooter
-          email=""
-          displayName="Guest"
-          navLinks={[]}
-        >
-          <DashboardMotionShell>{children}</DashboardMotionShell>
-        </DashboardShell>
-      </InboxUnreadProvider>
-    );
+    redirect(`/login?next=${encodeURIComponent(pathname || "/dashboard")}`);
   }
 
   let displayName =
@@ -102,8 +85,6 @@ export default async function DashboardLayout({
     getInboxDraftCountAction(),
   ]);
 
-  const hideShellFooter = pathname === "/" || pathname === "";
-
   return (
     <InboxUnreadProvider
       initialCount={initialInboxUnreadCount}
@@ -119,7 +100,6 @@ export default async function DashboardLayout({
           secondaryColor: wl.secondaryColor,
         }}
         navLinks={DASHBOARD_NAV}
-        hideShellFooter={hideShellFooter}
       >
         <DashboardMotionShell>{children}</DashboardMotionShell>
       </DashboardShell>
