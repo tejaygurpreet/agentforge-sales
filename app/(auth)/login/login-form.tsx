@@ -40,7 +40,7 @@ type LoginValues = z.infer<typeof loginSchema>;
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") ?? "/campaigns";
+  const next = searchParams.get("next") ?? "/";
   const [isPending, startTransition] = useTransition();
 
   const form = useForm<LoginValues>({

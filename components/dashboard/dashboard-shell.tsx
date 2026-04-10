@@ -4,7 +4,6 @@ import {
   BarChart3,
   LayoutDashboard,
   LogOut,
-  Megaphone,
   Menu,
   MessageSquareReply,
   Sparkles,
@@ -33,8 +32,8 @@ import type { CSSProperties } from "react";
 export type DashboardNavLink = { href: string; label: string };
 
 const NAV_ICONS: Record<string, LucideIcon> = {
+  "/": LayoutDashboard,
   "/dashboard": LayoutDashboard,
-  "/campaigns": Megaphone,
   "/setup": Sparkles,
   "/onboarding": Sparkles,
   "/replies": MessageSquareReply,
@@ -202,7 +201,7 @@ export function DashboardShell({
         <header className="sticky top-0 z-30 border-b border-[#111827]/10 bg-[#F9F6F0]/96 shadow-[0_1px_0_0_rgba(17,24,39,0.06),0_18px_48px_-28px_rgba(17,24,39,0.1)] backdrop-blur-xl supports-[backdrop-filter]:bg-[#F9F6F0]/90">
           <div className="mx-auto flex min-h-[3.5rem] max-w-7xl items-center gap-3 px-5 py-3 sm:h-[3.65rem] sm:gap-4 sm:px-8 sm:py-0">
             <Link
-              href={guestMode ? "/" : "/dashboard"}
+              href={guestMode ? "/homepage" : "/"}
               className={cn(
                 "group flex min-w-0 shrink-0 items-center gap-2.5 transition-opacity duration-200 hover:opacity-92",
                 !logoUsesWhiteLabelColor && "text-[#111827]",
@@ -245,7 +244,7 @@ export function DashboardShell({
                     size="sm"
                     className="h-9 shrink-0 rounded-xl bg-[#111827] px-4 text-[13px] font-semibold text-white shadow-sm hover:bg-[#1e293b]"
                   >
-                    <Link href="/login?next=/campaigns">Login / Signup</Link>
+                    <Link href="/login?next=/">Login / Signup</Link>
                   </Button>
                 </>
               ) : (

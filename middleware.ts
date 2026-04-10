@@ -56,9 +56,20 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
+  /** Legacy `/campaigns` URL → main dashboard at `/`. */
+  if (path === "/campaigns" || path.startsWith("/campaigns/")) {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
+
+  /** Guests hitting `/` see marketing at `/homepage` (operational app lives at `/` when signed in). */
+  if (path === "/" && !user) {
+    return NextResponse.redirect(new URL("/homepage", request.url));
+  }
+
   const isLogin = path === "/login";
   const isSignup = path === "/signup";
-  const isPublic = path === "/" || path === "/homepage" || path.startsWith("/homepage/");
+  const isPublic =
+    path === "/homepage" || path.startsWith("/homepage/");
 
   if (!user && !isPublic && !isLogin && !isSignup) {
     const redirectUrl = new URL("/login", request.url);
@@ -67,7 +78,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && (isLogin || isSignup)) {
-    return NextResponse.redirect(new URL("/campaigns", request.url));
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
   return response;

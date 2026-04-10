@@ -33,7 +33,7 @@ import { Loader2, Lock, Mail, Rocket, User } from "lucide-react";
 export function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") ?? "/campaigns";
+  const next = searchParams.get("next") ?? "/";
   const [isPending, startTransition] = useTransition();
 
   const form = useForm<SignupFormValues>({

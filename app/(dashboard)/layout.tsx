@@ -37,10 +37,9 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-/** Prompt 180 — **Campaigns** → `/campaigns`; post-login default destination. */
+/** Prompt 181 — Main dashboard at `/`; no Campaigns route. */
 const DASHBOARD_NAV: DashboardNavLink[] = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/campaigns", label: "Campaigns" },
+  { href: "/", label: "Dashboard" },
   { href: "/setup", label: "Setup" },
   { href: "/replies", label: "Replies" },
   { href: "/analytics", label: "Analytics" },
@@ -61,7 +60,7 @@ export default async function DashboardLayout({
   } = await supabase.auth.getUser();
 
   if (error || !user) {
-    redirect(`/login?next=${encodeURIComponent(pathname || "/campaigns")}`);
+    redirect(`/login?next=${encodeURIComponent(pathname || "/")}`);
   }
 
   let displayName =
