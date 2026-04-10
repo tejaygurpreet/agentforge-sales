@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentForgeLogoMark } from "@/components/brand/agentforge-logo-mark";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -22,7 +23,7 @@ const typeBase = "font-sans font-medium tracking-[-0.025em]";
 const heroSerif = "font-serif font-light tracking-[-0.03em]";
 
 /**
- * Prompt 180 — Public homepage (`/`): full-bleed hero; signed-in users go to `/campaigns`.
+ * Prompt 181 — Homepage: solid header + footer; hero image only in the main band (3% blur).
  */
 export default function HomePage() {
   const router = useRouter();
@@ -67,9 +68,33 @@ export default function HomePage() {
   }
 
   return (
-    <div className={cn("relative flex min-h-[100dvh] w-full flex-col bg-[#F9F6F0]", typeBase)}>
+    <div className={cn("flex min-h-[100dvh] w-full flex-col bg-[#F9F6F0]", typeBase)}>
+      <header className="sticky top-0 z-40 shrink-0 border-b border-[#111827]/10 bg-[#F9F6F0] shadow-[0_1px_0_0_rgba(17,24,39,0.06)]">
+        <div className="mx-auto flex min-h-[3.5rem] max-w-7xl items-center gap-3 px-5 py-3 sm:h-[3.65rem] sm:gap-4 sm:px-8 sm:py-0">
+          <Link
+            href="/"
+            className="group flex min-w-0 shrink-0 items-center gap-2.5 text-[#111827] transition-opacity duration-200 hover:opacity-92"
+          >
+            <AgentForgeLogoMark className="h-8 w-8 shrink-0 transition-transform duration-200 ease-out group-hover:scale-[1.03]" />
+            <span className="whitespace-nowrap text-[0.95rem] font-bold leading-tight tracking-[-0.02em]">
+              Agent<span className="text-[#B45309]">Forge</span> Sales
+            </span>
+          </Link>
+          <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+            <span className="max-w-[120px] truncate text-sm font-semibold tracking-tight text-[#111827]">Guest</span>
+            <Button
+              asChild
+              size="sm"
+              className="h-9 shrink-0 rounded-xl bg-[#111827] px-4 text-[13px] font-semibold text-white shadow-sm hover:bg-[#1e293b]"
+            >
+              <Link href="/login?next=/campaigns">Login / Signup</Link>
+            </Button>
+          </div>
+        </div>
+      </header>
+
       <section
-        className="relative min-h-[100dvh] w-full overflow-hidden"
+        className="relative min-h-0 w-full flex-1 overflow-hidden"
         aria-labelledby="home-hero-heading"
       >
         <div className="pointer-events-none absolute inset-0">
@@ -88,7 +113,7 @@ export default function HomePage() {
           />
         </div>
 
-        <div className="relative flex min-h-[100dvh] flex-col justify-between px-6 pb-12 pt-20 sm:px-10 sm:pb-14 sm:pt-24 lg:px-14 lg:pb-16 lg:pt-28">
+        <div className="relative z-[1] flex min-h-[min(720px,calc(100dvh-8rem))] flex-col justify-between px-6 pb-12 pt-14 sm:px-10 sm:pb-14 sm:pt-16 lg:px-14 lg:pb-16 lg:pt-20">
           <motion.div
             className={cn(heroSerif, "w-full max-w-4xl text-left text-white lg:max-w-5xl")}
             initial="hidden"
@@ -122,6 +147,67 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      <footer
+        className="shrink-0 border-t border-[#e8eaef] bg-[#fafbfc]"
+        role="contentinfo"
+      >
+        <div className="mx-auto flex max-w-7xl flex-col gap-8 px-6 py-10 sm:px-10 lg:flex-row lg:items-start lg:justify-between lg:gap-8 lg:px-12">
+          <div className="flex max-w-sm flex-col gap-2">
+            <div className="flex items-center gap-2.5">
+              <AgentForgeLogoMark className="h-9 w-9 shrink-0 text-[#111827]" aria-hidden />
+              <span className="text-[15px] font-medium tracking-[-0.025em] text-[#111827]">
+                Agent<span className="text-[#B45309]">Forge</span> Sales
+              </span>
+            </div>
+            <p className="text-[13px] font-medium leading-relaxed tracking-[-0.025em] text-[#64748b]">
+              © 2026 AgentForge Sales. All rights reserved.
+            </p>
+          </div>
+
+          <nav
+            aria-label="Quick links"
+            className="flex flex-wrap items-center justify-center gap-x-10 gap-y-3 lg:flex-1 lg:justify-center"
+          >
+            <Link
+              href="/campaigns"
+              className="text-[13px] font-medium tracking-[-0.025em] text-[#475569] transition hover:text-[#111827]"
+            >
+              Campaigns
+            </Link>
+            <Link
+              href="/inbox"
+              className="text-[13px] font-medium tracking-[-0.025em] text-[#475569] transition hover:text-[#111827]"
+            >
+              Inbox
+            </Link>
+            <Link
+              href="/setup"
+              className="text-[13px] font-medium tracking-[-0.025em] text-[#475569] transition hover:text-[#111827]"
+            >
+              Setup
+            </Link>
+          </nav>
+
+          <nav
+            aria-label="Legal"
+            className="flex flex-wrap items-center justify-start gap-x-8 gap-y-2 lg:min-w-[180px] lg:justify-end"
+          >
+            <Link
+              href="/privacy"
+              className="text-[13px] font-medium tracking-[-0.025em] text-[#475569] transition hover:text-[#111827]"
+            >
+              Privacy
+            </Link>
+            <Link
+              href="/terms"
+              className="text-[13px] font-medium tracking-[-0.025em] text-[#475569] transition hover:text-[#111827]"
+            >
+              Terms
+            </Link>
+          </nav>
+        </div>
+      </footer>
     </div>
   );
 }
