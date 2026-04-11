@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, skipped: true, hint: result.hint });
   }
 
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   revalidatePath("/replies");
   revalidatePath("/inbox");
 

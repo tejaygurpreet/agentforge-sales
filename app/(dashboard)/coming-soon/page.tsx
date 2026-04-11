@@ -59,7 +59,7 @@ export default function ComingSoonPage() {
         className="mt-10 h-12 min-w-[220px] rounded-[var(--card-radius)] bg-sage px-8 text-base font-semibold text-primary-foreground shadow-glow ring-1 ring-sage/20 transition hover:bg-sage/90"
         asChild
       >
-        <Link href="/">
+        <Link href="/dashboard">
           <ArrowLeft className="mr-2 h-4 w-4 opacity-90" aria-hidden />
           Back to Dashboard
         </Link>

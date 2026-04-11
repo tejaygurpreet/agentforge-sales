@@ -85,7 +85,7 @@ async function signInOrFail(
     password,
   });
   if (error) return { ok: false, error: error.message };
-  revalidatePath("/", "layout");
+  revalidatePath("/dashboard", "layout");
   return { ok: true };
 }
 

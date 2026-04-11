@@ -60,7 +60,7 @@ export async function sendWebPushToUser(
     title: payload.title,
     body: payload.body,
     tag: payload.tag ?? "agentforge",
-    url: payload.url ?? "/",
+    url: payload.url ?? "/dashboard",
   });
 
   for (const r of rows) {
@@ -102,7 +102,7 @@ export async function notifyCampaignCompletedPush(
     title: "Campaign completed",
     body: `${leadName} — pipeline finished. Open the dashboard to review.`,
     tag: `campaign-${threadId}`,
-    url: "/",
+    url: "/dashboard",
   });
 }
 
@@ -130,6 +130,6 @@ export async function notifyBatchFinishedPush(
     title: "Batch finished",
     body: `${done}/${total} campaigns completed${errPart}.`,
     tag: "batch-finish",
-    url: "/",
+    url: "/dashboard",
   });
 }

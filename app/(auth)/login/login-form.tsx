@@ -40,7 +40,7 @@ type LoginValues = z.infer<typeof loginSchema>;
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") ?? "/";
+  const next = searchParams.get("next") ?? "/dashboard";
   const [isPending, startTransition] = useTransition();
 
   const form = useForm<LoginValues>({
@@ -84,7 +84,7 @@ export function LoginForm() {
   }
 
   const signupHref =
-    next !== "/" ? `/signup?next=${encodeURIComponent(next)}` : "/signup";
+    next !== "/dashboard" ? `/signup?next=${encodeURIComponent(next)}` : "/signup";
 
   return (
     <AuthSplitLayout tagline="Welcome back. Your pipeline, inbox, and campaigns — in one calm workspace.">

@@ -77,7 +77,7 @@ export function OnboardingWizard() {
     } catch {
       /* ignore */
     }
-    router.push("/");
+    router.push("/dashboard");
   }
 
   return (

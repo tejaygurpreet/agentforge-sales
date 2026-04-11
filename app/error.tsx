@@ -49,7 +49,7 @@ export default function GlobalError({
               Try again
             </Button>
             <Button type="button" variant="outline" asChild className="rounded-xl border-border/60">
-              <Link href="/">Go to dashboard</Link>
+              <Link href="/dashboard">Go to dashboard</Link>
             </Button>
           </div>
         </div>

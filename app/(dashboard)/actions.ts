@@ -1044,7 +1044,7 @@ export async function inviteWorkspaceMemberAction(
   });
   if (error) return { ok: false, error: error.message };
 
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -1083,7 +1083,7 @@ export async function updateWorkspaceMemberRoleAction(
     .eq("status", "active");
 
   if (error) return { ok: false, error: error.message };
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -1291,7 +1291,7 @@ async function runSingleCampaignPipeline(
       ).catch(() => {});
     }
 
-    revalidatePath("/");
+    revalidatePath("/dashboard");
     revalidatePath("/analytics");
 
     return {
@@ -1681,7 +1681,7 @@ export async function startAdvancedAbBatchExperimentAction(
   }
 
   await finalizeAbTestFromCampaigns(supabase, campaignsReader, ab_test_id, ws.memberUserIds);
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   revalidatePath("/analytics");
   return {
     ok: true,
@@ -1821,7 +1821,7 @@ export async function saveCampaignAsTemplateAction(
         : insErr.message,
     };
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -1900,7 +1900,7 @@ export async function deleteCampaignTemplateAction(
   if (error) {
     return { ok: false, error: error.message };
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -2002,7 +2002,7 @@ export async function upsertCampaignSequenceAction(
     if (!data?.id) {
       return { ok: false, error: "Sequence not found or access denied." };
     }
-    revalidatePath("/");
+    revalidatePath("/dashboard");
     return { ok: true, id: String(data.id) };
   }
 
@@ -2025,7 +2025,7 @@ export async function upsertCampaignSequenceAction(
         : error.message,
     };
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true, id: String((data as { id: string }).id) };
 }
 
@@ -2059,7 +2059,7 @@ export async function deleteCampaignSequenceAction(
   if (error) {
     return { ok: false, error: error.message };
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -2123,7 +2123,7 @@ export async function disconnectCalendarAction(
     .eq("user_id", user.id)
     .eq("provider", parsed.data.provider);
   if (error) return { ok: false, error: error.message };
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -2183,7 +2183,7 @@ export async function proposeMeetingAction(
         endIso: parsed.data.end_iso,
         attendeeEmail: parsed.data.attendee_email,
       });
-      revalidatePath("/");
+      revalidatePath("/dashboard");
       return { ok: true, event_id: ev.id, html_link: ev.htmlLink, provider: "google" };
     }
     const ev = await createMicrosoftCalendarEvent(tok.accessToken, {
@@ -2193,7 +2193,7 @@ export async function proposeMeetingAction(
       endIso: parsed.data.end_iso,
       attendeeEmail: parsed.data.attendee_email,
     });
-    revalidatePath("/");
+    revalidatePath("/dashboard");
     return { ok: true, event_id: ev.id, html_link: ev.webLink, provider: "microsoft" };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Calendar API failed";
@@ -2271,7 +2271,7 @@ export async function generatePersonalizedDemoScriptAction(
     }
   }
 
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true, script, demo_status: "script_ready" };
 }
 
@@ -2394,7 +2394,7 @@ export async function bookPersonalizedDemoAction(
       console.warn("[AgentForge] bookPersonalizedDemoAction demo_outcome", upErr.message);
     }
 
-    revalidatePath("/");
+    revalidatePath("/dashboard");
     return {
       ok: true,
       event_id: eventId,
@@ -2474,7 +2474,7 @@ export async function recordDemoOutcomeAction(
     }
   }
 
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -2981,7 +2981,7 @@ export async function updateSmartFollowUpStepAction(
     return { ok: false, error: "Could not read snapshot." };
   }
 
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true, snapshot: snap };
 }
 
@@ -3166,7 +3166,7 @@ export async function sendOutreachEmailAction(
     console.warn("[AgentForge] upsertInboxThreadAfterOutreachSend", inboxSync.error);
   }
 
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   revalidatePath("/analytics");
 
   return {
@@ -3438,7 +3438,7 @@ export async function refreshDeliverabilityCoachAction(): Promise<RefreshDeliver
 
   const merged = mergeCoachWithCache(base, coachJson, nowIso);
 
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   revalidatePath("/analytics");
   return { ok: true, coach: merged.insights, cachedAt: merged.cachedCoachAt };
 }
@@ -3481,7 +3481,7 @@ export async function setWarmupEnabledAction(
           : error.message,
     };
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   revalidatePath("/analytics");
   return { ok: true };
 }
@@ -3556,7 +3556,7 @@ export async function recordWarmupEmailAction(): Promise<RecordWarmupEmailResult
     return { ok: false, error: error.message };
   }
 
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   revalidatePath("/analytics");
   return { ok: true };
 }
@@ -3724,7 +3724,7 @@ export async function analyzeProspectReplyAction(
           .eq("user_id", user.id);
       }
       void notifyNewReplySavedPush(user.id, preview || fullText.slice(0, 200)).catch(() => {});
-      revalidatePath("/");
+      revalidatePath("/dashboard");
       revalidatePath("/replies");
       revalidatePath("/analytics");
       return { ok: true, analysis, persisted: true };
@@ -4057,7 +4057,7 @@ export async function archiveInboxThreadAction(
     }
     return { ok: false, error: error.message };
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -4098,7 +4098,7 @@ export async function snoozeInboxThreadAction(
     }
     return { ok: false, error: error.message };
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -4150,7 +4150,7 @@ export async function setInboxThreadLabelsAction(
     }
     return { ok: false, error: error.message };
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -4281,7 +4281,7 @@ export async function markInboxThreadReadAction(threadId: string): Promise<{ ok:
     console.error("[AgentForge] markInboxThreadReadAction", error.message);
     return { ok: false };
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -4557,7 +4557,7 @@ export async function sendInboxReplyAction(
 
   await deleteInboxReplyDraftsForThread(supabase, user.id, row.id);
 
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   revalidatePath("/replies");
   return { ok: true };
 }
@@ -4664,7 +4664,7 @@ export async function sendNewInboxEmailAction(
     prospectEmail,
   });
 
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   revalidatePath("/inbox");
   revalidatePath("/replies");
   return { ok: true, threadId: rec.threadId };
@@ -5514,7 +5514,7 @@ export async function setWeeklyCoachingEmailAction(
       return { ok: false, error: error.message };
     }
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -5578,7 +5578,7 @@ export async function refreshSalesCoachingAction(
     );
   }
 
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return {
     preview,
     ai: {
@@ -5782,7 +5782,7 @@ export async function generateExecutiveReportAction(): Promise<GenerateExecutive
     return { ok: false, error: upErr.message };
   }
 
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true, markdown, generatedAt };
 }
 
@@ -5935,7 +5935,7 @@ export async function saveWhiteLabelSettingsAction(
     };
   }
 
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -6010,7 +6010,7 @@ export async function submitBetaSignupAction(
     };
   }
 
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -6060,7 +6060,7 @@ export async function saveHubSpotAccessTokenAction(
           : error.message,
     };
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -6081,7 +6081,7 @@ export async function disconnectHubSpotAction(): Promise<SaveHubSpotTokenResult>
   if (error) {
     return { ok: false, error: error.message };
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -6293,7 +6293,7 @@ export async function createCustomVoiceAction(
           : error.message,
     };
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true, id: String(data?.id ?? "") };
 }
 
@@ -6326,7 +6326,7 @@ export async function deleteCustomVoiceAction(
   if (error) {
     return { ok: false, error: error.message };
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -6527,7 +6527,7 @@ export async function saveScheduledReportAction(
         : error.message,
     };
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true, id: String((data as { id?: unknown }).id ?? "") };
 }
 
@@ -6561,7 +6561,7 @@ export async function deleteScheduledReportAction(
   if (error) {
     return { ok: false, error: error.message };
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -6826,7 +6826,7 @@ export async function generatePlaybookForThreadAction(
       : "";
     return { ok: false, error: (insErr?.message ?? "Insert failed.") + hint };
   }
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   return { ok: true, playbookId: String((ins as { id: string }).id) };
 }
 
@@ -6998,7 +6998,7 @@ export async function generateCampaignProposalAction(threadId: string): Promise<
       }
     }
     await patchStatus("ready", publicUrl);
-    revalidatePath("/");
+    revalidatePath("/dashboard");
     return { ok: true, proposalUrl: publicUrl, proposal_status: "ready" };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

@@ -76,7 +76,7 @@ export function SetupPageClient({
               Branding, CRM, calendar, and voice — each card below is optional. Use the guided wizard first,
               then wire services at your pace.{" "}
               <Link
-                href="/"
+                href="/dashboard"
                 className="font-semibold text-sage underline-offset-4 transition-colors hover:text-sage/85 hover:underline"
               >
                 Back to dashboard

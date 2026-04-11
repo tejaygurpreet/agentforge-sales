@@ -53,17 +53,12 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (path === "/agents" || path.startsWith("/agents/")) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  /** Legacy `/campaigns` URL → main dashboard at `/`. */
+  /** Legacy `/campaigns` URL → main dashboard at `/dashboard`. */
   if (path === "/campaigns" || path.startsWith("/campaigns/")) {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
-
-  /** Guests hitting `/` see marketing at `/homepage` (operational app lives at `/` when signed in). */
-  if (path === "/" && !user) {
-    return NextResponse.redirect(new URL("/homepage", request.url));
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   const isLogin = path === "/login";
@@ -78,7 +73,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && (isLogin || isSignup)) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   return response;

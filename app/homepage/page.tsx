@@ -23,7 +23,7 @@ const typeBase = "font-sans font-medium tracking-[-0.025em]";
 const heroSerif = "font-serif font-light tracking-[-0.03em]";
 
 /**
- * Public marketing site at `/homepage` — guests only; signed-in users go to main dashboard (`/`).
+ * Public marketing site at `/homepage` — guests only; signed-in users go to main dashboard (`/dashboard`).
  */
 export default function HomepagePage() {
   const router = useRouter();
@@ -39,7 +39,7 @@ export default function HomepagePage() {
       } = await supabase.auth.getUser();
       if (cancelled) return;
       if (user) {
-        router.replace("/");
+        router.replace("/dashboard");
         return;
       }
       setReady(true);
@@ -48,7 +48,7 @@ export default function HomepagePage() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) router.replace("/");
+      if (session?.user) router.replace("/dashboard");
     });
 
     return () => {
@@ -87,7 +87,7 @@ export default function HomepagePage() {
               size="sm"
               className="h-9 shrink-0 rounded-xl bg-[#111827] px-4 text-[13px] font-semibold text-white shadow-sm hover:bg-[#1e293b]"
             >
-              <Link href="/login?next=/">Login / Signup</Link>
+              <Link href="/login?next=/dashboard">Login / Signup</Link>
             </Button>
           </div>
         </div>
@@ -142,7 +142,7 @@ export default function HomepagePage() {
               )}
               asChild
             >
-              <Link href="/login?next=/">Get Started</Link>
+              <Link href="/login?next=/dashboard">Get Started</Link>
             </Button>
           </div>
         </div>
@@ -167,7 +167,7 @@ export default function HomepagePage() {
             className="flex flex-wrap items-center justify-center gap-x-10 gap-y-3 lg:flex-1 lg:justify-center"
           >
             <Link
-              href="/login?next=/"
+              href="/login?next=/dashboard"
               className="text-[13px] font-medium tracking-[-0.025em] text-[#475569] transition hover:text-[#111827]"
             >
               Dashboard

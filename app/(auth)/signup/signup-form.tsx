@@ -33,7 +33,7 @@ import { Loader2, Lock, Mail, Rocket, User } from "lucide-react";
 export function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") ?? "/";
+  const next = searchParams.get("next") ?? "/dashboard";
   const [isPending, startTransition] = useTransition();
 
   const form = useForm<SignupFormValues>({
@@ -68,7 +68,8 @@ export function SignupForm() {
     });
   }
 
-  const loginHref = next !== "/" ? `/login?next=${encodeURIComponent(next)}` : "/login";
+  const loginHref =
+    next !== "/dashboard" ? `/login?next=${encodeURIComponent(next)}` : "/login";
 
   return (
     <AuthSplitLayout tagline="Create your workspace. One sign-up — then Setup, campaigns, and inbox unlock.">

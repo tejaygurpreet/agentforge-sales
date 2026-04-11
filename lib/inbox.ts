@@ -2222,7 +2222,7 @@ export async function persistInboundResendReplyToInbox(
 
   try {
     revalidatePath("/inbox");
-    revalidatePath("/");
+    revalidatePath("/dashboard");
   } catch (revalErr) {
     console.warn("[inbound/resend] revalidatePath after inbound", revalErr);
   }

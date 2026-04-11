@@ -204,7 +204,7 @@ export function AnalyticsDashboard({
               </Button>
             ) : (
               <Link
-                href="/"
+                href="/dashboard"
                 className="text-sm font-medium text-primary underline-offset-4 hover:underline"
               >
                 Go to dashboard → Coaching
